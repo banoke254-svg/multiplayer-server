@@ -34,7 +34,7 @@ function buildRoomData(room) {
 
 
 // ========================================
-// SEND TO ROOM
+// SEND ROOM UPDATE
 // ========================================
 
 function sendRoomUpdate(room) {
@@ -55,6 +55,29 @@ function sendRoomUpdate(room) {
 
 
 // ========================================
+// START MATCH
+// ========================================
+
+function startMatch(room) {
+
+    const roomData = buildRoomData(room);
+
+    room.players.forEach(player => {
+
+        if (player.readyState === WebSocket.OPEN) {
+
+            player.send(JSON.stringify({
+                type: "start_match",
+                room: roomData
+            }));
+        }
+    });
+
+    console.log("MATCH STARTED:", room.code);
+}
+
+
+// ========================================
 // CONNECTION
 // ========================================
 
@@ -64,7 +87,7 @@ wss.on("connection", (ws) => {
 
     console.log("PLAYER CONNECTED:", ws.id);
 
-    // tell client connected
+    // send connected packet
     ws.send(JSON.stringify({
         type: "connected",
         client_id: ws.id
@@ -98,7 +121,7 @@ wss.on("connection", (ws) => {
 
             let foundRoom = null;
 
-            // find existing room
+            // find room with space
             for (const code in rooms) {
 
                 const room = rooms[code];
@@ -109,7 +132,7 @@ wss.on("connection", (ws) => {
                 }
             }
 
-            // create room if none exists
+            // create room if none found
             if (!foundRoom) {
 
                 const code = generateRoomCode();
@@ -130,7 +153,7 @@ wss.on("connection", (ws) => {
 
             ws.room = foundRoom.code;
 
-            // send room joined
+            // joined response
             ws.send(JSON.stringify({
                 type: "room_joined",
                 room: buildRoomData(foundRoom)
@@ -138,6 +161,13 @@ wss.on("connection", (ws) => {
 
             // update everyone
             sendRoomUpdate(foundRoom);
+
+            // AUTO START FOR TESTING
+            setTimeout(() => {
+
+                startMatch(foundRoom);
+
+            }, 3000);
         }
 
 
@@ -167,6 +197,13 @@ wss.on("connection", (ws) => {
             }));
 
             console.log("PRIVATE ROOM CREATED:", code);
+
+            // AUTO START FOR TESTING
+            setTimeout(() => {
+
+                startMatch(room);
+
+            }, 3000);
         }
 
 
@@ -212,11 +249,18 @@ wss.on("connection", (ws) => {
             sendRoomUpdate(room);
 
             console.log("PLAYER JOINED ROOM:", code);
+
+            // AUTO START FOR TESTING
+            setTimeout(() => {
+
+                startMatch(room);
+
+            }, 3000);
         }
 
 
         // ====================================
-        // START MATCH
+        // MANUAL START MATCH
         // ====================================
 
         if (data.type === "start_match") {
@@ -225,15 +269,7 @@ wss.on("connection", (ws) => {
 
             if (!room) return;
 
-            room.players.forEach(player => {
-
-                player.send(JSON.stringify({
-                    type: "start_match",
-                    room: buildRoomData(room)
-                }));
-            });
-
-            console.log("MATCH STARTED:", room.code);
+            startMatch(room);
         }
 
     });
