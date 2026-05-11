@@ -31,6 +31,14 @@ const clientsById = new Map();
 const sessionsByToken = new Map();
 const rooms = new Map();
 
+function createSocialSets() {
+  return {
+    friends: new Set(),
+    incomingFriendRequests: new Set(),
+    outgoingFriendRequests: new Set()
+  };
+}
+
 class RoomManager {
   ensurePublicRooms() {
     for (let capacity = 2; capacity <= TOTAL_MATCH_SLOTS; capacity += 1) {
@@ -51,12 +59,13 @@ class RoomManager {
 
   createPublicMatch(client, maxPlayers) {
     this.ensurePublicRooms();
-    const capacity = clampPlayerCount(maxPlayers);
+    const partyClients = this.getInvitePartyClientsForMove(client);
+    const capacity = Math.max(clampPlayerCount(maxPlayers), partyClients.length);
     let room = Array.from(rooms.values()).find((candidate) => {
       return !candidate.is_private
         && !candidate.started
         && candidate.max_players === capacity
-        && candidate.players.length < candidate.max_players;
+        && this.roomHasSpaceForClients(candidate, partyClients);
     });
 
     if (!room) {
@@ -65,14 +74,16 @@ class RoomManager {
       });
     }
 
-    return this.addPlayer(room, client);
+    return this.addClientsToRoom(room, partyClients);
   }
 
   createPrivateRoom(client, maxPlayers) {
-    const room = this.createRoom(client, clampPlayerCount(maxPlayers), true, {
+    const partyClients = this.getInvitePartyClientsForMove(client);
+    const capacity = Math.max(clampPlayerCount(maxPlayers), partyClients.length);
+    const room = this.createRoom(client, capacity, true, {
       partyName: `${client.name || 'Player'}'s Private Party`
     });
-    const result = this.addPlayer(room, client);
+    const result = this.addClientsToRoom(room, partyClients);
 
     if (result.ok) {
       const roomData = this.serializeRoom(room, true);
@@ -99,7 +110,8 @@ class RoomManager {
       return { ok: false, error: 'Party code not found.' };
     }
 
-    return this.addPlayer(room, client);
+    const partyClients = this.getInvitePartyClientsForMove(client);
+    return this.addClientsToRoom(room, partyClients);
   }
 
   invitePlayer(client, targetId, maxPlayers) {
@@ -121,10 +133,11 @@ class RoomManager {
 
     if (!room || room.started || room.players.length >= room.max_players) {
       room = this.createRoom(client, clampPlayerCount(maxPlayers || TOTAL_MATCH_SLOTS), true, {
-        partyName: `${client.name || 'Player'}'s Invite Party`
+        partyName: `${client.name || 'Player'}'s Invite Party`,
+        inviteRoom: true
       });
 
-      const addResult = this.addPlayer(room, client);
+      const addResult = this.addPlayer(room, client, { notifyJoined: false });
 
       if (!addResult.ok) {
         return addResult;
@@ -160,7 +173,93 @@ class RoomManager {
     return { ok: true, room };
   }
 
-  addPlayer(room, client) {
+  declineInvite(client, inviterId, roomCode) {
+    if (!client) {
+      return { ok: false, error: 'Invalid player.' };
+    }
+
+    const inviterClient = clientsById.get(String(inviterId || ''));
+
+    if (!inviterClient || inviterClient.connected !== true) {
+      return { ok: true };
+    }
+
+    const cleanCode = normalizeRoomCode(roomCode);
+    sendJson(inviterClient, {
+      type: 'room_invite_declined',
+      target_id: client.id,
+      target_name: client.name || 'Player',
+      code: cleanCode,
+      party_code: cleanCode,
+      room_code: cleanCode,
+      server_time: Date.now()
+    });
+
+    return { ok: true };
+  }
+
+  getInvitePartyClientsForMove(client) {
+    if (!client) {
+      return [];
+    }
+
+    const sourceRoom = rooms.get(client.room_id || '');
+
+    if (!sourceRoom || sourceRoom.started || sourceRoom.invite_room !== true || sourceRoom.host_id !== client.id) {
+      return [client];
+    }
+
+    const partyClients = sourceRoom.players
+      .map((clientId) => clientsById.get(clientId))
+      .filter((partyClient) => partyClient && partyClient.connected === true);
+
+    return partyClients.length > 0 ? partyClients : [client];
+  }
+
+  roomHasSpaceForClients(room, partyClients) {
+    if (!room) {
+      return false;
+    }
+
+    const incomingIds = new Set((partyClients || []).map((partyClient) => partyClient.id));
+    const currentCount = room.players.filter((clientId) => !incomingIds.has(clientId)).length;
+    return currentCount + incomingIds.size <= room.max_players;
+  }
+
+  addClientsToRoom(room, partyClients) {
+    if (!room || !Array.isArray(partyClients) || partyClients.length <= 0) {
+      return { ok: false, error: 'Invalid party or player.' };
+    }
+
+    const uniqueClients = [];
+    const seenIds = new Set();
+
+    partyClients.forEach((partyClient) => {
+      if (!partyClient || seenIds.has(partyClient.id)) {
+        return;
+      }
+      seenIds.add(partyClient.id);
+      uniqueClients.push(partyClient);
+    });
+
+    if (!this.roomHasSpaceForClients(room, uniqueClients)) {
+      return { ok: false, error: 'Party is full.' };
+    }
+
+    let lastResult = { ok: true, room };
+
+    for (const partyClient of uniqueClients) {
+      lastResult = this.addPlayer(room, partyClient);
+
+      if (!lastResult.ok) {
+        return lastResult;
+      }
+    }
+
+    return { ok: true, room };
+  }
+
+  addPlayer(room, client, options = {}) {
     if (!room || !client) {
       return { ok: false, error: 'Invalid party or player.' };
     }
@@ -169,8 +268,12 @@ class RoomManager {
       return { ok: false, error: 'This match already started.' };
     }
 
+    const notifyJoined = options.notifyJoined !== false;
+
     if (room.players.includes(client.id)) {
-      this.sendRoomJoined(client, room);
+      if (notifyJoined) {
+        this.sendRoomJoined(client, room);
+      }
       this.broadcastRoomUpdate(room);
       return { ok: true, room };
     }
@@ -194,12 +297,16 @@ class RoomManager {
     console.log(`[room] ${client.id} joined ${room.code} (${room.players.length}/${room.max_players})`);
 
     if (room.players.length >= room.max_players) {
-      this.sendRoomJoined(client, room);
+      if (notifyJoined) {
+        this.sendRoomJoined(client, room);
+      }
       this.startMatch(room, 'room_full');
       return { ok: true, room };
     }
 
-    this.sendRoomJoined(client, room);
+    if (notifyJoined) {
+      this.sendRoomJoined(client, room);
+    }
     this.broadcastRoomUpdate(room);
 
     return { ok: true, room };
@@ -457,6 +564,7 @@ class RoomManager {
       host_id: hostClient ? hostClient.id : '',
       is_private: isPrivate,
       allow_ai: false,
+      invite_room: options.inviteRoom === true,
       started: false,
       party_state: 'lobby',
       created_at: Date.now(),
@@ -534,6 +642,7 @@ class RoomManager {
       authority_mode: 'dedicated_party_server',
       is_private: room.is_private,
       is_public: !room.is_private,
+      invite_room: room.invite_room === true,
       started: room.started,
       party_state: room.party_state || (room.started ? 'running' : 'lobby'),
       start_at: room.start_at || 0,
@@ -622,6 +731,188 @@ function serializeOnlinePlayers() {
     });
 }
 
+function serializeSocialClient(client) {
+  if (!client) {
+    return null;
+  }
+  const room = rooms.get(client.room_id || '');
+  return {
+    id: client.id,
+    client_id: client.id,
+    name: client.name || 'Player',
+    login_id: client.login_id || '',
+    connected: client.connected === true,
+    in_room: Boolean(room),
+    room_code: room ? room.code : '',
+    party_state: room ? (room.party_state || (room.started ? 'running' : 'lobby')) : 'online',
+    is_private: room ? room.is_private === true : false,
+    room_capacity: room ? room.max_players : 0
+  };
+}
+
+function serializeSocialClients(ids) {
+  return Array.from(ids || [])
+    .map((id) => serializeSocialClient(clientsById.get(id)))
+    .filter(Boolean);
+}
+
+function buildFriendsPayload(client) {
+  return {
+    type: 'friends_update',
+    friends: serializeSocialClients(client.friends),
+    incoming_requests: serializeSocialClients(client.incomingFriendRequests),
+    outgoing_requests: serializeSocialClients(client.outgoingFriendRequests),
+    server_time: Date.now()
+  };
+}
+
+function sendFriendsUpdate(client) {
+  if (!client) {
+    return;
+  }
+  sendJson(client, buildFriendsPayload(client));
+}
+
+function sendFriendsUpdateForPair(firstClient, secondClient) {
+  sendFriendsUpdate(firstClient);
+  sendFriendsUpdate(secondClient);
+}
+
+function requestFriend(client, targetId) {
+  if (!client) {
+    return { ok: false, error: 'Invalid player.' };
+  }
+
+  const targetClient = clientsById.get(String(targetId || ''));
+
+  if (!targetClient || targetClient.connected !== true) {
+    return { ok: false, error: 'That player is no longer online.' };
+  }
+  if (targetClient.id === client.id) {
+    return { ok: false, error: 'You cannot friend yourself.' };
+  }
+  if (client.friends.has(targetClient.id)) {
+    return { ok: false, error: 'That player is already your friend.' };
+  }
+
+  targetClient.incomingFriendRequests.add(client.id);
+  client.outgoingFriendRequests.add(targetClient.id);
+
+  sendJson(targetClient, {
+    type: 'friend_request',
+    from: serializeSocialClient(client),
+    from_id: client.id,
+    from_name: client.name || 'Player',
+    server_time: Date.now()
+  });
+
+  sendJson(client, {
+    type: 'friend_request_sent',
+    target: serializeSocialClient(targetClient),
+    target_id: targetClient.id,
+    target_name: targetClient.name || 'Player',
+    server_time: Date.now()
+  });
+
+  sendFriendsUpdateForPair(client, targetClient);
+  return { ok: true };
+}
+
+function acceptFriendRequest(client, requesterId) {
+  if (!client) {
+    return { ok: false, error: 'Invalid player.' };
+  }
+
+  const requester = clientsById.get(String(requesterId || ''));
+
+  if (!requester) {
+    return { ok: false, error: 'That friend request expired.' };
+  }
+  if (!client.incomingFriendRequests.has(requester.id)) {
+    return { ok: false, error: 'Friend request not found.' };
+  }
+
+  client.incomingFriendRequests.delete(requester.id);
+  requester.outgoingFriendRequests.delete(client.id);
+  client.friends.add(requester.id);
+  requester.friends.add(client.id);
+
+  sendJson(client, {
+    type: 'friend_request_accepted',
+    friend: serializeSocialClient(requester),
+    friend_id: requester.id,
+    friend_name: requester.name || 'Player',
+    server_time: Date.now()
+  });
+  sendJson(requester, {
+    type: 'friend_request_accepted',
+    friend: serializeSocialClient(client),
+    friend_id: client.id,
+    friend_name: client.name || 'Player',
+    server_time: Date.now()
+  });
+
+  sendFriendsUpdateForPair(client, requester);
+  return { ok: true };
+}
+
+function declineFriendRequest(client, requesterId) {
+  if (!client) {
+    return { ok: false, error: 'Invalid player.' };
+  }
+
+  const requester = clientsById.get(String(requesterId || ''));
+  const cleanRequesterId = requester ? requester.id : String(requesterId || '');
+
+  client.incomingFriendRequests.delete(cleanRequesterId);
+  if (requester) {
+    requester.outgoingFriendRequests.delete(client.id);
+    sendFriendsUpdate(requester);
+  }
+  sendFriendsUpdate(client);
+  return { ok: true };
+}
+
+function sendDirectChatMessage(client, targetId, rawText) {
+  if (!client) {
+    return { ok: false, error: 'Invalid player.' };
+  }
+
+  const targetClient = clientsById.get(String(targetId || ''));
+
+  if (!targetClient || targetClient.connected !== true) {
+    return { ok: false, error: 'That friend is offline.' };
+  }
+  if (!client.friends.has(targetClient.id)) {
+    return { ok: false, error: 'Add this player as a friend before messaging.' };
+  }
+
+  const chatText = sanitizeChatText(rawText);
+
+  if (!chatText) {
+    return { ok: false, error: 'Chat message is empty.' };
+  }
+
+  const message = {
+    type: 'direct_chat_message',
+    text: chatText,
+    sender_id: client.id,
+    sender_name: client.name || 'Player',
+    target_id: targetClient.id,
+    target_name: targetClient.name || 'Player',
+    is_direct: true,
+    sent_at: Date.now(),
+    server_time: Date.now()
+  };
+
+  sendJson(targetClient, message);
+  sendJson(client, Object.assign({}, message, {
+    type: 'direct_chat_sent',
+    is_local: true
+  }));
+  return { ok: true };
+}
+
 function buildOnlineDirectoryPayload() {
   const roomList = roomManager.listRooms();
   const connectedClients = Array.from(clientsById.values()).filter((candidate) => candidate.connected).length;
@@ -699,6 +990,7 @@ websocketServer.on('connection', (socket, request) => {
     client_id: client.id,
     session_token: client.session_token
   });
+  sendFriendsUpdate(client);
   broadcastOnlineDirectory();
 
   socket.on('pong', () => {
@@ -762,6 +1054,7 @@ function createClient(socket, request) {
     ip: getClientIp(request),
     cleanup_timer: null
   };
+  Object.assign(client, createSocialSets());
 
   clientsById.set(client.id, client);
   sessionsByToken.set(client.session_token, client);
@@ -818,6 +1111,28 @@ function handleMessage(client, data, socket) {
 
     case 'invite_player':
       handleResult(client, roomManager.invitePlayer(client, message.target_id, message.max_players));
+      break;
+
+    case 'decline_room_invite':
+    case 'room_invite_declined':
+      handleResult(client, roomManager.declineInvite(client, message.from_id || message.inviter_id, message.code || message.room_code));
+      break;
+
+    case 'friend_request':
+    case 'request_friend':
+      handleResult(client, requestFriend(client, message.target_id));
+      break;
+
+    case 'accept_friend_request':
+      handleResult(client, acceptFriendRequest(client, message.from_id || message.requester_id || message.target_id));
+      break;
+
+    case 'decline_friend_request':
+      handleResult(client, declineFriendRequest(client, message.from_id || message.requester_id || message.target_id));
+      break;
+
+    case 'direct_chat_message':
+      handleResult(client, sendDirectChatMessage(client, message.target_id, message.text || message.message));
       break;
 
     case 'start_match':
@@ -903,6 +1218,10 @@ function resumeSession(tempClient, socket, sessionToken, name, loginId) {
   }
 
   console.log(`[resume] ${existingClient.id}`);
+  sendFriendsUpdate(existingClient);
+  existingClient.friends.forEach((friendId) => {
+    sendFriendsUpdate(clientsById.get(friendId));
+  });
   broadcastOnlineDirectory();
 }
 
@@ -922,6 +1241,9 @@ function handleDisconnect(client, socket, code, reason) {
   } else {
     broadcastOnlineDirectory();
   }
+  client.friends.forEach((friendId) => {
+    sendFriendsUpdate(clientsById.get(friendId));
+  });
 
   if (client.cleanup_timer) {
     clearTimeout(client.cleanup_timer);
