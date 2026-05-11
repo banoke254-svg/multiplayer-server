@@ -15,7 +15,8 @@ const CLIENT_INPUT_MESSAGES = new Set([
   'remote_player_shot',
   'player_customization',
   'client_scene_ready',
-  'sync_request'
+  'sync_request',
+  'chat_message'
 ]);
 const AUTHORITY_STATE_MESSAGES = new Set([
   'marble_states',
@@ -101,6 +102,64 @@ class RoomManager {
     return this.addPlayer(room, client);
   }
 
+  invitePlayer(client, targetId, maxPlayers) {
+    if (!client) {
+      return { ok: false, error: 'Invalid player.' };
+    }
+
+    const targetClient = clientsById.get(String(targetId || ''));
+
+    if (!targetClient || targetClient.connected !== true) {
+      return { ok: false, error: 'That player is no longer online.' };
+    }
+
+    if (targetClient.id === client.id) {
+      return { ok: false, error: 'You cannot invite yourself.' };
+    }
+
+    let room = rooms.get(client.room_id || '');
+
+    if (!room || room.started || room.players.length >= room.max_players) {
+      room = this.createRoom(client, clampPlayerCount(maxPlayers || TOTAL_MATCH_SLOTS), true, {
+        partyName: `${client.name || 'Player'}'s Invite Party`
+      });
+
+      const addResult = this.addPlayer(room, client);
+
+      if (!addResult.ok) {
+        return addResult;
+      }
+    }
+
+    const roomData = this.serializeRoom(room, true);
+
+    sendJson(targetClient, {
+      type: 'room_invite',
+      from_id: client.id,
+      from_name: client.name || 'Player',
+      code: room.code,
+      party_code: room.code,
+      room_code: room.code,
+      room: roomData,
+      party: roomData,
+      server_time: Date.now()
+    });
+
+    sendJson(client, {
+      type: 'invite_sent',
+      target_id: targetClient.id,
+      target_name: targetClient.name || 'Player',
+      code: room.code,
+      party_code: room.code,
+      room_code: room.code,
+      room: roomData,
+      party: roomData,
+      server_time: Date.now()
+    });
+
+    return { ok: true, room };
+  }
+
   addPlayer(room, client) {
     if (!room || !client) {
       return { ok: false, error: 'Invalid party or player.' };
@@ -179,6 +238,7 @@ class RoomManager {
       if (deleteSession) {
         deleteClientSession(client);
       }
+      broadcastOnlineDirectory();
       return;
     }
 
@@ -278,6 +338,7 @@ class RoomManager {
     if (!room.is_private) {
       this.ensurePublicRooms();
     }
+    broadcastOnlineDirectory();
   }
 
   relayPlayerUpdate(client, payload) {
@@ -336,6 +397,19 @@ class RoomManager {
     cleanPayload.server_time = room.updated_at;
     cleanPayload.server_authoritative = true;
     cleanPayload.party_id = room.id;
+
+    if (messageType === 'chat_message') {
+      const chatText = sanitizeChatText(cleanPayload.text || cleanPayload.message || '');
+
+      if (!chatText) {
+        return { ok: false, error: 'Chat message is empty.' };
+      }
+
+      cleanPayload.text = chatText;
+      cleanPayload.sender_id = client.id;
+      cleanPayload.sender_name = client.name || 'Player';
+      cleanPayload.sent_at = room.updated_at;
+    }
 
     const serverMessage = {
       type: 'game_message',
@@ -509,6 +583,7 @@ class RoomManager {
       room: roomData,
       party: roomData
     });
+    broadcastOnlineDirectory();
   }
 
   broadcastToRoom(room, payload, exceptClientId = '') {
@@ -525,6 +600,65 @@ class RoomManager {
 
 const roomManager = new RoomManager();
 roomManager.ensurePublicRooms();
+
+function serializeOnlinePlayers() {
+  return Array.from(clientsById.values())
+    .filter((client) => client.connected === true)
+    .map((client) => {
+      const room = rooms.get(client.room_id || '');
+
+      return {
+        id: client.id,
+        client_id: client.id,
+        name: client.name || 'Player',
+        login_id: client.login_id || '',
+        connected: true,
+        in_room: Boolean(room),
+        room_code: room ? room.code : '',
+        party_state: room ? (room.party_state || (room.started ? 'running' : 'lobby')) : 'online',
+        is_private: room ? room.is_private === true : false,
+        room_capacity: room ? room.max_players : 0
+      };
+    });
+}
+
+function buildOnlineDirectoryPayload() {
+  const roomList = roomManager.listRooms();
+  const connectedClients = Array.from(clientsById.values()).filter((candidate) => candidate.connected).length;
+  const runningParties = Array.from(rooms.values()).filter((room) => room.started).length;
+  const onlinePlayers = serializeOnlinePlayers();
+
+  return {
+    type: 'online_players_update',
+    rooms: roomList,
+    parties: roomList,
+    online_players_list: onlinePlayers,
+    players_online: onlinePlayers,
+    online_players: connectedClients,
+    open_parties: roomList.length,
+    running_parties: runningParties,
+    authority_mode: 'dedicated_party_server',
+    server_time: Date.now()
+  };
+}
+
+function broadcastOnlineDirectory() {
+  const payload = buildOnlineDirectoryPayload();
+
+  clientsById.forEach((client) => {
+    if (client.connected === true) {
+      sendJson(client, payload);
+    }
+  });
+}
+
+function sanitizeChatText(value) {
+  return String(value || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+}
 
 const httpServer = http.createServer((request, response) => {
   if (request.url === '/health') {
@@ -565,6 +699,7 @@ websocketServer.on('connection', (socket, request) => {
     client_id: client.id,
     session_token: client.session_token
   });
+  broadcastOnlineDirectory();
 
   socket.on('pong', () => {
     const activeClient = socket.client;
@@ -645,12 +780,16 @@ function handleMessage(client, data, socket) {
     return;
   }
 
+  const previousName = client.name;
+  const previousLoginId = client.login_id;
+
   if (typeof message.name === 'string' && message.name.trim() !== '') {
     client.name = message.name.trim().slice(0, 24);
   }
   if (typeof message.login_id === 'string' && message.login_id.trim() !== '') {
     client.login_id = message.login_id.trim().slice(0, 40);
   }
+  const identityChanged = client.name !== previousName || client.login_id !== previousLoginId;
 
   switch (message.type) {
     case 'resume_session':
@@ -658,21 +797,7 @@ function handleMessage(client, data, socket) {
       break;
 
     case 'list_rooms':
-      {
-        const roomList = roomManager.listRooms();
-        const connectedClients = Array.from(clientsById.values()).filter((candidate) => candidate.connected).length;
-        const runningParties = Array.from(rooms.values()).filter((room) => room.started).length;
-        sendJson(client, {
-          type: 'rooms_list',
-          rooms: roomList,
-          parties: roomList,
-          online_players: connectedClients,
-          open_parties: roomList.length,
-          running_parties: runningParties,
-          authority_mode: 'dedicated_party_server',
-          server_time: Date.now()
-        });
-      }
+      sendJson(client, Object.assign(buildOnlineDirectoryPayload(), { type: 'rooms_list' }));
       break;
 
     case 'quick_match':
@@ -689,6 +814,10 @@ function handleMessage(client, data, socket) {
 
     case 'join_room':
       handleResult(client, roomManager.joinRoomByCode(client, message.code || message.room_code));
+      break;
+
+    case 'invite_player':
+      handleResult(client, roomManager.invitePlayer(client, message.target_id, message.max_players));
       break;
 
     case 'start_match':
@@ -714,6 +843,10 @@ function handleMessage(client, data, socket) {
     default:
       sendError(client, `Unknown message type: ${message.type}`);
       break;
+  }
+
+  if (identityChanged && message.type !== 'resume_session') {
+    broadcastOnlineDirectory();
   }
 }
 
@@ -770,6 +903,7 @@ function resumeSession(tempClient, socket, sessionToken, name, loginId) {
   }
 
   console.log(`[resume] ${existingClient.id}`);
+  broadcastOnlineDirectory();
 }
 
 function handleDisconnect(client, socket, code, reason) {
@@ -785,6 +919,8 @@ function handleDisconnect(client, socket, code, reason) {
 
   if (room) {
     roomManager.broadcastRoomUpdate(room);
+  } else {
+    broadcastOnlineDirectory();
   }
 
   if (client.cleanup_timer) {
