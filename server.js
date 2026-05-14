@@ -3,11 +3,17 @@
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const WebSocket = require('ws');
 
+loadEnvFile(path.join(__dirname, '.env'));
+
 const PORT = Number.parseInt(process.env.PORT || '3000', 10);
-const INTASEND_SECRET_KEY = process.env.INTASEND_SECRET_KEY || '';
-const INTASEND_API_HOST = 'api.intasend.com';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const ADMIN_HTML_PATH = path.join(__dirname, 'admin.html');
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
+const PAYSTACK_API_HOST = 'api.paystack.co';
 const GOLD_PACK_TIERS = new Map([
   [100, 10],
   [175, 30],
@@ -41,6 +47,8 @@ const AUTHORITY_STATE_MESSAGES = new Set([
 const clientsById = new Map();
 const sessionsByToken = new Map();
 const rooms = new Map();
+const paymentRecordsByInvoiceId = new Map();
+const paymentRecords = [];
 
 function createSocialSets() {
   return {
@@ -48,6 +56,42 @@ function createSocialSets() {
     incomingFriendRequests: new Set(),
     outgoingFriendRequests: new Set()
   };
+}
+
+function loadEnvFile(envPath) {
+  if (!envPath || !fs.existsSync(envPath)) {
+    return;
+  }
+
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+
+  lines.forEach((line) => {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine || trimmedLine.startsWith('#')) {
+      return;
+    }
+
+    const separatorIndex = trimmedLine.indexOf('=');
+
+    if (separatorIndex <= 0) {
+      return;
+    }
+
+    const key = trimmedLine.slice(0, separatorIndex).trim();
+    let value = trimmedLine.slice(separatorIndex + 1).trim();
+
+    if (
+      (value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(process.env, key)) {
+      process.env[key] = value;
+    }
+  });
 }
 
 class RoomManager {
@@ -298,6 +342,8 @@ class RoomManager {
     }
 
     client.room_id = room.id;
+    client.rooms_joined = (client.rooms_joined || 0) + 1;
+    client.last_room_joined_at = Date.now();
     room.players.push(client.id);
 
     if (!room.host_id) {
@@ -615,6 +661,9 @@ class RoomManager {
         id: client.id,
         name: client.name || 'Player',
         login_id: client.login_id || '',
+        age: client.age || 0,
+        coin_balance: client.coin_balance || 0,
+        gold_balance: client.gold_balance || 0,
         is_host: client.id === room.host_id,
         is_ai: false,
         connected: client.connected === true
@@ -732,6 +781,9 @@ function serializeOnlinePlayers() {
         client_id: client.id,
         name: client.name || 'Player',
         login_id: client.login_id || '',
+        age: client.age || 0,
+        coin_balance: client.coin_balance || 0,
+        gold_balance: client.gold_balance || 0,
         connected: true,
         in_room: Boolean(room),
         room_code: room ? room.code : '',
@@ -752,6 +804,9 @@ function serializeSocialClient(client) {
     client_id: client.id,
     name: client.name || 'Player',
     login_id: client.login_id || '',
+    age: client.age || 0,
+    coin_balance: client.coin_balance || 0,
+    gold_balance: client.gold_balance || 0,
     connected: client.connected === true,
     in_room: Boolean(room),
     room_code: room ? room.code : '',
@@ -944,6 +999,140 @@ function buildOnlineDirectoryPayload() {
   };
 }
 
+function buildAdminSnapshot() {
+  const now = Date.now();
+  const allClients = Array.from(clientsById.values());
+  const connectedClients = allClients.filter((client) => client.connected === true);
+  const registeredClients = allClients.filter((client) => String(client.login_id || '').trim() !== '');
+  const joinedClients = allClients.filter((client) => {
+    return Boolean(client.room_id) || Number(client.rooms_joined || 0) > 0;
+  });
+  const openParties = Array.from(rooms.values()).filter((room) => !room.started);
+  const runningParties = Array.from(rooms.values()).filter((room) => room.started);
+
+  return {
+    ok: true,
+    server_time: now,
+    uptime_seconds: Math.floor(process.uptime()),
+    admin_auth_enabled: ADMIN_TOKEN !== '',
+    totals: {
+      sessions: allClients.length,
+      online_players: connectedClients.length,
+      registered_players: registeredClients.length,
+      joined_players: joinedClients.length,
+      open_parties: openParties.length,
+      running_parties: runningParties.length,
+      rooms: rooms.size
+    },
+    players: allClients
+      .map(serializeAdminPlayer)
+      .sort((first, second) => {
+        if (first.connected !== second.connected) {
+          return first.connected ? -1 : 1;
+        }
+        return second.last_seen_at - first.last_seen_at;
+      }),
+    rooms: Array.from(rooms.values())
+      .map(serializeAdminRoom)
+      .sort((first, second) => second.updated_at - first.updated_at)
+      ,
+    payments: paymentRecords
+      .slice(-100)
+      .reverse()
+  };
+}
+
+function serializeAdminPlayer(client) {
+  const room = rooms.get(client.room_id || '');
+  const loginId = String(client.login_id || '').trim();
+
+  return {
+    id: client.id,
+    client_id: client.id,
+    name: client.name || 'Player',
+    login_id: loginId,
+    registered: loginId !== '',
+    age: client.age || 0,
+    coin_balance: client.coin_balance || 0,
+    gold_balance: client.gold_balance || 0,
+    purchases: summarizePaymentsForClient(client),
+    connected: client.connected === true,
+    ip: client.ip || 'unknown',
+    in_room: Boolean(room),
+    room_id: room ? room.id : '',
+    room_code: room ? room.code : '',
+    room_name: room ? room.party_name || '' : '',
+    party_state: room ? (room.party_state || (room.started ? 'running' : 'lobby')) : 'online',
+    room_capacity: room ? room.max_players : 0,
+    is_host: room ? room.host_id === client.id : false,
+    rooms_joined: Number(client.rooms_joined || 0),
+    created_at: client.created_at || 0,
+    connected_at: client.connected_at || 0,
+    registered_at: client.registered_at || 0,
+    last_seen_at: client.last_seen_at || client.connected_at || client.created_at || 0,
+    last_room_joined_at: client.last_room_joined_at || 0,
+    friends_count: client.friends ? client.friends.size : 0,
+    dropped_messages: Number(client.dropped_messages || 0)
+  };
+}
+
+function summarizePaymentsForClient(client) {
+  const loginId = String(client && client.login_id || '').trim();
+  const name = String(client && client.name || '').trim().toLowerCase();
+  const matchingRecords = paymentRecords.filter((record) => {
+    const recordLoginId = String(record.player_login_id || '').trim();
+    const recordName = String(record.player_name || '').trim().toLowerCase();
+    if (loginId && recordLoginId && loginId === recordLoginId) {
+      return true;
+    }
+    return Boolean(name && recordName && name === recordName);
+  });
+  const completedRecords = matchingRecords.filter((record) => isCompletedPaymentState(record.state));
+
+  return {
+    any: completedRecords.length > 0,
+    completed_count: completedRecords.length,
+    total_amount: completedRecords.reduce((sum, record) => sum + Number(record.amount || 0), 0),
+    total_gold: completedRecords.reduce((sum, record) => sum + Number(record.gold_amount || 0), 0),
+    latest_state: matchingRecords.length > 0 ? String(matchingRecords[matchingRecords.length - 1].state || 'PENDING') : '',
+    latest_at: matchingRecords.length > 0 ? Number(matchingRecords[matchingRecords.length - 1].updated_at || 0) : 0
+  };
+}
+
+function serializeAdminRoom(room) {
+  return {
+    id: room.id,
+    code: room.code,
+    party_name: room.party_name || '',
+    max_players: room.max_players,
+    player_count: room.players.length,
+    connected_count: room.players
+      .map((clientId) => clientsById.get(clientId))
+      .filter((client) => client && client.connected === true).length,
+    is_private: room.is_private === true,
+    invite_room: room.invite_room === true,
+    started: room.started === true,
+    party_state: room.party_state || (room.started ? 'running' : 'lobby'),
+    host_id: room.host_id || '',
+    players: room.players
+      .map((clientId) => clientsById.get(clientId))
+      .filter(Boolean)
+      .map((client) => ({
+        id: client.id,
+        name: client.name || 'Player',
+        login_id: client.login_id || '',
+        age: client.age || 0,
+        coin_balance: client.coin_balance || 0,
+        gold_balance: client.gold_balance || 0,
+        connected: client.connected === true,
+        is_host: client.id === room.host_id
+      })),
+    created_at: room.created_at || 0,
+    updated_at: room.updated_at || room.created_at || 0,
+    started_at: room.started_at || 0
+  };
+}
+
 function broadcastOnlineDirectory() {
   const payload = buildOnlineDirectoryPayload();
 
@@ -963,6 +1152,8 @@ function sanitizeChatText(value) {
 }
 
 const httpServer = http.createServer(async (request, response) => {
+  const requestUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+
   if (request.method === 'OPTIONS') {
     writeCorsHeaders(response);
     response.writeHead(204);
@@ -970,7 +1161,7 @@ const httpServer = http.createServer(async (request, response) => {
     return;
   }
 
-  if (request.url === '/health') {
+  if (request.method === 'GET' && requestUrl.pathname === '/health') {
     const connectedClients = Array.from(clientsById.values()).filter((client) => client.connected).length;
     const openParties = Array.from(rooms.values()).filter((room) => !room.started).length;
     const runningParties = Array.from(rooms.values()).filter((room) => room.started).length;
@@ -987,13 +1178,44 @@ const httpServer = http.createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === 'POST' && request.url === '/payments/intasend/mpesa-stk') {
-    await handleMpesaStkRequest(request, response);
+  if (request.method === 'GET' && requestUrl.pathname === '/admin') {
+    serveAdminDashboard(response);
     return;
   }
 
-  if (request.method === 'POST' && request.url === '/payments/intasend/status') {
-    await handleIntaSendStatusRequest(request, response);
+  if (request.method === 'GET' && requestUrl.pathname === '/admin/data') {
+    if (!isAdminRequestAuthorized(request, requestUrl)) {
+      writeJsonResponse(response, 401, {
+        ok: false,
+        error: 'Admin token is required.'
+      });
+      return;
+    }
+    writeJsonResponse(response, 200, buildAdminSnapshot());
+    return;
+  }
+
+  if (
+    request.method === 'POST'
+    && requestUrl.pathname === '/payments/paystack/initialize'
+  ) {
+    await handlePaystackInitializeRequest(request, response);
+    return;
+  }
+
+  if (
+    request.method === 'POST'
+    && requestUrl.pathname === '/payments/paystack/status'
+  ) {
+    await handlePaystackStatusRequest(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && requestUrl.pathname.startsWith('/payments/')) {
+    writeJsonResponse(response, 404, {
+      ok: false,
+      error: `Unknown payment endpoint: ${requestUrl.pathname}`
+    });
     return;
   }
 
@@ -1001,10 +1223,43 @@ const httpServer = http.createServer(async (request, response) => {
   response.end('BANO dedicated party server is running.');
 });
 
+function isAdminRequestAuthorized(request, requestUrl) {
+  if (!ADMIN_TOKEN) {
+    return true;
+  }
+
+  const queryToken = requestUrl.searchParams.get('token') || '';
+  const headerToken = request.headers['x-admin-token'] || '';
+  const authorization = request.headers.authorization || '';
+  const bearerToken = authorization.toLowerCase().startsWith('bearer ')
+    ? authorization.slice(7).trim()
+    : '';
+
+  return queryToken === ADMIN_TOKEN || headerToken === ADMIN_TOKEN || bearerToken === ADMIN_TOKEN;
+}
+
+function serveAdminDashboard(response) {
+  fs.readFile(ADMIN_HTML_PATH, 'utf8', (error, html) => {
+    if (error) {
+      writeJsonResponse(response, 500, {
+        ok: false,
+        error: 'Admin dashboard file is missing.'
+      });
+      return;
+    }
+
+    response.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store'
+    });
+    response.end(html);
+  });
+}
+
 function writeCorsHeaders(response) {
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-IntaSend-Public-API-Key');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token, Authorization');
 }
 
 function writeJsonResponse(response, statusCode, payload) {
@@ -1054,14 +1309,14 @@ function sanitizePaymentPurpose(value) {
 }
 
 function createPaymentRef(purpose) {
-  return `bano_${purpose}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  return `bano-${purpose}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 }
 
-async function handleMpesaStkRequest(request, response) {
-  if (!INTASEND_SECRET_KEY) {
+async function handlePaystackInitializeRequest(request, response) {
+  if (!PAYSTACK_SECRET_KEY) {
     writeJsonResponse(response, 503, {
       ok: false,
-      error: 'Payment server is missing INTASEND_SECRET_KEY.'
+      error: 'Payment server is missing PAYSTACK_SECRET_KEY.'
     });
     return;
   }
@@ -1078,6 +1333,9 @@ async function handleMpesaStkRequest(request, response) {
   const phoneNumber = normalizeMpesaPhone(body.phone_number);
   const purpose = sanitizePaymentPurpose(body.purpose);
   const goldAmount = purpose === 'gold' ? GOLD_PACK_TIERS.get(amount) || 0 : 0;
+  const playerName = sanitizeAdminText(body.player_name, 40);
+  const playerLoginId = sanitizeAdminText(body.player_login_id || body.login_id, 40);
+  const playerAge = sanitizePositiveInt(body.player_age || body.age, 120);
 
   if (amount <= 0) {
     writeJsonResponse(response, 400, { ok: false, error: 'Enter a valid KES amount.' });
@@ -1095,38 +1353,68 @@ async function handleMpesaStkRequest(request, response) {
   }
 
   const apiRef = createPaymentRef(purpose);
+  const email = normalizePaymentEmail(body.email) || createPaystackFallbackEmail(apiRef);
   const payload = {
-    amount: String(amount),
-    phone_number: phoneNumber,
-    api_ref: apiRef,
-    mobile_tarrif: 'CUSTOMER-PAYS'
+    amount: String(amount * 100),
+    currency: 'KES',
+    email,
+    reference: apiRef,
+    mobile_money: {
+      phone: phoneNumber,
+      provider: 'mpesa'
+    },
+    metadata: {
+      player_name: playerName,
+      player_login_id: playerLoginId,
+      player_age: playerAge,
+      phone_number: phoneNumber,
+      purpose,
+      gold_amount: goldAmount
+    }
   };
 
   try {
-    const providerResponse = await postIntaSendJson('/api/v1/payment/mpesa-stk-push/', payload);
-    writeJsonResponse(response, 200, {
-      ok: true,
+    const providerResponse = await postPaystackJson('POST', '/charge', payload);
+    const invoiceId = extractPaystackReference(providerResponse) || apiRef;
+    recordPayment({
+      invoice_id: invoiceId,
       api_ref: apiRef,
+      player_name: playerName,
+      player_login_id: playerLoginId,
+      player_age: playerAge,
+      phone_number: phoneNumber,
       purpose,
       amount,
       gold_amount: goldAmount,
-      invoice_id: extractInvoiceId(providerResponse),
-      state: extractInvoiceState(providerResponse),
+      state: extractPaystackState(providerResponse) || 'PENDING',
+      provider_response: providerResponse
+    });
+    writeJsonResponse(response, 200, {
+      ok: true,
+      api_ref: apiRef,
+      reference: invoiceId,
+      purpose,
+      amount,
+      gold_amount: goldAmount,
+      invoice_id: invoiceId,
+      access_code: providerResponse && providerResponse.data ? providerResponse.data.access_code || '' : '',
+      provider_message: providerResponse && providerResponse.data ? providerResponse.data.display_text || providerResponse.data.message || '' : '',
+      state: extractPaystackState(providerResponse) || 'PENDING',
       provider_response: providerResponse
     });
   } catch (error) {
     writeJsonResponse(response, error.statusCode || 502, {
       ok: false,
-      error: error.message || 'IntaSend payment request failed.'
+      error: error.message || 'Paystack payment request failed.'
     });
   }
 }
 
-async function handleIntaSendStatusRequest(request, response) {
-  if (!INTASEND_SECRET_KEY) {
+async function handlePaystackStatusRequest(request, response) {
+  if (!PAYSTACK_SECRET_KEY) {
     writeJsonResponse(response, 503, {
       ok: false,
-      error: 'Payment server is missing INTASEND_SECRET_KEY.'
+      error: 'Payment server is missing PAYSTACK_SECRET_KEY.'
     });
     return;
   }
@@ -1139,42 +1427,51 @@ async function handleIntaSendStatusRequest(request, response) {
     return;
   }
 
-  const invoiceId = String(body.invoice_id || '').trim();
+  const invoiceId = String(body.invoice_id || body.reference || '').trim();
   if (!invoiceId) {
-    writeJsonResponse(response, 400, { ok: false, error: 'Missing invoice_id.' });
+    writeJsonResponse(response, 400, { ok: false, error: 'Missing payment reference.' });
     return;
   }
 
   try {
-    const providerResponse = await postIntaSendJson('/api/v1/payment/status/', { invoice_id: invoiceId });
+    const providerResponse = await postPaystackJson('GET', `/charge/${encodeURIComponent(invoiceId)}`);
+    const verifiedReference = extractPaystackReference(providerResponse) || invoiceId;
+    const state = extractPaystackState(providerResponse);
+    updatePaymentRecord(invoiceId, {
+      state,
+      provider_response: providerResponse
+    });
     writeJsonResponse(response, 200, {
       ok: true,
-      invoice_id: extractInvoiceId(providerResponse) || invoiceId,
-      state: extractInvoiceState(providerResponse),
-      invoice: providerResponse.invoice || {},
+      invoice_id: verifiedReference,
+      reference: verifiedReference,
+      state,
+      invoice: providerResponse.data || {},
       provider_response: providerResponse
     });
   } catch (error) {
     writeJsonResponse(response, error.statusCode || 502, {
       ok: false,
-      error: error.message || 'IntaSend status check failed.'
+      error: error.message || 'Paystack status check failed.'
     });
   }
 }
 
-function postIntaSendJson(path, payload) {
-  const body = JSON.stringify(payload);
+function postPaystackJson(method, requestPath, payload = null) {
+  const body = payload == null ? '' : JSON.stringify(payload);
   const options = {
-    method: 'POST',
-    hostname: INTASEND_API_HOST,
-    path,
+    method,
+    hostname: PAYSTACK_API_HOST,
+    path: requestPath,
     headers: {
-      Authorization: `Bearer ${INTASEND_SECRET_KEY}`,
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(body)
+      Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+      'Content-Type': 'application/json'
     },
     timeout: 20000
   };
+  if (body !== '') {
+    options.headers['Content-Length'] = Buffer.byteLength(body);
+  }
 
   return new Promise((resolve, reject) => {
     const providerRequest = https.request(options, (providerResponse) => {
@@ -1193,53 +1490,133 @@ function postIntaSendJson(path, payload) {
           }
         }
 
-        if (providerResponse.statusCode >= 200 && providerResponse.statusCode < 300) {
+        if (providerResponse.statusCode >= 200 && providerResponse.statusCode < 300 && parsed.status !== false) {
           resolve(parsed);
           return;
         }
 
-        const error = new Error(parsed.detail || parsed.error || parsed.message || `IntaSend returned ${providerResponse.statusCode}.`);
+        const error = new Error(parsed.message || parsed.error || `Paystack returned ${providerResponse.statusCode}.`);
         error.statusCode = providerResponse.statusCode;
         reject(error);
       });
     });
 
     providerRequest.on('timeout', () => {
-      providerRequest.destroy(new Error('IntaSend request timed out.'));
+      providerRequest.destroy(new Error('Paystack request timed out.'));
     });
     providerRequest.on('error', reject);
-    providerRequest.write(body);
+    if (body !== '') {
+      providerRequest.write(body);
+    }
     providerRequest.end();
   });
 }
 
-function extractInvoiceId(providerResponse) {
+function extractPaystackReference(providerResponse) {
   if (!providerResponse || typeof providerResponse !== 'object') {
     return '';
   }
-  if (providerResponse.invoice_id) {
-    return String(providerResponse.invoice_id);
+  if (providerResponse.reference) {
+    return String(providerResponse.reference);
   }
-  if (providerResponse.id) {
-    return String(providerResponse.id);
-  }
-  if (providerResponse.invoice && typeof providerResponse.invoice === 'object') {
-    return String(providerResponse.invoice.invoice_id || providerResponse.invoice.id || '');
+  if (providerResponse.data && typeof providerResponse.data === 'object' && providerResponse.data.reference) {
+    return String(providerResponse.data.reference);
   }
   return '';
 }
 
-function extractInvoiceState(providerResponse) {
+function extractPaystackState(providerResponse) {
   if (!providerResponse || typeof providerResponse !== 'object') {
     return '';
   }
-  if (providerResponse.state) {
-    return String(providerResponse.state).toUpperCase();
+  if (providerResponse.data && typeof providerResponse.data === 'object' && providerResponse.data.status) {
+    return String(providerResponse.data.status).toUpperCase();
   }
-  if (providerResponse.invoice && typeof providerResponse.invoice === 'object' && providerResponse.invoice.state) {
-    return String(providerResponse.invoice.state).toUpperCase();
+  if (providerResponse.status === true) {
+    return 'PENDING';
   }
   return '';
+}
+
+function normalizePaymentEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email.slice(0, 120) : '';
+}
+
+function createPaystackFallbackEmail(reference) {
+  return `player+${String(reference || crypto.randomUUID()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 48)}@example.com`;
+}
+
+function recordPayment(record) {
+  const now = Date.now();
+  const cleanRecord = {
+    invoice_id: sanitizeAdminText(record.invoice_id, 80),
+    api_ref: sanitizeAdminText(record.api_ref, 80),
+    player_name: sanitizeAdminText(record.player_name, 40),
+    player_login_id: sanitizeAdminText(record.player_login_id, 40),
+    player_age: sanitizePositiveInt(record.player_age, 120),
+    phone_number: sanitizeAdminText(record.phone_number, 20),
+    purpose: sanitizePaymentPurpose(record.purpose),
+    amount: Math.max(Math.trunc(Number(record.amount || 0)), 0),
+    gold_amount: Math.max(Math.trunc(Number(record.gold_amount || 0)), 0),
+    state: sanitizeAdminText(record.state || 'PENDING', 30).toUpperCase(),
+    created_at: now,
+    updated_at: now
+  };
+
+  paymentRecords.push(cleanRecord);
+  while (paymentRecords.length > 500) {
+    const removed = paymentRecords.shift();
+    if (removed && removed.invoice_id) {
+      paymentRecordsByInvoiceId.delete(removed.invoice_id);
+    }
+  }
+  if (cleanRecord.invoice_id) {
+    paymentRecordsByInvoiceId.set(cleanRecord.invoice_id, cleanRecord);
+  }
+  return cleanRecord;
+}
+
+function updatePaymentRecord(invoiceId, updates) {
+  const cleanInvoiceId = sanitizeAdminText(invoiceId, 80);
+  if (!cleanInvoiceId) {
+    return null;
+  }
+
+  let record = paymentRecordsByInvoiceId.get(cleanInvoiceId);
+  if (!record) {
+    record = recordPayment({
+      invoice_id: cleanInvoiceId,
+      purpose: 'donation',
+      state: 'UNKNOWN'
+    });
+  }
+
+  if (updates && updates.state) {
+    record.state = sanitizeAdminText(updates.state, 30).toUpperCase();
+  }
+  record.updated_at = Date.now();
+  return record;
+}
+
+function isCompletedPaymentState(state) {
+  return ['COMPLETE', 'COMPLETED', 'PAID', 'SUCCESS', 'SUCCESSFUL'].includes(String(state || '').toUpperCase());
+}
+
+function sanitizePositiveInt(value, maxValue) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.min(parsed, maxValue);
+}
+
+function sanitizeAdminText(value, maxLength) {
+  return String(value || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
 }
 
 const websocketServer = new WebSocket.Server({
@@ -1323,11 +1700,20 @@ function createClient(socket, request) {
     session_token: crypto.randomBytes(24).toString('hex'),
     name: 'Player',
     login_id: '',
+    age: 0,
+    coin_balance: 0,
+    gold_balance: 0,
     socket,
     room_id: '',
     connected: true,
     is_alive: true,
     ip: getClientIp(request),
+    created_at: Date.now(),
+    connected_at: Date.now(),
+    last_seen_at: Date.now(),
+    registered_at: 0,
+    rooms_joined: 0,
+    last_room_joined_at: 0,
     cleanup_timer: null,
     outbound_queue: [],
     latest_realtime_payloads: new Map(),
@@ -1345,6 +1731,8 @@ function handleMessage(client, data, socket) {
     return;
   }
 
+  client.last_seen_at = Date.now();
+
   const message = parseJson(data);
 
   if (!message || typeof message.type !== 'string') {
@@ -1360,12 +1748,16 @@ function handleMessage(client, data, socket) {
   }
   if (typeof message.login_id === 'string' && message.login_id.trim() !== '') {
     client.login_id = message.login_id.trim().slice(0, 40);
+    if (!client.registered_at) {
+      client.registered_at = Date.now();
+    }
   }
+  updateClientProfileNumbers(client, message);
   const identityChanged = client.name !== previousName || client.login_id !== previousLoginId;
 
   switch (message.type) {
     case 'resume_session':
-      resumeSession(client, socket, message.session_token, message.name, message.login_id);
+      resumeSession(client, socket, message.session_token, message.name, message.login_id, message);
       break;
 
     case 'list_rooms':
@@ -1444,7 +1836,7 @@ function handleMessage(client, data, socket) {
   }
 }
 
-function resumeSession(tempClient, socket, sessionToken, name, loginId) {
+function resumeSession(tempClient, socket, sessionToken, name, loginId, profilePayload = {}) {
   const existingClient = sessionsByToken.get(String(sessionToken || ''));
 
   if (!existingClient || existingClient.id === tempClient.id) {
@@ -1474,6 +1866,8 @@ function resumeSession(tempClient, socket, sessionToken, name, loginId) {
   existingClient.socket = socket;
   existingClient.connected = true;
   existingClient.is_alive = true;
+  existingClient.connected_at = Date.now();
+  existingClient.last_seen_at = Date.now();
   socket.client = existingClient;
 
   if (typeof name === 'string' && name.trim() !== '') {
@@ -1481,7 +1875,11 @@ function resumeSession(tempClient, socket, sessionToken, name, loginId) {
   }
   if (typeof loginId === 'string' && loginId.trim() !== '') {
     existingClient.login_id = loginId.trim().slice(0, 40);
+    if (!existingClient.registered_at) {
+      existingClient.registered_at = Date.now();
+    }
   }
+  updateClientProfileNumbers(existingClient, profilePayload);
 
   sendJson(existingClient, {
     type: 'session_resumed',
@@ -1504,12 +1902,34 @@ function resumeSession(tempClient, socket, sessionToken, name, loginId) {
   broadcastOnlineDirectory();
 }
 
+function updateClientProfileNumbers(client, source) {
+  if (!client || !source || typeof source !== 'object') {
+    return;
+  }
+
+  const age = Number.parseInt(source.age || source.player_age || 0, 10);
+  if (Number.isFinite(age) && age > 0) {
+    client.age = Math.min(Math.max(age, 1), 120);
+  }
+
+  const coinBalance = Number.parseInt(source.coin_balance || source.coins || source.s_coins || 0, 10);
+  if (Number.isFinite(coinBalance) && coinBalance >= 0) {
+    client.coin_balance = coinBalance;
+  }
+
+  const goldBalance = Number.parseInt(source.gold_balance || source.gold || 0, 10);
+  if (Number.isFinite(goldBalance) && goldBalance >= 0) {
+    client.gold_balance = goldBalance;
+  }
+}
+
 function handleDisconnect(client, socket, code, reason) {
   if (!client || client.socket !== socket) {
     return;
   }
 
   client.connected = false;
+  client.last_seen_at = Date.now();
   const cleanReason = reason ? reason.toString() : '';
   console.log(`[disconnect] ${client.id} code=${code} reason=${cleanReason}`);
 
