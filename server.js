@@ -1,14 +1,25 @@
 'use strict';
 
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 
 const PORT = Number.parseInt(process.env.PORT || '3000', 10);
+const INTASEND_SECRET_KEY = process.env.INTASEND_SECRET_KEY || '';
+const INTASEND_API_HOST = 'api.intasend.com';
+const GOLD_PACK_TIERS = new Map([
+  [100, 10],
+  [175, 30],
+  [500, 100]
+]);
 const TOTAL_MATCH_SLOTS = 5;
 const HEARTBEAT_INTERVAL_MS = 30000;
 const RECONNECT_GRACE_MS = 30000;
 const MAX_PAYLOAD_BYTES = 32 * 1024;
+const REALTIME_FLUSH_INTERVAL_MS = Math.max(Number.parseInt(process.env.REALTIME_FLUSH_INTERVAL_MS || '33', 10), 16);
+const MAX_SOCKET_BUFFERED_BYTES = Math.max(Number.parseInt(process.env.MAX_SOCKET_BUFFERED_BYTES || String(256 * 1024), 10), 64 * 1024);
+const MAX_OUTBOUND_QUEUE_MESSAGES = Math.max(Number.parseInt(process.env.MAX_OUTBOUND_QUEUE_MESSAGES || '128', 10), 16);
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CLIENT_INPUT_MESSAGES = new Set([
   'remote_player_aim',
@@ -951,13 +962,19 @@ function sanitizeChatText(value) {
     .slice(0, 160);
 }
 
-const httpServer = http.createServer((request, response) => {
+const httpServer = http.createServer(async (request, response) => {
+  if (request.method === 'OPTIONS') {
+    writeCorsHeaders(response);
+    response.writeHead(204);
+    response.end();
+    return;
+  }
+
   if (request.url === '/health') {
     const connectedClients = Array.from(clientsById.values()).filter((client) => client.connected).length;
     const openParties = Array.from(rooms.values()).filter((room) => !room.started).length;
     const runningParties = Array.from(rooms.values()).filter((room) => room.started).length;
-    response.writeHead(200, { 'Content-Type': 'application/json' });
-    response.end(JSON.stringify({
+    writeJsonResponse(response, 200, {
       ok: true,
       connected_clients: connectedClients,
       open_parties: openParties,
@@ -966,13 +983,264 @@ const httpServer = http.createServer((request, response) => {
       rooms: rooms.size,
       authority_mode: 'dedicated_party_server',
       uptime: process.uptime()
-    }));
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && request.url === '/payments/intasend/mpesa-stk') {
+    await handleMpesaStkRequest(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && request.url === '/payments/intasend/status') {
+    await handleIntaSendStatusRequest(request, response);
     return;
   }
 
   response.writeHead(200, { 'Content-Type': 'text/plain' });
   response.end('BANO dedicated party server is running.');
 });
+
+function writeCorsHeaders(response) {
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-IntaSend-Public-API-Key');
+}
+
+function writeJsonResponse(response, statusCode, payload) {
+  writeCorsHeaders(response);
+  response.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  response.end(JSON.stringify(payload));
+}
+
+async function readJsonRequest(request, maxBytes = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      body += chunk;
+      if (Buffer.byteLength(body, 'utf8') > maxBytes) {
+        reject(new Error('Request body too large.'));
+        request.destroy();
+      }
+    });
+    request.on('end', () => {
+      if (body.trim() === '') {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(body));
+      } catch (_error) {
+        reject(new Error('Invalid JSON body.'));
+      }
+    });
+    request.on('error', reject);
+  });
+}
+
+function normalizeMpesaPhone(value) {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 10 && digits.startsWith('0')) {
+    digits = `254${digits.slice(1)}`;
+  } else if (digits.length === 9 && digits.startsWith('7')) {
+    digits = `254${digits}`;
+  }
+  return /^2547\d{8}$/.test(digits) ? digits : '';
+}
+
+function sanitizePaymentPurpose(value) {
+  return String(value || '').toLowerCase() === 'gold' ? 'gold' : 'donation';
+}
+
+function createPaymentRef(purpose) {
+  return `bano_${purpose}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+}
+
+async function handleMpesaStkRequest(request, response) {
+  if (!INTASEND_SECRET_KEY) {
+    writeJsonResponse(response, 503, {
+      ok: false,
+      error: 'Payment server is missing INTASEND_SECRET_KEY.'
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonRequest(request);
+  } catch (error) {
+    writeJsonResponse(response, 400, { ok: false, error: error.message });
+    return;
+  }
+
+  const amount = Math.max(Math.trunc(Number(body.amount || 0)), 0);
+  const phoneNumber = normalizeMpesaPhone(body.phone_number);
+  const purpose = sanitizePaymentPurpose(body.purpose);
+  const goldAmount = purpose === 'gold' ? GOLD_PACK_TIERS.get(amount) || 0 : 0;
+
+  if (amount <= 0) {
+    writeJsonResponse(response, 400, { ok: false, error: 'Enter a valid KES amount.' });
+    return;
+  }
+
+  if (purpose === 'gold' && !GOLD_PACK_TIERS.has(amount)) {
+    writeJsonResponse(response, 400, { ok: false, error: 'Choose a valid gold pack.' });
+    return;
+  }
+
+  if (!phoneNumber) {
+    writeJsonResponse(response, 400, { ok: false, error: 'Enter a valid Safaricom phone number.' });
+    return;
+  }
+
+  const apiRef = createPaymentRef(purpose);
+  const payload = {
+    amount: String(amount),
+    phone_number: phoneNumber,
+    api_ref: apiRef,
+    mobile_tarrif: 'CUSTOMER-PAYS'
+  };
+
+  try {
+    const providerResponse = await postIntaSendJson('/api/v1/payment/mpesa-stk-push/', payload);
+    writeJsonResponse(response, 200, {
+      ok: true,
+      api_ref: apiRef,
+      purpose,
+      amount,
+      gold_amount: goldAmount,
+      invoice_id: extractInvoiceId(providerResponse),
+      state: extractInvoiceState(providerResponse),
+      provider_response: providerResponse
+    });
+  } catch (error) {
+    writeJsonResponse(response, error.statusCode || 502, {
+      ok: false,
+      error: error.message || 'IntaSend payment request failed.'
+    });
+  }
+}
+
+async function handleIntaSendStatusRequest(request, response) {
+  if (!INTASEND_SECRET_KEY) {
+    writeJsonResponse(response, 503, {
+      ok: false,
+      error: 'Payment server is missing INTASEND_SECRET_KEY.'
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonRequest(request);
+  } catch (error) {
+    writeJsonResponse(response, 400, { ok: false, error: error.message });
+    return;
+  }
+
+  const invoiceId = String(body.invoice_id || '').trim();
+  if (!invoiceId) {
+    writeJsonResponse(response, 400, { ok: false, error: 'Missing invoice_id.' });
+    return;
+  }
+
+  try {
+    const providerResponse = await postIntaSendJson('/api/v1/payment/status/', { invoice_id: invoiceId });
+    writeJsonResponse(response, 200, {
+      ok: true,
+      invoice_id: extractInvoiceId(providerResponse) || invoiceId,
+      state: extractInvoiceState(providerResponse),
+      invoice: providerResponse.invoice || {},
+      provider_response: providerResponse
+    });
+  } catch (error) {
+    writeJsonResponse(response, error.statusCode || 502, {
+      ok: false,
+      error: error.message || 'IntaSend status check failed.'
+    });
+  }
+}
+
+function postIntaSendJson(path, payload) {
+  const body = JSON.stringify(payload);
+  const options = {
+    method: 'POST',
+    hostname: INTASEND_API_HOST,
+    path,
+    headers: {
+      Authorization: `Bearer ${INTASEND_SECRET_KEY}`,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body)
+    },
+    timeout: 20000
+  };
+
+  return new Promise((resolve, reject) => {
+    const providerRequest = https.request(options, (providerResponse) => {
+      let responseBody = '';
+      providerResponse.setEncoding('utf8');
+      providerResponse.on('data', (chunk) => {
+        responseBody += chunk;
+      });
+      providerResponse.on('end', () => {
+        let parsed = {};
+        if (responseBody.trim() !== '') {
+          try {
+            parsed = JSON.parse(responseBody);
+          } catch (_error) {
+            parsed = { raw: responseBody };
+          }
+        }
+
+        if (providerResponse.statusCode >= 200 && providerResponse.statusCode < 300) {
+          resolve(parsed);
+          return;
+        }
+
+        const error = new Error(parsed.detail || parsed.error || parsed.message || `IntaSend returned ${providerResponse.statusCode}.`);
+        error.statusCode = providerResponse.statusCode;
+        reject(error);
+      });
+    });
+
+    providerRequest.on('timeout', () => {
+      providerRequest.destroy(new Error('IntaSend request timed out.'));
+    });
+    providerRequest.on('error', reject);
+    providerRequest.write(body);
+    providerRequest.end();
+  });
+}
+
+function extractInvoiceId(providerResponse) {
+  if (!providerResponse || typeof providerResponse !== 'object') {
+    return '';
+  }
+  if (providerResponse.invoice_id) {
+    return String(providerResponse.invoice_id);
+  }
+  if (providerResponse.id) {
+    return String(providerResponse.id);
+  }
+  if (providerResponse.invoice && typeof providerResponse.invoice === 'object') {
+    return String(providerResponse.invoice.invoice_id || providerResponse.invoice.id || '');
+  }
+  return '';
+}
+
+function extractInvoiceState(providerResponse) {
+  if (!providerResponse || typeof providerResponse !== 'object') {
+    return '';
+  }
+  if (providerResponse.state) {
+    return String(providerResponse.state).toUpperCase();
+  }
+  if (providerResponse.invoice && typeof providerResponse.invoice === 'object' && providerResponse.invoice.state) {
+    return String(providerResponse.invoice.state).toUpperCase();
+  }
+  return '';
+}
 
 const websocketServer = new WebSocket.Server({
   server: httpServer,
@@ -1034,6 +1302,14 @@ const heartbeatTimer = setInterval(() => {
   });
 }, HEARTBEAT_INTERVAL_MS);
 
+const outboundFlushTimer = setInterval(() => {
+  clientsById.forEach((client) => {
+    if (client.connected === true) {
+      flushClientOutbound(client);
+    }
+  });
+}, REALTIME_FLUSH_INTERVAL_MS);
+
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`[server] BANO WebSocket server running on port ${PORT}`);
 });
@@ -1052,7 +1328,10 @@ function createClient(socket, request) {
     connected: true,
     is_alive: true,
     ip: getClientIp(request),
-    cleanup_timer: null
+    cleanup_timer: null,
+    outbound_queue: [],
+    latest_realtime_payloads: new Map(),
+    dropped_messages: 0
   };
   Object.assign(client, createSocialSets());
 
@@ -1273,21 +1552,136 @@ function deleteClientSession(client) {
     client.cleanup_timer = null;
   }
 
+  if (Array.isArray(client.outbound_queue)) {
+    client.outbound_queue.length = 0;
+  }
+  if (client.latest_realtime_payloads && client.latest_realtime_payloads instanceof Map) {
+    client.latest_realtime_payloads.clear();
+  }
+
   clientsById.delete(client.id);
   sessionsByToken.delete(client.session_token);
 }
 
-function sendJson(client, payload) {
+function sendJson(client, payload, options = {}) {
+  if (!client || !client.socket || client.socket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+
+  const realtimeKey = options.realtimeKey || getRealtimePayloadKey(payload);
+  if (realtimeKey) {
+    return queueLatestRealtimePayload(client, realtimeKey, payload);
+  }
+
+  try {
+    const encodedPayload = JSON.stringify(payload);
+
+    if (client.socket.bufferedAmount > MAX_SOCKET_BUFFERED_BYTES) {
+      return queueReliablePayload(client, encodedPayload);
+    }
+
+    return rawSendJson(client, encodedPayload);
+  } catch (error) {
+    console.log(`[send_error] ${client.id}: ${error.message}`);
+    return false;
+  }
+}
+
+function rawSendJson(client, encodedPayload) {
   if (!client || !client.socket || client.socket.readyState !== WebSocket.OPEN) {
     return false;
   }
 
   try {
-    client.socket.send(JSON.stringify(payload));
+    client.socket.send(encodedPayload);
     return true;
   } catch (error) {
     console.log(`[send_error] ${client.id}: ${error.message}`);
     return false;
+  }
+}
+
+function queueReliablePayload(client, encodedPayload) {
+  if (!Array.isArray(client.outbound_queue)) {
+    client.outbound_queue = [];
+  }
+
+  client.outbound_queue.push(encodedPayload);
+
+  while (client.outbound_queue.length > MAX_OUTBOUND_QUEUE_MESSAGES) {
+    client.outbound_queue.shift();
+    client.dropped_messages = (client.dropped_messages || 0) + 1;
+  }
+
+  return true;
+}
+
+function queueLatestRealtimePayload(client, realtimeKey, payload) {
+  if (!client.latest_realtime_payloads || !(client.latest_realtime_payloads instanceof Map)) {
+    client.latest_realtime_payloads = new Map();
+  }
+
+  try {
+    client.latest_realtime_payloads.set(realtimeKey, JSON.stringify(payload));
+    return true;
+  } catch (error) {
+    console.log(`[send_error] ${client.id}: ${error.message}`);
+    return false;
+  }
+}
+
+function getRealtimePayloadKey(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return '';
+  }
+
+  if (payload.type === 'player_update') {
+    return `player_update:${payload.player_id || 'unknown'}`;
+  }
+
+  if (payload.type === 'game_message') {
+    const messageType = String(payload.message_type || '');
+
+    if (messageType === 'marble_states') {
+      return 'game_message:marble_states';
+    }
+
+    if (messageType === 'remote_player_aim' || messageType === 'broadcast_remote_player_aim') {
+      return `game_message:${messageType}:${payload.sender_id || 'unknown'}`;
+    }
+  }
+
+  return '';
+}
+
+function flushClientOutbound(client) {
+  if (!client || !client.socket || client.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  if (client.socket.bufferedAmount > MAX_SOCKET_BUFFERED_BYTES) {
+    return;
+  }
+
+  if (client.latest_realtime_payloads && client.latest_realtime_payloads.size > 0) {
+    const realtimePayloads = Array.from(client.latest_realtime_payloads.values());
+    client.latest_realtime_payloads.clear();
+
+    for (const encodedPayload of realtimePayloads) {
+      if (client.socket.bufferedAmount > MAX_SOCKET_BUFFERED_BYTES) {
+        break;
+      }
+
+      rawSendJson(client, encodedPayload);
+    }
+  }
+
+  while (
+    Array.isArray(client.outbound_queue)
+    && client.outbound_queue.length > 0
+    && client.socket.bufferedAmount <= MAX_SOCKET_BUFFERED_BYTES
+  ) {
+    rawSendJson(client, client.outbound_queue.shift());
   }
 }
 
@@ -1339,6 +1733,7 @@ function getClientIp(request) {
 function shutdown() {
   console.log('[server] shutting down');
   clearInterval(heartbeatTimer);
+  clearInterval(outboundFlushTimer);
 
   websocketServer.clients.forEach((socket) => {
     if (socket.readyState === WebSocket.OPEN) {
