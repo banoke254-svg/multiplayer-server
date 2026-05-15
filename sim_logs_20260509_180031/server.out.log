@@ -1,0 +1,13 @@
+[room] created public 7FQ3S
+[room] created public 7S8Q5
+[room] created public BNPSQ
+[room] created public VCDKJ
+[server] BANO WebSocket server running on port 32123
+[connect] player_46f2ac57-bb15-4113-943c-d871fbf1c762 from 127.0.0.1
+[room] created private 2NMF9
+[room] player_46f2ac57-bb15-4113-943c-d871fbf1c762 joined 2NMF9 (1/2)
+[connect] player_a5bcebde-c332-41aa-abe3-cadf6ba4dca0 from 127.0.0.1
+[room] player_a5bcebde-c332-41aa-abe3-cadf6ba4dca0 joined 2NMF9 (2/2)
+[match] start 2NMF9: humans=2, ai=0, reason=room_full
+[disconnect] player_46f2ac57-bb15-4113-943c-d871fbf1c762 code=1006 reason=
+[disconnect] player_a5bcebde-c332-41aa-abe3-cadf6ba4dca0 code=1006 reason=

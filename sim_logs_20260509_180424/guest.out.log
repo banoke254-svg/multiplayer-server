@@ -1,0 +1,19 @@
+Godot Engine v4.6.1.stable.official.14d19694e - https://godotengine.org
+
+[0.00][guest] driver starting role=guest
+[0.18][guest] guest joining room E4A4E
+[0.18][guest] connected id=player_ccf67df2-225e-4e19-b26c-db845e2f90e5
+[0.18][guest] room joined players=2 host=player_963d32cd-5f75-4fb9-bedb-de5842103347
+[0.18][guest] game_started
+[0.18][guest] turn manager ready host=false
+[0.18][guest] ready local=AI MARBLE1 remote=AI MARBLE1 client_active= actor= active=PlayerMarble,AI MARBLE1 owners=
+[0.34][guest] jump step=9.638 pos=(-1.2, 0.612, -8.0) last=(-0.375, 0.368582, -17.6) phase=0 active=PlayerMarble
+[3.62][guest] jump step=8.873 pos=(-0.440264, 0.364095, -16.84056) last=(-1.2, 0.30644, -8.0) phase=0 active=PlayerMarble
+[4.61][guest] guest input ready local=AI MARBLE1 remote=AI MARBLE1 client_active=AI MARBLE1 actor= active=PlayerMarble,AI MARBLE1 owners=
+[4.61][guest] guest remote shot start
+[4.74][guest] guest remote shot sent count=1
+LAN turn: attack from the hole.
+[8.26][guest] guest remote shot start
+[8.38][guest] guest remote shot sent count=2
+[21.06][guest] room updated players=2 started=true
+[24.00][guest] finish code=0 guest ok shots=2 samples=3425 jumps=2 max_step=9.638

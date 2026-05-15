@@ -1,0 +1,25 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://marbles/independent_marble.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://marbles/flame_crown_3d.tscn" id="2_crown"]
+
+[sub_resource type="Shader" id="Shader_flame_violet_base"]
+code = "shader_type spatial;\n\nrender_mode diffuse_burley, specular_schlick_ggx;\n\nvoid fragment() {\n\tALBEDO = vec3(0.12, 0.07, 0.20);\n}\n"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_flame_violet_base"]
+shader = SubResource("Shader_flame_violet_base")
+
+[sub_resource type="SphereMesh" id="SphereMesh_flame_violet_base"]
+radius = 0.2
+height = 0.4
+
+[node name="Marble" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="BaseMesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_flame_violet_base")
+material_override = SubResource("ShaderMaterial_flame_violet_base")
+
+[node name="FlameTrail" type="GPUParticles3D" parent="."]
+
+[node name="FlameCrown3D" parent="." instance=ExtResource("2_crown")]

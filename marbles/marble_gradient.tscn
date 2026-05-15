@@ -1,0 +1,20 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://marbles/independent_marble.gd" id="1_script"]
+
+[sub_resource type="Shader" id="Shader_gradient"]
+code = "shader_type spatial;\n\nrender_mode diffuse_burley, specular_schlick_ggx;\n\nvoid fragment() {\n\tALBEDO = vec3(UV.y, 0.2, 1.0 - UV.y);\n}\n"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_gradient"]
+shader = SubResource("Shader_gradient")
+
+[sub_resource type="SphereMesh" id="SphereMesh_gradient"]
+radius = 0.2
+height = 0.4
+
+[node name="Marble" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="BaseMesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_gradient")
+material_override = SubResource("ShaderMaterial_gradient")

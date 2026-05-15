@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://single_glass_ball.gd" id="1_6gme8"]
+[ext_resource type="PackedScene" path="res://glass_balls_-_3mb.glb" id="2_2a7u8"]
+
+[node name="SingleGlassBall" type="Node3D"]
+script = ExtResource("1_6gme8")
+
+[node name="Source" parent="." instance=ExtResource("2_2a7u8")]
+transform = Transform3D(0.18, 0, 0, 0, 0.18, 0, 0, 0, 0.18, 0, 0, 0)

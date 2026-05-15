@@ -1,0 +1,194 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://pause_ui.gd" id="1_8j17b"]
+
+[node name="PauseUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_8j17b")
+
+[node name="TopBar" type="HBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 340.0
+offset_bottom = 60.0
+theme_override_constants/separation = 10
+
+[node name="BackButton" type="Button" parent="TopBar"]
+layout_mode = 2
+custom_minimum_size = Vector2(92, 44)
+text = "Back"
+
+[node name="PauseButton" type="Button" parent="TopBar"]
+layout_mode = 2
+custom_minimum_size = Vector2(92, 44)
+text = "Pause"
+
+[node name="SettingsButton" type="Button" parent="TopBar"]
+layout_mode = 2
+custom_minimum_size = Vector2(110, 44)
+text = "Settings"
+
+[node name="PauseOverlay" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.48)
+
+[node name="Panel" type="Panel" parent="PauseOverlay"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -120.0
+offset_right = 180.0
+offset_bottom = 120.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="PauseOverlay/Panel"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -122.0
+offset_top = -92.0
+offset_right = 122.0
+offset_bottom = 92.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="Title" type="Label" parent="PauseOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Game Paused"
+
+[node name="ResumeButton" type="Button" parent="PauseOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Resume"
+
+[node name="OpenSettingsButton" type="Button" parent="PauseOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Settings"
+
+[node name="MainMenuButton" type="Button" parent="PauseOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Main Menu"
+
+[node name="SettingsOverlay" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.52)
+
+[node name="Panel" type="Panel" parent="SettingsOverlay"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -160.0
+offset_right = 220.0
+offset_bottom = 160.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="SettingsOverlay/Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 26.0
+offset_top = 26.0
+offset_right = -26.0
+offset_bottom = -26.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Settings"
+
+[node name="MasterLabel" type="Label" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Master Volume"
+
+[node name="MasterSlider" type="HSlider" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+min_value = 0.0
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="MusicLabel" type="Label" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Music Volume"
+
+[node name="MusicSlider" type="HSlider" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+min_value = 0.0
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="SfxLabel" type="Label" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+text = "SFX Volume"
+
+[node name="SfxSlider" type="HSlider" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+min_value = 0.0
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="ShootSensitivityLabel" type="Label" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+text = "Shooting Sensitivity"
+
+[node name="ShootSensitivitySlider" type="HSlider" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+min_value = 0.5
+max_value = 1.5
+step = 0.05
+value = 1.0
+
+[node name="Buttons" type="HBoxContainer" parent="SettingsOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 2
+
+[node name="CloseSettingsButton" type="Button" parent="SettingsOverlay/Panel/VBoxContainer/Buttons"]
+layout_mode = 2
+text = "Close"
+
+[node name="MainMenuButton" type="Button" parent="SettingsOverlay/Panel/VBoxContainer/Buttons"]
+layout_mode = 2
+text = "Main Menu"

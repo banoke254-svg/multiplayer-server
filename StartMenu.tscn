@@ -1,0 +1,102 @@
+[gd_scene format=3 uid="uid://bums6ny064gm4"]
+
+[ext_resource type="Script" uid="uid://du88wvkgunfhp" path="res://start_menu.gd" id="1_ufv5y"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_0d5ky"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ufv5y"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_7htnq"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_0d5ky"]
+bg_color = Color(0.6, 0.6, 0.6, 0.286275)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+shadow_color = Color(0.635799, 0.635799, 0.635799, 0.6)
+shadow_offset = Vector2(2, 2)
+
+[sub_resource type="SystemFont" id="SystemFont_lo4tm"]
+
+[node name="StartMenu" type="Control" unique_id=1273521672]
+material = SubResource("ShaderMaterial_0d5ky")
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_ufv5y")
+
+[node name="Background2" type="ColorRect" parent="." unique_id=1878066197]
+material = SubResource("ShaderMaterial_ufv5y")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0588235, 0.0705882, 0.12549, 1)
+
+[node name="Center" type="CenterContainer" parent="Background2" unique_id=682481526]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = -6.0
+offset_right = 4.0
+offset_bottom = -6.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="GlassPanel" type="Panel" parent="Background2/Center" unique_id=1812046772]
+material = SubResource("ShaderMaterial_7htnq")
+custom_minimum_size = Vector2(520, 620)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_0d5ky")
+
+[node name="Content" type="MarginContainer" parent="Background2/Center/GlassPanel" unique_id=510217583]
+layout_mode = 0
+offset_left = 150.0
+offset_right = 322.0
+offset_bottom = 169.0
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="Background2/Center/GlassPanel/Content" unique_id=1290824265]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="Title" type="Label" parent="Background2/Center/GlassPanel/Content/VBox" unique_id=1028057537]
+layout_mode = 2
+theme_override_fonts/font = SubResource("SystemFont_lo4tm")
+theme_override_font_sizes/font_size = 43
+text = "BANO
+"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PlayButton" type="Button" parent="Background2/Center/GlassPanel/Content/VBox" unique_id=1223516932]
+layout_mode = 2
+text = "PLAY"
+
+[node name="RulesButton" type="Button" parent="Background2/Center/GlassPanel/Content/VBox" unique_id=1110335658]
+layout_mode = 2
+text = "RULES"
+
+[node name="SettingsButton" type="Button" parent="Background2/Center/GlassPanel/Content/VBox" unique_id=1839501184]
+layout_mode = 2
+text = "SETTINGS"
+
+[node name="QuitButton" type="Button" parent="Background2/Center/GlassPanel/Content/VBox" unique_id=238541498]
+layout_mode = 2
+text = "QUIT"

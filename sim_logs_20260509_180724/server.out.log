@@ -1,0 +1,13 @@
+[room] created public PCE74
+[room] created public EMARM
+[room] created public EJCY4
+[room] created public Z4PW7
+[server] BANO WebSocket server running on port 32123
+[connect] player_29fa5749-7da2-4c9f-9748-426c84ce3e1a from 127.0.0.1
+[room] created private WXAKS
+[room] player_29fa5749-7da2-4c9f-9748-426c84ce3e1a joined WXAKS (1/2)
+[connect] player_a4fc22d6-f4c4-44e7-ba08-5a2027a74460 from 127.0.0.1
+[room] player_a4fc22d6-f4c4-44e7-ba08-5a2027a74460 joined WXAKS (2/2)
+[match] start WXAKS: humans=2, ai=0, reason=room_full
+[disconnect] player_29fa5749-7da2-4c9f-9748-426c84ce3e1a code=1006 reason=
+[disconnect] player_a4fc22d6-f4c4-44e7-ba08-5a2027a74460 code=1006 reason=

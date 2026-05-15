@@ -1,0 +1,18 @@
+{
+  "name": "bano-multiplayer-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dedicated WebSocket party server for BANO online multiplayer.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check roomManager.js && node --check utils.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

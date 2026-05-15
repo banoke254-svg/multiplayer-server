@@ -1,0 +1,13 @@
+[room] created public 2XNH9
+[room] created public 6TVJF
+[room] created public SNJR8
+[room] created public YY74H
+[server] BANO WebSocket server running on port 32123
+[connect] player_b30e4253-4f4f-48b1-9c08-4e948fcbd8c9 from 127.0.0.1
+[room] created private WVVC9
+[room] player_b30e4253-4f4f-48b1-9c08-4e948fcbd8c9 joined WVVC9 (1/2)
+[connect] player_23483663-bbb9-44b9-8a82-841f03ceb0fb from 127.0.0.1
+[room] player_23483663-bbb9-44b9-8a82-841f03ceb0fb joined WVVC9 (2/2)
+[match] start WVVC9: humans=2, ai=0, reason=room_full
+[disconnect] player_b30e4253-4f4f-48b1-9c08-4e948fcbd8c9 code=1006 reason=
+[disconnect] player_23483663-bbb9-44b9-8a82-841f03ceb0fb code=1006 reason=

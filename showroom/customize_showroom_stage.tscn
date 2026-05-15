@@ -1,0 +1,269 @@
+[gd_scene format=3 uid="uid://bxx46jgao5sit"]
+
+[ext_resource type="Script" uid="uid://rteg2ycyvjj3" path="res://showroom/showroom_marble_slot.gd" id="1_slot"]
+[ext_resource type="Texture2D" uid="uid://o4vbjd7gcxxy" path="res://gettyimages-1514138928-640x640.jpg" id="1_wkpbf"]
+[ext_resource type="PackedScene" uid="uid://crdqaowa888ju" path="res://extracted_minecraft_java_editions_stars.glb" id="2_galaxy"]
+[ext_resource type="Texture2D" path="res://showroom/showroom_neon_background.png" id="4_vvblb"]
+[ext_resource type="PackedScene" uid="uid://ks7ti37ijktd" path="res://fantasy_sky_background.glb" id="5_kbkcv"]
+
+[sub_resource type="PanoramaSkyMaterial" id="PanoramaSkyMaterial_rxqhj"]
+panorama = ExtResource("1_wkpbf")
+
+[sub_resource type="Sky" id="Sky_vvblb"]
+sky_material = SubResource("PanoramaSkyMaterial_rxqhj")
+
+[sub_resource type="Environment" id="Environment_showroom"]
+background_mode = 2
+background_color = Color(0.005, 0.008, 0.018, 1)
+background_energy_multiplier = 0.68
+sky = SubResource("Sky_vvblb")
+ambient_light_source = 2
+ambient_light_color = Color(1, 1, 1, 1)
+ambient_light_energy = 1.05
+tonemap_mode = 3
+glow_enabled = false
+glow_intensity = 0.0
+glow_bloom = 0.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
+albedo_color = Color(0.095, 0.11, 0.14, 1)
+emission_enabled = false
+emission_energy_multiplier = 0.0
+metallic = 0.18
+roughness = 0.36
+
+[sub_resource type="BoxMesh" id="BoxMesh_room_floor"]
+material = SubResource("StandardMaterial3D_floor")
+size = Vector3(14, 0.14, 14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wall"]
+albedo_color = Color(0.13, 0.155, 0.21, 1)
+emission_enabled = false
+emission_energy_multiplier = 0.0
+roughness = 0.72
+
+[sub_resource type="BoxMesh" id="BoxMesh_room_wall"]
+material = SubResource("StandardMaterial3D_wall")
+size = Vector3(14, 5, 0.28)
+
+[sub_resource type="BoxMesh" id="BoxMesh_room_side"]
+material = SubResource("StandardMaterial3D_wall")
+size = Vector3(0.28, 5, 14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_trim"]
+albedo_color = Color(0.18, 0.2, 0.26, 1)
+emission_enabled = false
+emission_energy_multiplier = 0.0
+metallic = 0.08
+roughness = 0.28
+
+[sub_resource type="BoxMesh" id="BoxMesh_room_ceiling"]
+material = SubResource("StandardMaterial3D_trim")
+size = Vector3(14, 0.24, 14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_platform"]
+albedo_color = Color(0.12, 0.075, 0.2, 1)
+emission_enabled = false
+emission_energy_multiplier = 0.0
+metallic = 0.28
+roughness = 0.2
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_platform"]
+material = SubResource("StandardMaterial3D_platform")
+top_radius = 2.15
+bottom_radius = 2.45
+height = 0.38
+
+[sub_resource type="QuadMesh" id="QuadMesh_wkpbf"]
+size = Vector2(45, 30)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rxqhj"]
+shading_mode = 0
+albedo_texture = ExtResource("4_vvblb")
+billboard_mode = 1
+
+[sub_resource type="QuadMesh" id="QuadMesh_ceiling_light_panel"]
+size = Vector2(5.8, 1.35)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ceiling_light_panel"]
+shading_mode = 0
+albedo_color = Color(1, 0.93, 0.78, 1)
+emission_enabled = false
+emission_energy_multiplier = 0.0
+cull_mode = 2
+
+[sub_resource type="QuadMesh" id="QuadMesh_back_wall_light_panel"]
+size = Vector2(4.8, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_back_wall_light_panel"]
+shading_mode = 0
+albedo_color = Color(0.62, 0.84, 1, 1)
+emission_enabled = false
+emission_energy_multiplier = 0.0
+cull_mode = 2
+
+[node name="ShowroomStage" type="Node3D" unique_id=1778159940]
+
+[node name="Environment" type="WorldEnvironment" parent="." unique_id=520628600]
+environment = SubResource("Environment_showroom")
+
+[node name="SharedGalaxy" parent="." unique_id=1132618573 instance=ExtResource("2_galaxy")]
+transform = Transform3D(7, 0, 0, 0, 7, 0, 0, 0, 7, 0, 5.8, -9.5)
+visible = false
+
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=1579353917]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.14532328, 0)
+visible = false
+mesh = SubResource("BoxMesh_room_floor")
+
+[node name="BackWall" type="MeshInstance3D" parent="." unique_id=1052785622]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, -6.8)
+visible = false
+mesh = SubResource("BoxMesh_room_wall")
+
+[node name="LeftWall" type="MeshInstance3D" parent="." unique_id=1269835177]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.86, 2.5, 0)
+visible = false
+mesh = SubResource("BoxMesh_room_side")
+
+[node name="RightWall" type="MeshInstance3D" parent="." unique_id=327033559]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.86, 2.5, 0)
+visible = false
+mesh = SubResource("BoxMesh_room_side")
+
+[node name="Ceiling" type="MeshInstance3D" parent="." unique_id=1692842452]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.08, 0)
+visible = false
+mesh = SubResource("BoxMesh_room_ceiling")
+
+[node name="BackTrim" type="MeshInstance3D" parent="." unique_id=302268979]
+transform = Transform3D(0.7, 0, 0, 0, 1, 0, 0, 0, 0.12, 0, 2.65, -6.58)
+visible = false
+mesh = SubResource("BoxMesh_room_wall")
+
+[node name="Platform" type="MeshInstance3D" parent="." unique_id=1995059136]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9515536, 0)
+visible = false
+mesh = SubResource("CylinderMesh_platform")
+
+[node name="LookTarget" type="Marker3D" parent="." unique_id=1241215513]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.2, 0)
+
+[node name="CameraAnchor" type="Marker3D" parent="." unique_id=678652047]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.9, 8.8)
+
+[node name="ShowroomRoot" type="Node3D" parent="." unique_id=912118406]
+
+[node name="SelectedMarbleSlot" type="Marker3D" parent="ShowroomRoot" unique_id=195927654]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.2, 0)
+script = ExtResource("1_slot")
+slot_role = 0
+scale_multiplier = 2.0
+
+[node name="DecorSlots" type="Node3D" parent="ShowroomRoot" unique_id=817932397]
+
+[node name="LeftDecor" type="Marker3D" parent="ShowroomRoot/DecorSlots" unique_id=1221655729]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.8, 2.45, -0.6)
+script = ExtResource("1_slot")
+marble_id = "poke_ball"
+scale_multiplier = 2.0
+halo_enabled = false
+enable_spin = true
+spin_speed = 0.18
+
+[node name="RightDecor" type="Marker3D" parent="ShowroomRoot/DecorSlots" unique_id=1038868863]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8, 2.45, -0.6)
+script = ExtResource("1_slot")
+marble_id = "pool_ball"
+scale_multiplier = 2.0
+halo_enabled = false
+enable_spin = true
+spin_speed = -0.18
+
+[node name="ShowroomFieldRoot" type="Node3D" parent="." unique_id=989215263]
+
+[node name="PreviewCamera" type="Camera3D" parent="." unique_id=1623493930]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.9, 8.8)
+fov = 26.0
+far = 60.0
+
+[node name="CeilingLightPanel" type="MeshInstance3D" parent="."]
+position = Vector3(0, 4.91, 1.3)
+rotation_degrees = Vector3(-90, 0, 0)
+visible = false
+mesh = SubResource("QuadMesh_ceiling_light_panel")
+material_override = SubResource("StandardMaterial3D_ceiling_light_panel")
+
+[node name="BackWallLightPanel" type="MeshInstance3D" parent="."]
+position = Vector3(0, 3.65, -6.63)
+visible = false
+mesh = SubResource("QuadMesh_back_wall_light_panel")
+material_override = SubResource("StandardMaterial3D_back_wall_light_panel")
+
+[node name="FillLight" type="OmniLight3D" parent="." unique_id=1029445173]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 5.8351593, 4.8)
+light_color = Color(0.64, 0.84, 1, 1)
+light_energy = 0.72
+omni_range = 11.0
+
+[node name="RimLight" type="OmniLight3D" parent="." unique_id=1366088288]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.3, 6.278059, -3.2)
+light_color = Color(0.78, 0.92, 1, 1)
+light_energy = 0.32
+omni_range = 10.5
+
+[node name="Spotlight" type="SpotLight3D" parent="." unique_id=713827275]
+transform = Transform3D(1, 0, 0, 0, 0.529919, 0.848048, 0, -0.848048, 0.529919, 0, 7, 2)
+light_color = Color(1, 0.96, 0.82, 1)
+light_energy = 0.95
+spot_range = 13.0
+spot_angle = 28.0
+spot_angle_attenuation = 0.42
+
+[node name="MarbleFrontLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.45, 4.35)
+light_color = Color(0.98, 1, 1, 1)
+light_energy = 0.42
+omni_range = 7.8
+
+[node name="MarbleTopLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.35, 0.5)
+light_color = Color(0.92, 0.96, 1, 1)
+light_energy = 0.24
+omni_range = 6.4
+
+[node name="MarbleSideLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 4.8, 1.4)
+light_color = Color(1, 0.78, 0.94, 1)
+light_energy = 0.18
+omni_range = 7.4
+
+[node name="CeilingWashLight" type="OmniLight3D" parent="."]
+position = Vector3(0, 4.55, 1.6)
+light_color = Color(1, 0.94, 0.82, 1)
+visible = false
+light_energy = 0.0
+omni_range = 10.5
+
+[node name="BackWallWashLight" type="OmniLight3D" parent="."]
+position = Vector3(0, 3.45, -4.65)
+light_color = Color(0.64, 0.84, 1, 1)
+visible = false
+light_energy = 0.0
+omni_range = 8.8
+
+[node name="FloorBounceLight" type="OmniLight3D" parent="."]
+position = Vector3(0, 2.1, 2.75)
+light_color = Color(0.88, 0.94, 1, 1)
+visible = false
+light_energy = 0.0
+omni_range = 8.0
+
+[node name="NeonBackdrop" type="MeshInstance3D" parent="." unique_id=1709116583]
+position = Vector3(0, 4.2, -34)
+mesh = SubResource("QuadMesh_wkpbf")
+surface_material_override/0 = SubResource("StandardMaterial3D_rxqhj")
+
+[node name="Sketchfab_Scene" parent="." unique_id=1610087020 instance=ExtResource("5_kbkcv")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.13900256, 14.614639, 42.944836)
+visible = false

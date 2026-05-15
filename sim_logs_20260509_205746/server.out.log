@@ -1,0 +1,13 @@
+[room] created public L7Q4C
+[room] created public ZU8Z8
+[room] created public SJ2F8
+[room] created public CRRLG
+[server] BANO WebSocket server running on port 32123
+[connect] player_c0180ea4-a56c-406a-93c4-1dff8d32cdad from 127.0.0.1
+[room] created private ZHRPB
+[room] player_c0180ea4-a56c-406a-93c4-1dff8d32cdad joined ZHRPB (1/2)
+[connect] player_b43b5386-95d0-4819-9668-059fe8edb29b from 127.0.0.1
+[room] player_b43b5386-95d0-4819-9668-059fe8edb29b joined ZHRPB (2/2)
+[match] start ZHRPB: humans=2, ai=0, reason=room_full
+[disconnect] player_c0180ea4-a56c-406a-93c4-1dff8d32cdad code=1006 reason=
+[disconnect] player_b43b5386-95d0-4819-9668-059fe8edb29b code=1006 reason=

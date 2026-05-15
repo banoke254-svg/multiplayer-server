@@ -1,0 +1,23 @@
+[room] created public M8URV
+[room] created public F5SD8
+[room] created public D47BJ
+[room] created public Y4VD7
+[server] BANO WebSocket server running on port 32123
+[connect] player_539eba2a-4da8-4fac-b077-5327f8d7c183 from 127.0.0.1
+[room] created private WL8FQ
+[room] player_539eba2a-4da8-4fac-b077-5327f8d7c183 joined WL8FQ (1/2)
+[room] created private 7T3XS
+[room] removed empty room WL8FQ
+[room] player_539eba2a-4da8-4fac-b077-5327f8d7c183 joined 7T3XS (1/2)
+[room] created private WTXZL
+[room] removed empty room 7T3XS
+[room] player_539eba2a-4da8-4fac-b077-5327f8d7c183 joined WTXZL (1/2)
+[room] created private V5UA5
+[room] removed empty room WTXZL
+[room] player_539eba2a-4da8-4fac-b077-5327f8d7c183 joined V5UA5 (1/2)
+[connect] player_2490b6fd-b8d3-40a4-ba1a-5bcbf98b93f8 from 127.0.0.1
+[room] player_2490b6fd-b8d3-40a4-ba1a-5bcbf98b93f8 joined V5UA5 (2/2)
+[match] start V5UA5: humans=2, ai=0, reason=room_full
+[error] player_2490b6fd-b8d3-40a4-ba1a-5bcbf98b93f8: Party code not found.
+[disconnect] player_539eba2a-4da8-4fac-b077-5327f8d7c183 code=1006 reason=
+[disconnect] player_2490b6fd-b8d3-40a4-ba1a-5bcbf98b93f8 code=1006 reason=

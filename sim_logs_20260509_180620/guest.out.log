@@ -1,0 +1,25 @@
+Godot Engine v4.6.1.stable.official.14d19694e - https://godotengine.org
+
+[0.00][guest] driver starting role=guest
+[0.17][guest] guest joining room AV9FS
+[0.17][guest] connected id=player_129fe4e4-0239-4eca-959b-637b8f0dcea5
+[0.17][guest] room joined players=2 host=player_f9c2652a-b393-464f-8533-e4c567e89ee3
+[0.18][guest] game_started
+[0.18][guest] turn manager ready host=false
+[0.18][guest] ready local=AI MARBLE1 remote=AI MARBLE1 client_active= actor= active=PlayerMarble,AI MARBLE1 owners=
+[3.62][guest] jump step=8.863 pos=(-0.441121, 0.361271, -16.83059) last=(-1.2, 0.30644, -8.0) phase=0 active=PlayerMarble
+[4.60][guest] guest input ready local=AI MARBLE1 remote=AI MARBLE1 client_active=AI MARBLE1 actor= active=PlayerMarble,AI MARBLE1 owners=
+[4.60][guest] guest remote shot start
+[4.73][guest] guest remote shot sent count=1
+[5.04][guest] jump step=2.429 pos=(-0.376054, 0.498819, -13.48882) last=(-0.375274, 0.389521, -15.9152) phase=0 active=AI MARBLE1
+[5.12][guest] jump step=2.739 pos=(-0.37764, 0.654101, -8.889012) last=(-0.376693, 0.566393, -11.6267) phase=0 active=AI MARBLE1
+[5.19][guest] jump step=2.664 pos=(-0.37907, 0.743159, -4.822224) last=(-0.378131, 0.688015, -7.485697) phase=0 active=AI MARBLE1
+[5.27][guest] jump step=2.606 pos=(-0.3807, 0.776897, -0.290464) last=(-0.37976, 0.762052, -2.896319) phase=0 active=AI MARBLE1
+[5.36][guest] jump step=2.687 pos=(-0.381358, 0.745951, 4.217623) last=(-0.380923, 0.770486, 1.530503) phase=0 active=AI MARBLE1
+[5.44][guest] jump step=2.593 pos=(-0.38306, 0.648658, 8.739469) last=(-0.382082, 0.709273, 6.14699) phase=0 active=AI MARBLE1
+[5.52][guest] jump step=2.451 pos=(-0.384639, 0.49339, 12.83383) last=(-0.383692, 0.591155, 10.38442) phase=0 active=AI MARBLE1
+LAN turn: attack from the hole.
+[8.17][guest] guest remote shot start
+[8.29][guest] guest remote shot sent count=2
+[21.07][guest] room updated players=2 started=true
+[24.00][guest] finish code=0 guest ok shots=2 samples=3433 jumps=8 max_step=8.863

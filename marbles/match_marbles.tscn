@@ -1,0 +1,94 @@
+[gd_scene format=3 uid="uid://dexw5m4hm8m31"]
+
+[ext_resource type="PackedScene" uid="uid://cbdx4wdfru7yu" path="res://marble.tscn" id="1_player"]
+[ext_resource type="PackedScene" uid="uid://8nimv4daygbd" path="res://ai_marble.tscn" id="2_ai"]
+[ext_resource type="Script" uid="uid://c38gy8ix4abjn" path="res://camera_rig.gd" id="3_camera"]
+[ext_resource type="Script" uid="uid://civj2wsu6kxke" path="res://ai_marble1.gd" id="4_ai1"]
+[ext_resource type="Script" uid="uid://cs0r8778y3y6b" path="res://ai_marble2.gd" id="5_ai2"]
+[ext_resource type="Script" uid="uid://d1gmubyqb82wk" path="res://ai_marble3.gd" id="6_ai3"]
+[ext_resource type="Script" uid="uid://cu0oa5wq68x6b" path="res://ai_marble4.gd" id="7_ai4"]
+
+[node name="Marbles" type="Node3D"]
+
+[node name="PlayerMarble" parent="." groups=["marbles"] instance=ExtResource("1_player")]
+transform = Transform3D(-0.995001, 0.0289358, -0.0955806, -0.0111349, 0.918988, 0.394128, 0.0992419, 0.393222, -0.914072, -4.19876, 2.52042, -4.23888)
+continuous_cd = true
+max_shot_impulse = 14.0
+
+[node name="CameraRig" type="Node3D" parent="PlayerMarble" node_paths=PackedStringArray("target")]
+transform = Transform3D(-0.995001, -0.011135, 0.0992418, 0.0289359, 0.918988, 0.393222, -0.0955806, 0.394128, -0.914072, -3.72903, -0.52792, -5.26933)
+script = ExtResource("3_camera")
+target = NodePath("..")
+offset = Vector3(0, 2.95, -6.6)
+
+[node name="FollowCamera" type="Camera3D" parent="PlayerMarble/CameraRig"]
+current = true
+fov = 74.0
+
+[node name="AI MARBLE2" parent="." node_paths=PackedStringArray("hole", "marbles") groups=["ai_marbles", "marbles"] instance=ExtResource("2_ai")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.63577, 1, 2.6323)
+continuous_cd = true
+script = ExtResource("4_ai1")
+hole = NodePath("../../Hole")
+marbles = [NodePath("../PlayerMarble"), NodePath("../AI MARBLE1"), NodePath("../AI MARBLE3"), NodePath("../AI MARBLE4")]
+
+[node name="CameraRig" type="Node3D" parent="AI MARBLE2" node_paths=PackedStringArray("target")]
+transform = Transform3D(-0.995001, -0.011135, 0.0992418, 0.0289359, 0.918988, 0.393222, -0.0955806, 0.394128, -0.914072, -3.72903, -0.52792, -5.26933)
+script = ExtResource("3_camera")
+target = NodePath("..")
+offset = Vector3(0, 2.95, -6.6)
+
+[node name="FollowCamera" type="Camera3D" parent="AI MARBLE2/CameraRig"]
+current = false
+fov = 74.0
+
+[node name="AI MARBLE1" parent="." node_paths=PackedStringArray("hole", "marbles") groups=["ai_marbles", "marbles"] instance=ExtResource("2_ai")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.81042, 1, -6.94444)
+continuous_cd = true
+script = ExtResource("5_ai2")
+hole = NodePath("../../Hole")
+marbles = [NodePath("../PlayerMarble"), NodePath("../AI MARBLE2"), NodePath("../AI MARBLE3"), NodePath("../AI MARBLE4")]
+
+[node name="CameraRig" type="Node3D" parent="AI MARBLE1" node_paths=PackedStringArray("target")]
+transform = Transform3D(-0.995001, -0.011135, 0.0992418, 0.0289359, 0.918988, 0.393222, -0.0955806, 0.394128, -0.914072, -3.72903, -0.52792, -5.26933)
+script = ExtResource("3_camera")
+target = NodePath("..")
+offset = Vector3(0, 2.95, -6.6)
+
+[node name="FollowCamera" type="Camera3D" parent="AI MARBLE1/CameraRig"]
+current = false
+fov = 74.0
+
+[node name="AI MARBLE3" parent="." node_paths=PackedStringArray("hole", "marbles") groups=["ai_marbles", "marbles"] instance=ExtResource("2_ai")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.69224, 1, -2.72454)
+continuous_cd = true
+script = ExtResource("6_ai3")
+hole = NodePath("../../Hole")
+marbles = [NodePath("../PlayerMarble"), NodePath("../AI MARBLE2"), NodePath("../AI MARBLE1"), NodePath("../AI MARBLE4")]
+
+[node name="CameraRig" type="Node3D" parent="AI MARBLE3" node_paths=PackedStringArray("target")]
+transform = Transform3D(-0.995001, -0.011135, 0.0992418, 0.0289359, 0.918988, 0.393222, -0.0955806, 0.394128, -0.914072, -3.72903, -0.52792, -5.26933)
+script = ExtResource("3_camera")
+target = NodePath("..")
+offset = Vector3(0, 2.95, -6.6)
+
+[node name="FollowCamera" type="Camera3D" parent="AI MARBLE3/CameraRig"]
+current = false
+fov = 74.0
+
+[node name="AI MARBLE4" parent="." node_paths=PackedStringArray("hole", "marbles") groups=["ai_marbles", "marbles"] instance=ExtResource("2_ai")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.24617, 1, -4.841)
+continuous_cd = true
+script = ExtResource("7_ai4")
+hole = NodePath("../../Hole")
+marbles = [NodePath("../PlayerMarble"), NodePath("../AI MARBLE1"), NodePath("../AI MARBLE2"), NodePath("../AI MARBLE3")]
+
+[node name="CameraRig" type="Node3D" parent="AI MARBLE4" node_paths=PackedStringArray("target")]
+transform = Transform3D(-0.995001, -0.011135, 0.0992418, 0.0289359, 0.918988, 0.393222, -0.0955806, 0.394128, -0.914072, -3.72903, -0.52792, -5.26933)
+script = ExtResource("3_camera")
+target = NodePath("..")
+offset = Vector3(0, 2.95, -6.6)
+
+[node name="FollowCamera" type="Camera3D" parent="AI MARBLE4/CameraRig"]
+current = false
+fov = 74.0

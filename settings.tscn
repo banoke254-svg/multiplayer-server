@@ -1,0 +1,85 @@
+[gd_scene load_steps=3 format=3 uid="uid://ds768cyn3kay4"]
+
+[ext_resource type="Script" uid="uid://bh8em2f4b1hkp" path="res://settings.gd" id="1_x2hje"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jwo76"]
+bg_color = Color(0.109804, 0.109804, 0.109804, 0.568627)
+
+[node name="Settings" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_x2hje")
+
+[node name="Background" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_jwo76")
+
+[node name="VBox" type="VBoxContainer" parent="Background"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 20.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MasterContainer" type="HBoxContainer" parent="Background/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Background/VBox/MasterContainer"]
+layout_mode = 2
+text = "MASTER VOLUME
+"
+
+[node name="MasterSlider" type="HSlider" parent="Background/VBox/MasterContainer"]
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+
+[node name="Music" type="HBoxContainer" parent="Background/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Background/VBox/Music"]
+layout_mode = 2
+text = "MUSIC
+"
+
+[node name="MusicSlider" type="HSlider" parent="Background/VBox/Music"]
+layout_mode = 2
+
+[node name="SFX" type="HBoxContainer" parent="Background/VBox"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Background/VBox/SFX"]
+layout_mode = 2
+text = "SFX
+"
+
+[node name="SFXSlider" type="HSlider" parent="Background/VBox/SFX"]
+layout_mode = 2
+
+[node name="ButtonContainer" type="HBoxContainer" parent="Background/VBox"]
+layout_mode = 2
+alignment = 1
+
+[node name="ApplyButton" type="Button" parent="Background/VBox/ButtonContainer"]
+layout_mode = 2
+text = "Apply"
+
+[node name="BackButton" type="Button" parent="Background/VBox/ButtonContainer"]
+layout_mode = 2
+text = "Back"

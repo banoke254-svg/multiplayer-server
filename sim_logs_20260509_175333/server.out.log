@@ -1,0 +1,9 @@
+
+> bano-multiplayer-server@1.0.0 start
+> node server.js
+
+[room] created public RNSDR
+[room] created public UARSV
+[room] created public B8937
+[room] created public MCVCZ
+[server] BANO WebSocket server running on port 3000

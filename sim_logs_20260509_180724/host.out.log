@@ -1,0 +1,25 @@
+Godot Engine v4.6.1.stable.official.14d19694e - https://godotengine.org
+
+[0.00][host] driver starting role=host
+[0.18][host] connected id=player_29fa5749-7da2-4c9f-9748-426c84ce3e1a
+[0.19][host] room joined players=1 host=player_29fa5749-7da2-4c9f-9748-426c84ce3e1a
+[0.19][host] room updated players=1 started=false
+[0.19][host] room created code=WXAKS
+[1.12][host] game_started
+[1.12][host] turn manager ready host=true
+[1.12][host] ready local= remote=AI MARBLE1 client_active= actor= active=PlayerMarble,AI MARBLE1 owners=PlayerMarble:,AI MARBLE1:player_a4fc22d6-f4c4-44e7-ba08-5a2027a74460
+Forced camera start on PlayerMarble
+PlayerMarble turn: true
+[4.55][host] actor=PlayerMarble local= remote=AI MARBLE1 client_active= actor=PlayerMarble active=PlayerMarble,AI MARBLE1 owners=PlayerMarble:,AI MARBLE1:player_a4fc22d6-f4c4-44e7-ba08-5a2027a74460
+[4.55][host] host local player shot
+Player shot registered.
+PlayerMarble turn:false
+[5.55][host] actor=AI MARBLE1 local= remote=AI MARBLE1 client_active= actor=AI MARBLE1 active=PlayerMarble,AI MARBLE1 owners=PlayerMarble:,AI MARBLE1:player_a4fc22d6-f4c4-44e7-ba08-5a2027a74460
+AIAI MARBLE1shooting with impulse =10.8
+Lineup complete. Turn order: ["sid", "sid"]
+PlayerMarble turn: true
+[5.70][host] actor=PlayerMarble local= remote=AI MARBLE1 client_active= actor=PlayerMarble active=PlayerMarble,AI MARBLE1 owners=PlayerMarble:,AI MARBLE1:player_a4fc22d6-f4c4-44e7-ba08-5a2027a74460
+Player is taking a while to shoot.
+Player is taking a while to shoot.
+Player is taking a while to shoot.
+[22.00][host] finish code=0 host ok collisions=13

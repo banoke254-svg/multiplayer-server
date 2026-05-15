@@ -1,0 +1,18 @@
+{
+  "godotTools.editorPath.godot4": "C:\\Users\\LENOVO\\Downloads\\Godot_v4.6.1-stable_win64.exe\\Godot_v4.6.1-stable_win64.exe",
+  "godotTools.editor.revealTerminal": true,
+  "godotTools.lsp.serverHost": "127.0.0.1",
+  "godotTools.lsp.serverPort": 6008,
+  "[gdscript]": {
+    "editor.defaultFormatter": "geequlim.godot-tools",
+    "editor.formatOnSave": true,
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4
+  },
+  "[gdscene]": {
+    "editor.defaultFormatter": "geequlim.godot-tools"
+  },
+  "[gdresource]": {
+    "editor.defaultFormatter": "geequlim.godot-tools"
+  }
+}

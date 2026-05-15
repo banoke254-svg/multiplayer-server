@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://by3ilsdd62tqr"]
+
+[ext_resource type="Script" uid="uid://c6nu7v7lrq7sd" path="res://marbles/independent_marble.gd" id="1_script"]
+
+[sub_resource type="Shader" id="Shader_ribbon_crimson"]
+code = "shader_type spatial;
+
+render_mode unshaded;
+
+void fragment() {
+	vec3 base_col = vec3(0.96, 0.94, 0.90);
+	vec3 ribbon_col = vec3(0.92, 0.16, 0.18);
+	float ribbon = step(0.0, sin((UV.y + UV.x * 0.42) * 28.0));
+	ALBEDO = mix(base_col, ribbon_col, ribbon * 0.92);
+}
+"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ribbon_crimson"]
+render_priority = 0
+shader = SubResource("Shader_ribbon_crimson")
+
+[sub_resource type="SphereMesh" id="SphereMesh_ribbon_crimson"]
+radius = 0.2
+height = 0.4
+
+[node name="Marble3" type="Node3D" unique_id=1638243182]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5687289, 0)
+script = ExtResource("1_script")
+
+[node name="BaseMesh" type="MeshInstance3D" parent="." unique_id=494196487]
+material_override = SubResource("ShaderMaterial_ribbon_crimson")
+mesh = SubResource("SphereMesh_ribbon_crimson")

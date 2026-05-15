@@ -1,0 +1,20 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://marbles/independent_marble.gd" id="1_script"]
+
+[sub_resource type="Shader" id="Shader_ribbon_aqua"]
+code = "shader_type spatial;\n\nrender_mode diffuse_burley, specular_schlick_ggx;\n\nvoid fragment() {\n\tvec3 base_col = vec3(0.90, 0.98, 1.0);\n\tvec3 ribbon_col = vec3(0.10, 0.84, 0.92);\n\tfloat ribbon = step(0.0, sin((UV.y + UV.x * 0.40) * 30.0));\n\tALBEDO = mix(base_col, ribbon_col, ribbon * 0.92);\n}\n"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ribbon_aqua"]
+shader = SubResource("Shader_ribbon_aqua")
+
+[sub_resource type="SphereMesh" id="SphereMesh_ribbon_aqua"]
+radius = 0.2
+height = 0.4
+
+[node name="Marble" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="BaseMesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_ribbon_aqua")
+material_override = SubResource("ShaderMaterial_ribbon_aqua")

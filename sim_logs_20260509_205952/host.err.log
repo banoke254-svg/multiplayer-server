@@ -1,0 +1,7 @@
+WARNING: Timed out waiting for marbles to settle. Continuing anyway.
+   at: push_warning (core/variant/variant_utility.cpp:1034)
+   GDScript backtrace (most recent call first):
+       [0] _wait_for_all_marbles_to_stop (res://turn_manager.gd:1665)
+       [1] _await_next_frame (res://turn_manager.gd:3420)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+   at: cleanup (core/object/object.cpp:2641)

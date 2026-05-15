@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3 uid="uid://dfs5sm1c6te4r"]
+
+[ext_resource type="Script" uid="uid://b3dtupwo5usxn" path="res://path_indicator.gd" id="1_uwain"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_hy53o"]
+radius = 0.1
+height = 0.2
+
+[node name="PathIndicator" type="Node3D"]
+script = ExtResource("1_uwain")
+
+[node name="Dot1" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_hy53o")
+
+[node name="Dot2" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_hy53o")
+
+[node name="Dot3" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_hy53o")
+
+[node name="Dot4" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_hy53o")

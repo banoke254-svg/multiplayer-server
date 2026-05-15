@@ -1,0 +1,22 @@
+Godot Engine v4.6.1.stable.official.14d19694e - https://godotengine.org
+
+[0.00][host] driver starting role=host
+[0.18][host] connected id=player_c0180ea4-a56c-406a-93c4-1dff8d32cdad
+[0.19][host] room joined players=1 host=player_c0180ea4-a56c-406a-93c4-1dff8d32cdad
+[0.19][host] room created code=ZHRPB
+[1.11][host] game_started
+[1.11][host] turn manager ready host=true local=
+Forced camera start on PlayerMarble
+PlayerMarble turn: true
+[4.53][host] host player shot
+Player shot registered.
+PlayerMarble turn:false
+AIAI MARBLE1shooting with impulse =10.8
+Lineup complete. Turn order: ["sid", "sid"]
+AIAI MARBLE1shooting with impulse =10.8
+AI MARBLE1 missed and the turn moves on.
+PlayerMarble turn: true
+Player is taking a while to shoot.
+Player is taking a while to shoot.
+Player is taking a while to shoot.
+[28.00][host] finish code=0 host done

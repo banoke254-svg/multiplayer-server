@@ -1,0 +1,182 @@
+[gd_scene load_steps=24 format=3 uid="uid://balq06o33g6jo"]
+
+[ext_resource type="PackedScene" uid="uid://cbdx4wdfru7yu" path="res://marble.tscn" id="1_ig7tw"]
+[ext_resource type="PackedScene" uid="uid://8nimv4daygbd" path="res://ai_marble.tscn" id="2_0xm2m"]
+[ext_resource type="Script" uid="uid://5d80vg5xnqkv" path="res://camera_3d.gd" id="2_h2yge"]
+[ext_resource type="Script" uid="uid://c38gy8ix4abjn" path="res://camera_rig.gd" id="3_272bh"]
+[ext_resource type="Script" uid="uid://civj2wsu6kxke" path="res://ai_marble1.gd" id="6_efxa6"]
+[ext_resource type="PackedScene" uid="uid://x6npgdo8j2ky" path="res://BANO WRITTING.tscn" id="7_272bh"]
+[ext_resource type="PackedScene" uid="uid://dfs5sm1c6te4r" path="res://path_indicator.tscn" id="8_5vw27"]
+[ext_resource type="Script" uid="uid://c0ap8n6ki0rdm" path="res://turn_manager.gd" id="8_dg77c"]
+[ext_resource type="Script" uid="uid://cs0r8778y3y6b" path="res://ai_marble2.gd" id="8_ycdy4"]
+[ext_resource type="Script" uid="uid://d1gmubyqb82wk" path="res://ai_marble3.gd" id="9_w48qg"]
+[ext_resource type="Script" uid="uid://cu0oa5wq68x6b" path="res://ai_marble4.gd" id="10_vivmo"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ig7tw"]
+albedo_color = Color(0, 0.386359, 0.166375, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_7dm0k"]
+material = SubResource("StandardMaterial3D_ig7tw")
+size = Vector3(40, 0.1, 40)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ig7tw"]
+size = Vector3(40, 0.1, 40)
+
+[sub_resource type="Environment" id="Environment_0xm2m"]
+background_mode = 1
+background_color = Color(0.384209, 0.776815, 0.992384, 1)
+ambient_light_color = Color(0.22251, 0.939314, 0.918236, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_4c57u"]
+top_radius = 0.0
+height = 1.0
+radial_segments = 50
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5vw27"]
+albedo_color = Color(0.659261, 0.320112, 0.921037, 1)
+metallic = 0.15
+metallic_specular = 0.4
+roughness = 0.2
+emission_enabled = true
+emission = Color(0.769193, 0.342077, 1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ig7tw"]
+size = Vector3(40, 4, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0xm2m"]
+size = Vector3(40, 4, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_0xm2m"]
+top_radius = 1.5
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_h2yge"]
+albedo_color = Color(0, 0, 0, 1)
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_1bvp3"]
+radius = 1.5
+
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_7mycd"]
+color = Color(0.396078, 0, 0.839216, 1)
+grow_begin = -10.0
+grow_end = 6.0
+thickness = 17
+
+[node name="Main" type="Node3D"]
+
+[node name="Ground" type="StaticBody3D" parent="."]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("BoxMesh_7dm0k")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0585818, 0)
+shape = SubResource("BoxShape3D_ig7tw")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Ground"]
+environment = SubResource("Environment_0xm2m")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="Ground/WorldEnvironment"]
+transform = Transform3D(1, 0, 0, 0, -0.026177, 0.999657, 0, -0.999657, -0.026177, -1.75104, 8.03737, -0.462233)
+light_energy = 3.0
+light_indirect_energy = 3.667
+
+[node name="PlayerMarble" parent="." groups=["marbles"] instance=ExtResource("1_ig7tw")]
+transform = Transform3D(-0.995001, 0.0289358, -0.0955806, -0.0111349, 0.918988, 0.394128, 0.0992419, 0.393222, -0.914072, -4.19876, 2.52042, -4.23888)
+mass = 0.14
+can_sleep = true
+linear_damp = 0.5
+angular_damp = 0.5
+max_force = 20.0
+
+[node name="CameraRig" type="Node3D" parent="PlayerMarble" node_paths=PackedStringArray("target")]
+transform = Transform3D(-0.995001, -0.011135, 0.0992418, 0.0289359, 0.918988, 0.393222, -0.0955806, 0.394128, -0.914072, -3.72903, -0.52792, -5.26933)
+script = ExtResource("3_272bh")
+target = NodePath("..")
+offset = Vector3(0, 2, -4)
+
+[node name="FollowCamera" type="Camera3D" parent="PlayerMarble/CameraRig"]
+current = true
+fov = 70.0
+
+[node name="PathIndicator" parent="PlayerMarble" node_paths=PackedStringArray("indicator_mesh") instance=ExtResource("8_5vw27")]
+transform = Transform3D(-0.995001, -0.011135, 0.0992418, 0.0289359, 0.918988, 0.393222, -0.0955806, 0.394128, -0.914072, 5, -5, 5)
+visible = false
+player_marble_path = NodePath("..")
+indicator_mesh = NodePath("MeshInstance3D")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PlayerMarble/PathIndicator"]
+transform = Transform3D(1, 0, 0, 2.22045e-16, 1, -2.98023e-08, -7.45058e-09, 0, 1, 0, 0, 0)
+mesh = SubResource("CylinderMesh_4c57u")
+skeleton = NodePath("../../..")
+surface_material_override/0 = SubResource("StandardMaterial3D_5vw27")
+
+[node name="walls" type="StaticBody3D" parent="." groups=["Walls"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.02143, -19.47)
+visible = false
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="walls"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.099, 0, 0)
+mesh = SubResource("BoxMesh_ig7tw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="walls"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.02, 0, 0)
+shape = SubResource("BoxShape3D_0xm2m")
+
+[node name="walls2" type="StaticBody3D" parent="." groups=["Walls"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0325832, 0, 20.3325)
+visible = false
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="walls2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.121068, 0, -0.041832)
+mesh = SubResource("BoxMesh_ig7tw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="walls2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0198698, 0, 0.0940151)
+shape = SubResource("BoxShape3D_0xm2m")
+
+[node name="walls3" type="StaticBody3D" parent="." groups=["Walls"]]
+transform = Transform3D(0.0230378, 0, 1.99987, 0, 2, 0, -1.99987, 0, 0.0230378, 0, 0, 0.111462)
+visible = false
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="walls3"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00577352, 0, -10.2735)
+mesh = SubResource("BoxMesh_ig7tw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="walls3"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0198698, 0, -10.2447)
+shape = SubResource("BoxShape3D_0xm2m")
+
+[node name="walls4" type="StaticBody3D" parent="." groups=["Walls"]]
+transform = Transform3D(0.00656237, 0, -1.99999, 0, 2, 0, 1.99999, 0, 0.00656237, 0, 0, -0.145052)
+visible = false
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="walls4"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.300584, -0.00633824, -9.69417)
+mesh = SubResource("BoxMesh_ig7tw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="walls4"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0198698, 0, -10.2447)
+shape = SubResource("BoxShape3D_0xm2m")
+
+[node name="AI MARBLE2" parent="." node_paths=PackedStringArray("hole", "all_marbles") groups=["ai_marbles", "marbles"] instance=ExtResource("2_0xm2m")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.63577, 1, 2.6323)
+script = ExtResource("6_efxa6")
+hole = NodePath("../Hole")
+all_marbles = [NodePath("../PlayerMarble"), NodePath("../AI MARBLE1"), NodePath("../AI MARBLE3"), NodePath("../AI MARBLE4")]
+shot_force_base = 20.0
+
+[node name="Camera3D" type="Camera3D" parent="AI MARBLE2"]
+transform = Transform3D(0.98807, 0.0584935, -0.142464, -0.0256225, 0.974607, 0.222451, 0.151859, -0.216147, 0.964479, -0.0413828, 0.124411, 1.32652)
+script = ExtResource("2_h2yge")
+target_path = NodePath("..")
+
+[node name="AI MARBLE1" parent="." node_paths=PackedStringArray("hole", "all_marbles") groups=["ai_marbles", "marbles"] instance=ExtResource("2_0xm2m")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.81042, 1, -6.94444)
+script = ExtResource("8_ycdy4")
+hole = NodePath("../Hole")
+all_marbles = [NodePath("../PlayerMarble"), NodePath("../AI MARBLE2"), NodePath("../AI MARBLE3"), NodePath("../AI MARBLE4")]
+shot_force_base = 20.0
+ai_id = 2
+
+[node name="Camera3D" type="Camera3D" parent="AI MARBLE1"]
+transform = Transform3D(0.98807, 0.0584935, -0.142464, -0.0256225, 0.974607, 0

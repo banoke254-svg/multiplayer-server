@@ -1,0 +1,28 @@
+SHADER ERROR: Invalid arguments to operator '*': 'int, float'.
+   at: (null) (:20)
+   GDScript backtrace (most recent call first):
+       [0] _load_match_scene (res://online_client_driver.gd:125)
+       [1] _on_game_started (res://online_client_driver.gd:121)
+       [2] _handle_message (res://MultiplayerManager.gd:565)
+       [3] _read_packets (res://MultiplayerManager.gd:502)
+       [4] _process (res://MultiplayerManager.gd:67)
+ERROR: Shader compilation failed.
+   at: shader_set_code (servers/rendering/dummy/storage/material_storage.cpp:190)
+   GDScript backtrace (most recent call first):
+       [0] _load_match_scene (res://online_client_driver.gd:125)
+       [1] _on_game_started (res://online_client_driver.gd:121)
+       [2] _handle_message (res://MultiplayerManager.gd:565)
+       [3] _read_packets (res://MultiplayerManager.gd:502)
+       [4] _process (res://MultiplayerManager.gd:67)
+WARNING: Timed out waiting for marbles to settle. Continuing anyway.
+   at: push_warning (core/variant/variant_utility.cpp:1034)
+   GDScript backtrace (most recent call first):
+       [0] _wait_for_all_marbles_to_stop (res://turn_manager.gd:1663)
+       [1] _await_next_frame (res://turn_manager.gd:3411)
+WARNING: Online player sid did not shoot before the turn timer ended.
+   at: push_warning (core/variant/variant_utility.cpp:1034)
+   GDScript backtrace (most recent call first):
+       [0] _perform_lan_remote_player_shot (res://turn_manager.gd:1318)
+       [1] _await_next_frame (res://turn_manager.gd:3411)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+   at: cleanup (core/object/object.cpp:2641)

@@ -1,0 +1,8 @@
+[room] created public DNDJD
+[room] created public PA3ES
+[room] created public 2MMUF
+[room] created public YP27Y
+[server] BANO WebSocket server running on port 32123
+[connect] player_ea2ee3fd-97c4-47a7-bd5e-2467d2fd0339 from 127.0.0.1
+[disconnect] player_ea2ee3fd-97c4-47a7-bd5e-2467d2fd0339 code=1006 reason=
+[cleanup] removing expired session player_ea2ee3fd-97c4-47a7-bd5e-2467d2fd0339

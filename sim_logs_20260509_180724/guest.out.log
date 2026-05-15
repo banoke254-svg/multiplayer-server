@@ -1,0 +1,16 @@
+Godot Engine v4.6.1.stable.official.14d19694e - https://godotengine.org
+
+[0.00][guest] driver starting role=guest
+[0.18][guest] guest joining room WXAKS
+[0.18][guest] connected id=player_a4fc22d6-f4c4-44e7-ba08-5a2027a74460
+[0.18][guest] room joined players=2 host=player_29fa5749-7da2-4c9f-9748-426c84ce3e1a
+[0.18][guest] game_started
+[0.18][guest] turn manager ready host=false
+[0.18][guest] ready local=AI MARBLE1 remote=AI MARBLE1 client_active= actor= active=PlayerMarble,AI MARBLE1 owners=
+[3.64][guest] jump step=2.669 pos=(-0.971447, 0.322953, -10.65952) last=(-1.2, 0.30644, -8.0) phase=0 active=PlayerMarble
+[3.65][guest] jump step=1.883 pos=(-0.810204, 0.334602, -12.53581) last=(-0.971447, 0.322953, -10.65952) phase=0 active=PlayerMarble
+[4.60][guest] guest input ready local=AI MARBLE1 remote=AI MARBLE1 client_active=AI MARBLE1 actor= active=PlayerMarble,AI MARBLE1 owners=
+[4.60][guest] guest remote shot start
+[4.72][guest] guest remote shot sent count=1
+[21.07][guest] room updated players=2 started=true
+[24.00][guest] finish code=0 guest ok shots=1 samples=3423 jumps=2 max_step=2.669

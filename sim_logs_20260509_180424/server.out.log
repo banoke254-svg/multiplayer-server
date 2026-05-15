@@ -1,0 +1,13 @@
+[room] created public 2L596
+[room] created public UTGJ4
+[room] created public DGL93
+[room] created public Q85MZ
+[server] BANO WebSocket server running on port 32123
+[connect] player_963d32cd-5f75-4fb9-bedb-de5842103347 from 127.0.0.1
+[room] created private E4A4E
+[room] player_963d32cd-5f75-4fb9-bedb-de5842103347 joined E4A4E (1/2)
+[connect] player_ccf67df2-225e-4e19-b26c-db845e2f90e5 from 127.0.0.1
+[room] player_ccf67df2-225e-4e19-b26c-db845e2f90e5 joined E4A4E (2/2)
+[match] start E4A4E: humans=2, ai=0, reason=room_full
+[disconnect] player_963d32cd-5f75-4fb9-bedb-de5842103347 code=1006 reason=
+[disconnect] player_ccf67df2-225e-4e19-b26c-db845e2f90e5 code=1006 reason=

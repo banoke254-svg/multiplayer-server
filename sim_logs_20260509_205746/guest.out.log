@@ -1,0 +1,13 @@
+Godot Engine v4.6.1.stable.official.14d19694e - https://godotengine.org
+
+[0.00][guest] driver starting role=guest
+[0.17][guest] guest joining room ZHRPB
+[0.17][guest] connected id=player_b43b5386-95d0-4819-9668-059fe8edb29b
+[0.18][guest] room joined players=2 host=player_c0180ea4-a56c-406a-93c4-1dff8d32cdad
+[0.18][guest] game_started
+[0.18][guest] turn manager ready host=false local=AI MARBLE1
+[3.61][guest] guest shot start active=AI MARBLE1
+[3.73][guest] guest shot sent count=1
+[8.77][guest] guest shot start active=AI MARBLE1
+[8.89][guest] guest shot sent count=2
+[28.01][guest] finish code=0 guest done shots=2 samples=4006 jumps=1 max_step=9.177

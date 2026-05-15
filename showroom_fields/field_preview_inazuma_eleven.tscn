@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://c3dk5vt7s2v68"]
+
+[ext_resource type="Script" path="res://showroom_field_preview.gd" id="1_mq5ok"]
+
+[node name="FieldPreviewInazumaEleven" type="Node3D"]
+script = ExtResource("1_mq5ok")
+preview_style = "garden"

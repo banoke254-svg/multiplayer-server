@@ -1,0 +1,57 @@
+[gd_scene format=3 uid="uid://dbb37qm7a7n2e"]
+
+[ext_resource type="Script" path="res://fields/editable_imported_field.gd" id="1_1v4jh"]
+[ext_resource type="PackedScene" uid="uid://8o844wl5x8vj" path="res://inazuma_eleven_terrain_commerce.glb" id="2_h2ekg"]
+[ext_resource type="Script" path="res://backdrop_environment.gd" id="3_jxhy4"]
+
+[node name="InazumaElevenField" type="Node3D"]
+script = ExtResource("1_1v4jh")
+generate_mesh_collisions = false
+add_ground_collision_box = false
+ground_collision_height = 2.4
+ground_collision_y_offset = -0.6
+use_custom_ground_collision_box = true
+ground_collision_center = Vector3(28, 0, 40)
+ground_collision_size = Vector3(26, 2.4, 46)
+disable_mesh_shadows = true
+
+[node name="Sketchfab_model" parent="." instance=ExtResource("2_h2ekg")]
+script = ExtResource("3_jxhy4")
+
+[node name="LayoutMarkers" type="Node3D" parent="."]
+
+[node name="HoleMarker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(28, 1.2, 52)
+
+[node name="WallNorthMarker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(28, 1.02143, 18)
+scale = Vector3(0.66, 2, 1)
+
+[node name="WallSouthMarker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(28, 0, 62)
+scale = Vector3(0.66, 2, 1)
+
+[node name="WallWestMarker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(16, 0, 40)
+rotation_degrees = Vector3(0, 90, 0)
+scale = Vector3(1.1, 2, 1)
+
+[node name="WallEastMarker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(40, 0, 40)
+rotation_degrees = Vector3(0, -90, 0)
+scale = Vector3(1.1, 2, 1)
+
+[node name="PlayerMarbleMarker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(28, 2.4, 27)
+
+[node name="AIMarble1Marker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(24.8, 2.4, 30.5)
+
+[node name="AIMarble2Marker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(31.2, 2.4, 30.5)
+
+[node name="AIMarble3Marker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(26.4, 2.4, 34)
+
+[node name="AIMarble4Marker" type="Node3D" parent="LayoutMarkers"]
+position = Vector3(29.6, 2.4, 34)

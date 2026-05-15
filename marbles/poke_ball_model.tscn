@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://cl0sfiw8i0bsc"]
+
+[ext_resource type="Script" uid="uid://cmcolx68m76sw" path="res://marbles/imported_marble_model.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://d1a5wfmx6jjkc" path="res://marbles/poke_ball.glb" id="2_model"]
+
+[node name="Marble" type="Node3D" unique_id=1271781678]
+script = ExtResource("1_script")
+
+[node name="Source" parent="." unique_id=1083258477 instance=ExtResource("2_model")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)

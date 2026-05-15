@@ -1,0 +1,13 @@
+[room] created public HDSS2
+[room] created public S8N7L
+[room] created public 8B78U
+[room] created public X8CBN
+[server] BANO WebSocket server running on port 32123
+[connect] player_8873bb14-1a22-4d85-8f88-5bef6efee2f3 from 127.0.0.1
+[room] created private JEDC5
+[room] player_8873bb14-1a22-4d85-8f88-5bef6efee2f3 joined JEDC5 (1/2)
+[connect] player_3c4ddfdd-3b9f-4e78-a39a-d47e0c4c6217 from 127.0.0.1
+[room] player_3c4ddfdd-3b9f-4e78-a39a-d47e0c4c6217 joined JEDC5 (2/2)
+[match] start JEDC5: humans=2, ai=0, reason=room_full
+[disconnect] player_8873bb14-1a22-4d85-8f88-5bef6efee2f3 code=1006 reason=
+[disconnect] player_3c4ddfdd-3b9f-4e78-a39a-d47e0c4c6217 code=1006 reason=

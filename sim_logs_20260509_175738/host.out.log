@@ -1,0 +1,34 @@
+Godot Engine v4.6.1.stable.official.14d19694e - https://godotengine.org
+
+[0.00][host] driver starting role=host
+[0.19][host] connected id=player_539eba2a-4da8-4fac-b077-5327f8d7c183
+[0.19][host] room joined players=1 host=player_539eba2a-4da8-4fac-b077-5327f8d7c183
+[0.19][host] room updated players=1 started=false
+[0.19][host] room created code=WL8FQ
+[0.19][host] room joined players=1 host=player_539eba2a-4da8-4fac-b077-5327f8d7c183
+[0.19][host] room updated players=1 started=false
+[0.19][host] room created code=7T3XS
+[0.20][host] room joined players=1 host=player_539eba2a-4da8-4fac-b077-5327f8d7c183
+[0.20][host] room updated players=1 started=false
+[0.20][host] room created code=WTXZL
+[0.20][host] room joined players=1 host=player_539eba2a-4da8-4fac-b077-5327f8d7c183
+[0.20][host] room updated players=1 started=false
+[0.20][host] room created code=V5UA5
+[1.21][host] game_started
+--Main Shader--
+   18 |  vec2 wind = normalize(max(abs(wind_direction.xz), vec2(0.001)) * sign(wind_direction.xz));
+   19 |  float instance_seed = hash11(float(INSTANCE_ID) * 0.173);
+E  20->  float phase = TIME * sway_speed + INSTANCE_ID * 0.73 + VERTEX.x * 3.2;
+   21 |  float gust = sin(TIME * 0.75 + float(INSTANCE_ID) * 0.17 + VERTEX.y * 2.6) * 0.5 + 0.5;
+   22 |  float sway = sin(phase) * sway_strength + gust * gust_strength;
+[1.21][host] turn manager ready host=true
+Forced camera start on PlayerMarble
+PlayerMarble turn: true
+[4.64][host] host local player shot
+Player shot registered.
+PlayerMarble turn:false
+AIAI MARBLE1shooting with impulse =10.8
+Lineup complete. Turn order: ["sid", "sid"]
+AI MARBLE1 missed and the turn moves on.
+PlayerMarble turn: true
+[22.00][host] finish code=0 host ok collisions=18

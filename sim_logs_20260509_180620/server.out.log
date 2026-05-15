@@ -1,0 +1,13 @@
+[room] created public H5YU8
+[room] created public KQ32L
+[room] created public F929A
+[room] created public NXZEB
+[server] BANO WebSocket server running on port 32123
+[connect] player_f9c2652a-b393-464f-8533-e4c567e89ee3 from 127.0.0.1
+[room] created private AV9FS
+[room] player_f9c2652a-b393-464f-8533-e4c567e89ee3 joined AV9FS (1/2)
+[connect] player_129fe4e4-0239-4eca-959b-637b8f0dcea5 from 127.0.0.1
+[room] player_129fe4e4-0239-4eca-959b-637b8f0dcea5 joined AV9FS (2/2)
+[match] start AV9FS: humans=2, ai=0, reason=room_full
+[disconnect] player_f9c2652a-b393-464f-8533-e4c567e89ee3 code=1006 reason=
+[disconnect] player_129fe4e4-0239-4eca-959b-637b8f0dcea5 code=1006 reason=

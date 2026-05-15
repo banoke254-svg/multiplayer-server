@@ -1,0 +1,4 @@
+res://start_menu.gd
+res://turn_manager.gd
+res://MultiplayerManager.gd
+res://customize_room.gd

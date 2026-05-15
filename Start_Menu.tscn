@@ -1,0 +1,125 @@
+[gd_scene load_steps=7 format=3 uid="uid://qai677rukhyw"]
+
+[ext_resource type="Script" uid="uid://du88wvkgunfhp" path="res://start_menu.gd" id="1_wrxjg"]
+[ext_resource type="Texture2D" path="res://Untitled design (17).png" id="2_pbjr1"]
+
+[sub_resource type="SystemFont" id="SystemFont_pbjr1"]
+font_names = PackedStringArray("Chiller")
+
+[sub_resource type="SystemFont" id="SystemFont_xcwll"]
+font_names = PackedStringArray("Chiller")
+
+[sub_resource type="SystemFont" id="SystemFont_gfy38"]
+font_names = PackedStringArray("Chiller")
+
+[sub_resource type="SystemFont" id="SystemFont_5ikro"]
+font_names = PackedStringArray("Chiller")
+
+[node name="StartMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_wrxjg")
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="GlassPanel" type="Panel" parent="Center"]
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="Center/GlassPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -128.0
+offset_top = -203.0
+offset_right = 220.0
+offset_bottom = 238.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+
+[node name="PlayButton" type="Button" parent="Center/GlassPanel/Content"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("SystemFont_pbjr1")
+theme_override_font_sizes/font_size = 46
+text = "Play
+"
+flat = true
+autowrap_mode = 2
+
+[node name="RulesButton" type="Button" parent="Center/GlassPanel/Content"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("SystemFont_xcwll")
+theme_override_font_sizes/font_size = 46
+text = "Rules
+"
+flat = true
+
+[node name="SettingsButton" type="Button" parent="Center/GlassPanel/Content"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("SystemFont_gfy38")
+theme_override_font_sizes/font_size = 51
+text = "Settings
+"
+flat = true
+
+[node name="QuitButton" type="Button" parent="Center/GlassPanel/Content"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("SystemFont_5ikro")
+theme_override_font_sizes/font_size = 46
+text = "Quit
+"
+flat = true
+
+[node name="RulesPopup" type="Window" parent="."]
+position = Vector2i(0, 36)
+
+[node name="RichTextLabel" type="RichTextLabel" parent="RulesPopup"]
+offset_right = 40.0
+offset_bottom = 40.0
+text = "Game Rules"
+
+[node name="Button" type="Button" parent="RulesPopup"]
+offset_right = 8.0
+offset_bottom = 8.0
+text = "Close"
+
+[node name="SettingsPopup" type="Window" parent="."]
+position = Vector2i(0, 36)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="SettingsPopup"]
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="MasterSlider" type="HSlider" parent="SettingsPopup/VBoxContainer"]
+layout_mode = 2
+
+[node name="MusicSlider" type="HSlider" parent="SettingsPopup/VBoxContainer"]
+layout_mode = 2
+
+[node name="SFXSlider" type="HSlider" parent="SettingsPopup/VBoxContainer"]
+layout_mode = 2
+
+[node name="BackButton" type="Button" parent="SettingsPopup/VBoxContainer"]
+layout_mode = 2
+text = "Back"
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_pbjr1")
+expand_mode = 3

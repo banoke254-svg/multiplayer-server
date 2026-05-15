@@ -1,0 +1,101 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://ui/tutorial_scene.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://glass_marble_model.tscn" id="2_marble"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_goal"]
+top_radius = 0.34
+bottom_radius = 0.34
+height = 0.05
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_goal"]
+shading_mode = 0
+transparency = 1
+albedo_color = Color(0.98, 0.76, 0.22, 0.4)
+emission_enabled = true
+emission = Color(1, 0.72, 0.18, 1)
+emission_energy_multiplier = 1.8
+
+[sub_resource type="QuadMesh" id="QuadMesh_floor"]
+size = Vector2(6, 4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
+albedo_color = Color(0.06, 0.08, 0.12, 1)
+roughness = 0.98
+
+[node name="TutorialRoot" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+current = true
+position = Vector3(0, 0.9, 3.0)
+rotation_degrees = Vector3(-8, 0, 0)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-45, 25, 0)
+light_energy = 2.0
+shadow_enabled = false
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("QuadMesh_floor")
+material_override = SubResource("StandardMaterial3D_floor")
+rotation_degrees = Vector3(-90, 0, 0)
+position = Vector3(0, -0.36, 0)
+
+[node name="Marble" parent="." instance=ExtResource("2_marble")]
+position = Vector3(0, -0.1, 0)
+
+[node name="GoalMarker" type="MeshInstance3D" parent="."]
+mesh = SubResource("CylinderMesh_goal")
+material_override = SubResource("StandardMaterial3D_goal")
+position = Vector3(0.95, -0.33, -0.75)
+
+[node name="TutorialUI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="InstructionLabel" type="Label" parent="TutorialUI"]
+layout_mode = 0
+offset_left = 60.0
+offset_top = 42.0
+offset_right = 1220.0
+offset_bottom = 108.0
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+
+[node name="SkipButton" type="Button" parent="TutorialUI"]
+layout_mode = 0
+offset_left = 60.0
+offset_top = 628.0
+offset_right = 240.0
+offset_bottom = 688.0
+text = "Skip"
+
+[node name="StartButton" type="Button" parent="TutorialUI"]
+visible = false
+layout_mode = 0
+offset_left = 1020.0
+offset_top = 628.0
+offset_right = 1220.0
+offset_bottom = 688.0
+text = "Start Game"
+
+[node name="GhostHand" type="TextureRect" parent="TutorialUI"]
+layout_mode = 0
+offset_left = 860.0
+offset_top = 360.0
+offset_right = 932.0
+offset_bottom = 432.0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Arrow" type="TextureRect" parent="TutorialUI"]
+layout_mode = 0
+offset_left = 760.0
+offset_top = 250.0
+offset_right = 856.0
+offset_bottom = 346.0
+expand_mode = 1
+stretch_mode = 5

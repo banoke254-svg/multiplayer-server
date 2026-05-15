@@ -1,0 +1,13 @@
+[room] created public PCSYM
+[room] created public JF284
+[room] created public SQ7FE
+[room] created public MB9JW
+[server] BANO WebSocket server running on port 32123
+[connect] player_b30ffcd0-93fe-4fca-99ca-c3eed1c74428 from 127.0.0.1
+[room] created private EUBJH
+[room] player_b30ffcd0-93fe-4fca-99ca-c3eed1c74428 joined EUBJH (1/2)
+[connect] player_a16b7006-803a-46ac-9674-464173568743 from 127.0.0.1
+[room] player_a16b7006-803a-46ac-9674-464173568743 joined EUBJH (2/2)
+[match] start EUBJH: humans=2, ai=0, reason=room_full
+[disconnect] player_b30ffcd0-93fe-4fca-99ca-c3eed1c74428 code=1006 reason=
+[disconnect] player_a16b7006-803a-46ac-9674-464173568743 code=1006 reason=
