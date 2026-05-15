@@ -37,10 +37,10 @@ const PAYMENT_STATUS_POLL_SECONDS: float = 3.0
 const PAYMENT_STATUS_MAX_POLLS: int = 65
 const GOOGLE_AUTH_DEFAULT_POLL_SECONDS: float = 5.0
 const TERMS_ACCEPTANCE_PATH: String = "user://terms_acceptance.save"
-const TERMS_VERSION: String = "2026-05-15"
-const PAYMENT_TERMS_CHECKBOX_TEXT: String = "I understand that Gold/Coins are digital game currency only, have no real-money value, cannot be withdrawn, and payments/donations are non-refundable."
+const TERMS_VERSION: String = "2026-05-15-email-consent"
+const PAYMENT_TERMS_CHECKBOX_TEXT: String = "I understand that Gold/Coins are digital game currency only, have no real-money value, cannot be withdrawn, payments/donations are non-refundable, and Bano ke may contact me by email or message about this payment, support, account notices, and game updates."
 const PAYMENT_FINAL_NOTICE_TEXT: String = "Check your amount carefully before paying. Donations and digital currency purchases are final and non-refundable."
-const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment terms checkbox before paying."
+const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment and message consent checkbox before paying."
 const TERMS_TEXT: String = """
 Bano ke Terms and Conditions
 
@@ -179,7 +179,7 @@ We do not guarantee uninterrupted access to the Game, multiplayer servers, playe
 
 14. Privacy and Player Data
 
-We may collect player information such as player name, login ID, age, game activity, payment reference, purchase records, device/network information, and server logs.
+We may collect player information such as player name, login ID, age, email address, game activity, payment reference, purchase records, device/network information, and server logs.
 
 We use this information to:
 - operate the Game;
@@ -188,6 +188,7 @@ We use this information to:
 - deliver digital currency;
 - prevent fraud and abuse;
 - respond to support requests;
+- send payment, support, account, and game update messages where you consent;
 - comply with legal and payment provider obligations.
 
 Payment information may also be processed by Paystack or other payment providers according to their own privacy policies.
@@ -288,6 +289,7 @@ var donate_button: Button
 var payment_popup: Window
 var payment_amount_input: LineEdit
 var payment_phone_input: LineEdit
+var payment_email_input: LineEdit
 var payment_terms_checkbox: CheckBox
 var payment_submit_button: Button
 var payment_cancel_button: Button
@@ -1224,7 +1226,7 @@ func _ensure_payment_popup() -> void:
 		add_child(payment_popup)
 
 	payment_popup.title = "Support Bano ke"
-	payment_popup.size = Vector2i(620, 620)
+	payment_popup.size = Vector2i(620, 700)
 	payment_popup.unresizable = true
 	payment_popup.borderless = true
 	payment_popup.transparent_bg = true
@@ -1293,6 +1295,15 @@ func _ensure_payment_popup() -> void:
 	_style_online_line_edit(payment_phone_input, Color(0.31, 0.97, 0.85, 1.0))
 	stack.add_child(payment_phone_input)
 
+	var email_label: Label = _create_settings_label("Email address")
+	stack.add_child(email_label)
+	payment_email_input = LineEdit.new()
+	payment_email_input.placeholder_text = "you@example.com"
+	payment_email_input.max_length = 120
+	payment_email_input.custom_minimum_size = Vector2(0, 48)
+	_style_online_line_edit(payment_email_input, Color(0.82, 0.58, 1.0, 1.0))
+	stack.add_child(payment_email_input)
+
 	var payment_notice_label: Label = _create_settings_label(PAYMENT_FINAL_NOTICE_TEXT)
 	payment_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	payment_notice_label.add_theme_font_size_override("font_size", 13)
@@ -1359,6 +1370,8 @@ func _show_payment_popup() -> void:
 		return
 	payment_amount_input.text = ""
 	payment_phone_input.text = ""
+	if payment_email_input != null:
+		payment_email_input.text = ""
 	if payment_terms_checkbox != null:
 		payment_terms_checkbox.button_pressed = false
 	payment_pending_invoice_id = ""
@@ -1392,11 +1405,15 @@ func _update_payment_preview() -> void:
 func _on_payment_submit_pressed() -> void:
 	var amount: int = _parse_positive_int(payment_amount_input.text if payment_amount_input != null else "")
 	var phone: String = _normalize_mpesa_phone(payment_phone_input.text if payment_phone_input != null else "")
+	var email: String = _normalize_payment_email(payment_email_input.text if payment_email_input != null else "")
 	if amount <= 0:
 		_set_payment_status("Enter a valid KES amount.")
 		return
 	if phone == "":
 		_set_payment_status("Enter a valid Safaricom number.")
+		return
+	if email == "":
+		_set_payment_status("Enter a valid email address.")
 		return
 	if payment_terms_checkbox == null or not payment_terms_checkbox.button_pressed:
 		_set_payment_status(PAYMENT_TERMS_REQUIRED_STATUS)
@@ -1407,12 +1424,14 @@ func _on_payment_submit_pressed() -> void:
 	var payload: Dictionary = {
 		"amount": amount,
 		"phone_number": phone,
+		"email": email,
 		"purpose": purpose,
 		"gold_amount": gold_amount,
 		"player_name": _get_online_local_player_name(),
 		"player_login_id": _get_online_local_player_login_id(),
 		"player_age": _get_online_local_player_age(),
-		"terms_accepted": true
+		"terms_accepted": true,
+		"communication_consent": true
 	}
 	payment_pending_purpose = purpose
 	payment_pending_gold_amount = gold_amount
@@ -1601,6 +1620,21 @@ func _normalize_mpesa_phone(value: String) -> String:
 	if digits.begins_with("254") and digits.length() == 12 and (digits.substr(3, 1) == "7" or digits.substr(3, 1) == "1"):
 		return "+%s" % digits
 	return ""
+
+
+func _normalize_payment_email(value: String) -> String:
+	var email: String = value.strip_edges().to_lower()
+	if email.length() > 120:
+		email = email.substr(0, 120)
+	if email.find(" ") != -1 or email.find("\t") != -1:
+		return ""
+	var at_index: int = email.find("@")
+	if at_index <= 0 or at_index != email.rfind("@"):
+		return ""
+	var domain: String = email.substr(at_index + 1)
+	if domain.length() < 3 or domain.find(".") <= 0 or domain.ends_with("."):
+		return ""
+	return email
 
 
 func _get_payment_server_url(path: String) -> String:

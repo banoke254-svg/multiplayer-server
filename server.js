@@ -1560,9 +1560,14 @@ async function handlePaystackInitializeRequest(request, response) {
   const playerName = sanitizeAdminText(body.player_name, 40);
   const playerLoginId = sanitizeAdminText(body.player_login_id || body.login_id, 40);
   const playerAge = sanitizePositiveInt(body.player_age || body.age, 120);
+  const payerEmail = normalizePaymentEmail(body.email || body.player_email);
   const termsAccepted = isPaymentTermsAccepted(body.terms_accepted)
     || isPaymentTermsAccepted(body.payment_terms_accepted)
     || isPaymentTermsAccepted(body.accepted_terms);
+  const communicationConsent = termsAccepted
+    || isPaymentTermsAccepted(body.communication_consent)
+    || isPaymentTermsAccepted(body.email_messages_accepted)
+    || isPaymentTermsAccepted(body.messages_accepted);
 
   if (amount <= 0) {
     writeJsonResponse(response, 400, { ok: false, error: 'Enter a valid KES amount.' });
@@ -1580,12 +1585,17 @@ async function handlePaystackInitializeRequest(request, response) {
   }
 
   if (!termsAccepted) {
-    writeJsonResponse(response, 400, { ok: false, error: 'Tick the payment terms checkbox before paying.' });
+    writeJsonResponse(response, 400, { ok: false, error: 'Tick the payment and message consent checkbox before paying.' });
+    return;
+  }
+
+  if (purpose === 'donation' && !payerEmail) {
+    writeJsonResponse(response, 400, { ok: false, error: 'Enter a valid email address before donating.' });
     return;
   }
 
   const apiRef = createPaymentRef(purpose);
-  const email = normalizePaymentEmail(body.email) || createPaystackFallbackEmail(apiRef);
+  const email = payerEmail || createPaystackFallbackEmail(apiRef);
   const payload = {
     amount: String(amount * 100),
     currency: 'KES',
@@ -1600,9 +1610,11 @@ async function handlePaystackInitializeRequest(request, response) {
       player_login_id: playerLoginId,
       player_age: playerAge,
       phone_number: phoneNumber,
+      email: payerEmail,
       purpose,
       gold_amount: goldAmount,
-      terms_accepted: termsAccepted
+      terms_accepted: termsAccepted,
+      communication_consent: communicationConsent
     }
   };
 
@@ -1616,10 +1628,12 @@ async function handlePaystackInitializeRequest(request, response) {
       player_login_id: playerLoginId,
       player_age: playerAge,
       phone_number: phoneNumber,
+      email: payerEmail,
       purpose,
       amount,
       gold_amount: goldAmount,
       terms_accepted: termsAccepted,
+      communication_consent: communicationConsent,
       state: extractPaystackState(providerResponse) || 'PENDING',
       provider_response: providerResponse
     });
@@ -1631,6 +1645,7 @@ async function handlePaystackInitializeRequest(request, response) {
       amount,
       gold_amount: goldAmount,
       terms_accepted: termsAccepted,
+      communication_consent: communicationConsent,
       invoice_id: invoiceId,
       access_code: providerResponse && providerResponse.data ? providerResponse.data.access_code || '' : '',
       provider_message: providerResponse && providerResponse.data ? providerResponse.data.display_text || providerResponse.data.message || '' : '',
@@ -1648,10 +1663,12 @@ async function handlePaystackInitializeRequest(request, response) {
       player_login_id: playerLoginId,
       player_age: playerAge,
       phone_number: phoneNumber,
+      email: payerEmail,
       purpose,
       amount,
       gold_amount: goldAmount,
       terms_accepted: termsAccepted,
+      communication_consent: communicationConsent,
       state: 'FAILED'
     });
     writeJsonResponse(response, error.statusCode || 502, {
@@ -2003,6 +2020,7 @@ function serializePlayerProfile(profile) {
     player_age: sanitizePositiveInt(profile.player_age, 120),
     created_at: profile.created_at || 0,
     updated_at: profile.updated_at || 0,
+    last_seen_at: profile.last_seen_at || 0,
     progress: sanitizeProfileProgress(profile.progress || {})
   };
 }
@@ -2124,7 +2142,8 @@ function loadPlayerProfiles() {
         player_age: sanitizePositiveInt(profile.player_age, 120),
         progress: sanitizeProfileProgress(profile.progress || {}),
         created_at: Number(profile.created_at || Date.now()),
-        updated_at: Number(profile.updated_at || Date.now())
+        updated_at: Number(profile.updated_at || Date.now()),
+        last_seen_at: Number(profile.last_seen_at || 0)
       });
     });
   } catch (error) {
@@ -2157,10 +2176,12 @@ function recordPayment(record) {
     player_login_id: sanitizeAdminText(record.player_login_id, 40),
     player_age: sanitizePositiveInt(record.player_age, 120),
     phone_number: sanitizeAdminText(record.phone_number, 20),
+    email: normalizePaymentEmail(record.email),
     purpose: sanitizePaymentPurpose(record.purpose),
     amount: Math.max(Math.trunc(Number(record.amount || 0)), 0),
     gold_amount: Math.max(Math.trunc(Number(record.gold_amount || 0)), 0),
     terms_accepted: Boolean(record.terms_accepted),
+    communication_consent: Boolean(record.communication_consent),
     state: sanitizeAdminText(record.state || 'PENDING', 30).toUpperCase(),
     created_at: now,
     updated_at: now
@@ -2346,6 +2367,7 @@ function handleMessage(client, data, socket) {
 
   const previousName = client.name;
   const previousLoginId = client.login_id;
+  const previousAge = client.age;
 
   if (typeof message.name === 'string' && message.name.trim() !== '') {
     client.name = message.name.trim().slice(0, 24);
@@ -2357,7 +2379,11 @@ function handleMessage(client, data, socket) {
     }
   }
   updateClientProfileNumbers(client, message);
-  const identityChanged = client.name !== previousName || client.login_id !== previousLoginId;
+  const identityChanged = client.name !== previousName || client.login_id !== previousLoginId || client.age !== previousAge;
+
+  if (identityChanged) {
+    persistClientPlayerInfo(client);
+  }
 
   switch (message.type) {
     case 'resume_session':
@@ -2484,6 +2510,7 @@ function resumeSession(tempClient, socket, sessionToken, name, loginId, profileP
     }
   }
   updateClientProfileNumbers(existingClient, profilePayload);
+  persistClientPlayerInfo(existingClient);
 
   sendJson(existingClient, {
     type: 'session_resumed',
@@ -2525,6 +2552,44 @@ function updateClientProfileNumbers(client, source) {
   if (Number.isFinite(goldBalance) && goldBalance >= 0) {
     client.gold_balance = goldBalance;
   }
+}
+
+function persistClientPlayerInfo(client) {
+  if (!client) {
+    return;
+  }
+  const loginId = sanitizeAdminText(client.login_id, 40);
+  if (!loginId) {
+    return;
+  }
+
+  const now = Date.now();
+  const provider = loginId.startsWith('google:') ? 'google' : 'guest';
+  const existing = playerProfilesByLoginId.get(loginId) || {
+    login_id: loginId,
+    provider,
+    created_at: now,
+    progress: {}
+  };
+
+  existing.login_id = loginId;
+  existing.provider = existing.provider || provider;
+  if (provider === 'google') {
+    existing.provider = 'google';
+  }
+  const cleanName = sanitizeAdminText(client.name, 40);
+  if (cleanName) {
+    existing.name = cleanName;
+  }
+  const cleanAge = sanitizePositiveInt(client.age, 120);
+  if (cleanAge > 0) {
+    existing.player_age = cleanAge;
+  }
+  existing.updated_at = now;
+  existing.last_seen_at = now;
+
+  playerProfilesByLoginId.set(loginId, existing);
+  savePlayerProfiles();
 }
 
 function handleDisconnect(client, socket, code, reason) {

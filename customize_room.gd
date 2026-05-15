@@ -149,9 +149,9 @@ const SHOWROOM_RIGHT_SPOT_POSITION := Vector3(3.1, 5.45, 1.55)
 const SHOWROOM_RIGHT_SPOT_TARGET := Vector3(2.8, 2.55, -0.6)
 const PAYSTACK_INITIALIZE_ENDPOINT_PATH: String = "/payments/paystack/initialize"
 const PAYSTACK_STATUS_ENDPOINT_PATH: String = "/payments/paystack/status"
-const PAYMENT_TERMS_CHECKBOX_TEXT: String = "I understand that Gold/Coins are digital game currency only, have no real-money value, cannot be withdrawn, and payments/donations are non-refundable."
+const PAYMENT_TERMS_CHECKBOX_TEXT: String = "I understand that Gold/Coins are digital game currency only, have no real-money value, cannot be withdrawn, payments/donations are non-refundable, and Bano ke may contact me by email or message about this payment, support, account notices, and game updates."
 const PAYMENT_FINAL_NOTICE_TEXT: String = "Check your amount carefully before paying. Donations and digital currency purchases are final and non-refundable."
-const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment terms checkbox before paying."
+const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment and message consent checkbox before paying."
 const STORE_GOLD_POUCH_TEXTURE_PATH: String = "res://ui/store/gold_pouch.png"
 const STORE_GOLD_BOX_TEXTURE_PATH: String = "res://ui/store/gold_box.png"
 const STORE_GOLD_CHEST_TEXTURE_PATH: String = "res://ui/store/gold_chest.png"
@@ -1587,7 +1587,7 @@ func _ensure_gold_payment_popup() -> void:
 		gold_payment_popup = Window.new()
 		gold_payment_popup.name = "GoldPaymentPopup"
 		gold_payment_popup.title = "Buy Gold"
-		gold_payment_popup.size = Vector2i(620, 560)
+		gold_payment_popup.size = Vector2i(620, 610)
 		gold_payment_popup.unresizable = true
 		gold_payment_popup.borderless = true
 		gold_payment_popup.transparent_bg = true
@@ -1712,7 +1712,8 @@ func _on_gold_payment_send_pressed() -> void:
 		"purpose": "gold",
 		"gold_amount": gold_payment_selected_amount,
 		"player_name": "Player",
-		"terms_accepted": true
+		"terms_accepted": true,
+		"communication_consent": true
 	}
 	var headers: PackedStringArray = PackedStringArray([
 		"Content-Type: application/json"
