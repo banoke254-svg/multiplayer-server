@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://5d80vg5xnqkv" path="res://camera_3d.gd" id="2_h2yge"]
 [ext_resource type="Script" uid="uid://c38gy8ix4abjn" path="res://camera_rig.gd" id="3_272bh"]
 [ext_resource type="Script" uid="uid://civj2wsu6kxke" path="res://ai_marble1.gd" id="6_efxa6"]
-[ext_resource type="PackedScene" uid="uid://x6npgdo8j2ky" path="res://BANO WRITTING.tscn" id="7_272bh"]
+[ext_resource type="PackedScene" uid="uid://x6npgdo8j2ky" path="res://Bano ke writing.tscn" id="7_272bh"]
 [ext_resource type="PackedScene" uid="uid://dfs5sm1c6te4r" path="res://path_indicator.tscn" id="8_5vw27"]
 [ext_resource type="Script" uid="uid://c0ap8n6ki0rdm" path="res://turn_manager.gd" id="8_dg77c"]
 [ext_resource type="Script" uid="uid://cs0r8778y3y6b" path="res://ai_marble2.gd" id="8_ycdy4"]

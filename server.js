@@ -16,6 +16,13 @@ const ADMIN_HTML_PATH = fs.existsSync(path.join(__dirname, 'admin.html'))
   : path.join(__dirname, 'multiplayer_server', 'admin.html');
 const PAYSTACK_SECRET_KEY = sanitizeSecretKey(process.env.PAYSTACK_SECRET_KEY || '');
 const PAYSTACK_API_HOST = 'api.paystack.co';
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+const GOOGLE_DEVICE_SCOPE = String(process.env.GOOGLE_DEVICE_SCOPE || 'email profile').trim();
+const GOOGLE_API_HOST = 'oauth2.googleapis.com';
+const GOOGLE_DEVICE_CODE_PATH = '/device/code';
+const GOOGLE_TOKEN_PATH = '/token';
+const PROFILE_STORE_PATH = process.env.PROFILE_STORE_PATH || path.join(__dirname, 'player_profiles.json');
 const GOLD_PACK_TIERS = new Map([
   [100, 10],
   [175, 30],
@@ -28,6 +35,8 @@ const MAX_PAYLOAD_BYTES = 32 * 1024;
 const REALTIME_FLUSH_INTERVAL_MS = Math.max(Number.parseInt(process.env.REALTIME_FLUSH_INTERVAL_MS || '33', 10), 16);
 const MAX_SOCKET_BUFFERED_BYTES = Math.max(Number.parseInt(process.env.MAX_SOCKET_BUFFERED_BYTES || String(256 * 1024), 10), 64 * 1024);
 const MAX_OUTBOUND_QUEUE_MESSAGES = Math.max(Number.parseInt(process.env.MAX_OUTBOUND_QUEUE_MESSAGES || '128', 10), 16);
+const PROFILE_AUTH_SESSION_TTL_MS = Math.max(Number.parseInt(process.env.PROFILE_AUTH_SESSION_TTL_MS || String(7 * 24 * 60 * 60 * 1000), 10), 60 * 60 * 1000);
+const PROFILE_AUTH_CLEANUP_INTERVAL_MS = Math.max(Number.parseInt(process.env.PROFILE_AUTH_CLEANUP_INTERVAL_MS || String(60 * 60 * 1000), 10), 60 * 1000);
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CLIENT_INPUT_MESSAGES = new Set([
   'remote_player_aim',
@@ -51,6 +60,10 @@ const sessionsByToken = new Map();
 const rooms = new Map();
 const paymentRecordsByInvoiceId = new Map();
 const paymentRecords = [];
+const playerProfilesByLoginId = new Map();
+const authSessionsByToken = new Map();
+
+loadPlayerProfiles();
 
 function createSocialSets() {
   return {
@@ -1218,6 +1231,30 @@ const httpServer = http.createServer(async (request, response) => {
 
   if (
     request.method === 'POST'
+    && requestUrl.pathname === '/auth/google/device/start'
+  ) {
+    await handleGoogleDeviceStartRequest(request, response);
+    return;
+  }
+
+  if (
+    request.method === 'POST'
+    && requestUrl.pathname === '/auth/google/device/poll'
+  ) {
+    await handleGoogleDevicePollRequest(request, response);
+    return;
+  }
+
+  if (
+    request.method === 'POST'
+    && requestUrl.pathname === '/profiles/save'
+  ) {
+    await handleProfileSaveRequest(request, response);
+    return;
+  }
+
+  if (
+    request.method === 'POST'
     && requestUrl.pathname === '/payments/paystack/initialize'
   ) {
     await handlePaystackInitializeRequest(request, response);
@@ -1241,7 +1278,7 @@ const httpServer = http.createServer(async (request, response) => {
   }
 
   response.writeHead(200, { 'Content-Type': 'text/plain' });
-  response.end('BANO dedicated party server is running.');
+  response.end('Bano ke dedicated party server is running.');
 });
 
 function isAdminRequestAuthorized(request, requestUrl) {
@@ -1349,8 +1386,154 @@ function sanitizePaymentPurpose(value) {
   return String(value || '').toLowerCase() === 'gold' ? 'gold' : 'donation';
 }
 
+function isPaymentTermsAccepted(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return value === true || value === 1 || normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
 function createPaymentRef(purpose) {
-  return `bano-${purpose}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  return `bano-ke-${purpose}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+}
+
+async function handleGoogleDeviceStartRequest(_request, response) {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    writeJsonResponse(response, 503, {
+      ok: false,
+      error: 'Google login is not configured on the server.'
+    });
+    return;
+  }
+
+  try {
+    const providerResponse = await postGoogleForm(GOOGLE_DEVICE_CODE_PATH, {
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_DEVICE_SCOPE || 'email profile'
+    });
+
+    writeJsonResponse(response, 200, {
+      ok: true,
+      device_code: providerResponse.device_code || '',
+      user_code: providerResponse.user_code || '',
+      verification_url: providerResponse.verification_url || 'https://www.google.com/device',
+      expires_in: Number(providerResponse.expires_in || 1800),
+      interval: Number(providerResponse.interval || 5)
+    });
+  } catch (error) {
+    writeJsonResponse(response, error.statusCode || 502, {
+      ok: false,
+      error: error.message || 'Could not start Google login.'
+    });
+  }
+}
+
+async function handleGoogleDevicePollRequest(request, response) {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    writeJsonResponse(response, 503, {
+      ok: false,
+      error: 'Google login is not configured on the server.'
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonRequest(request);
+  } catch (error) {
+    writeJsonResponse(response, 400, { ok: false, error: error.message });
+    return;
+  }
+
+  const deviceCode = sanitizeAdminText(body.device_code, 220);
+  if (!deviceCode) {
+    writeJsonResponse(response, 400, { ok: false, error: 'Missing Google device code.' });
+    return;
+  }
+
+  try {
+    const providerResponse = await postGoogleForm(GOOGLE_TOKEN_PATH, {
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      code: deviceCode,
+      grant_type: 'http://oauth.net/grant_type/device/1.0'
+    });
+    const claims = validateGoogleIdToken(providerResponse.id_token || '');
+    const profile = upsertGoogleProfile(claims);
+    const authToken = createProfileAuthSession(profile.login_id);
+    writeJsonResponse(response, 200, {
+      ok: true,
+      status: 'complete',
+      auth_token: authToken,
+      profile: serializePlayerProfile(profile)
+    });
+  } catch (error) {
+    const providerError = String(error.providerError || error.error || '').trim();
+    if (providerError === 'authorization_pending' || providerError === 'slow_down') {
+      writeJsonResponse(response, 200, {
+        ok: true,
+        status: providerError,
+        pending: true,
+        interval: providerError === 'slow_down' ? 8 : 5
+      });
+      return;
+    }
+    if (providerError === 'expired_token') {
+      writeJsonResponse(response, 410, {
+        ok: false,
+        error: 'Google login expired. Start again.'
+      });
+      return;
+    }
+    if (providerError === 'access_denied') {
+      writeJsonResponse(response, 403, {
+        ok: false,
+        error: 'Google login was cancelled.'
+      });
+      return;
+    }
+    writeJsonResponse(response, error.statusCode || 502, {
+      ok: false,
+      error: error.message || 'Could not finish Google login.'
+    });
+  }
+}
+
+async function handleProfileSaveRequest(request, response) {
+  let body;
+  try {
+    body = await readJsonRequest(request);
+  } catch (error) {
+    writeJsonResponse(response, 400, { ok: false, error: error.message });
+    return;
+  }
+
+  const session = getProfileAuthSession(body.auth_token);
+  if (!session) {
+    writeJsonResponse(response, 401, { ok: false, error: 'Sign in with Google before syncing progress.' });
+    return;
+  }
+
+  const profile = playerProfilesByLoginId.get(session.login_id);
+  if (!profile) {
+    writeJsonResponse(response, 404, { ok: false, error: 'Player profile was not found.' });
+    return;
+  }
+
+  const playerName = sanitizeAdminText(body.name || body.player_name, 40);
+  if (playerName) {
+    profile.name = playerName;
+  }
+  const playerAge = sanitizePositiveInt(body.player_age || body.age, 120);
+  if (playerAge > 0) {
+    profile.player_age = playerAge;
+  }
+  profile.progress = mergeProfileProgress(profile.progress || {}, sanitizeProfileProgress(body.progress || {}));
+  profile.updated_at = Date.now();
+  savePlayerProfiles();
+
+  writeJsonResponse(response, 200, {
+    ok: true,
+    profile: serializePlayerProfile(profile)
+  });
 }
 
 async function handlePaystackInitializeRequest(request, response) {
@@ -1377,6 +1560,9 @@ async function handlePaystackInitializeRequest(request, response) {
   const playerName = sanitizeAdminText(body.player_name, 40);
   const playerLoginId = sanitizeAdminText(body.player_login_id || body.login_id, 40);
   const playerAge = sanitizePositiveInt(body.player_age || body.age, 120);
+  const termsAccepted = isPaymentTermsAccepted(body.terms_accepted)
+    || isPaymentTermsAccepted(body.payment_terms_accepted)
+    || isPaymentTermsAccepted(body.accepted_terms);
 
   if (amount <= 0) {
     writeJsonResponse(response, 400, { ok: false, error: 'Enter a valid KES amount.' });
@@ -1390,6 +1576,11 @@ async function handlePaystackInitializeRequest(request, response) {
 
   if (!phoneNumber) {
     writeJsonResponse(response, 400, { ok: false, error: 'Enter a valid Safaricom phone number.' });
+    return;
+  }
+
+  if (!termsAccepted) {
+    writeJsonResponse(response, 400, { ok: false, error: 'Tick the payment terms checkbox before paying.' });
     return;
   }
 
@@ -1410,7 +1601,8 @@ async function handlePaystackInitializeRequest(request, response) {
       player_age: playerAge,
       phone_number: phoneNumber,
       purpose,
-      gold_amount: goldAmount
+      gold_amount: goldAmount,
+      terms_accepted: termsAccepted
     }
   };
 
@@ -1427,6 +1619,7 @@ async function handlePaystackInitializeRequest(request, response) {
       purpose,
       amount,
       gold_amount: goldAmount,
+      terms_accepted: termsAccepted,
       state: extractPaystackState(providerResponse) || 'PENDING',
       provider_response: providerResponse
     });
@@ -1437,6 +1630,7 @@ async function handlePaystackInitializeRequest(request, response) {
       purpose,
       amount,
       gold_amount: goldAmount,
+      terms_accepted: termsAccepted,
       invoice_id: invoiceId,
       access_code: providerResponse && providerResponse.data ? providerResponse.data.access_code || '' : '',
       provider_message: providerResponse && providerResponse.data ? providerResponse.data.display_text || providerResponse.data.message || '' : '',
@@ -1457,6 +1651,7 @@ async function handlePaystackInitializeRequest(request, response) {
       purpose,
       amount,
       gold_amount: goldAmount,
+      terms_accepted: termsAccepted,
       state: 'FAILED'
     });
     writeJsonResponse(response, error.statusCode || 502, {
@@ -1643,6 +1838,316 @@ function createPaystackFallbackEmail(reference) {
   return `player+${String(reference || crypto.randomUUID()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 48)}@example.com`;
 }
 
+function postGoogleForm(requestPath, form) {
+  const body = new URLSearchParams(form).toString();
+  const options = {
+    method: 'POST',
+    hostname: GOOGLE_API_HOST,
+    path: requestPath,
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Length': Buffer.byteLength(body)
+    },
+    timeout: 20000
+  };
+
+  return new Promise((resolve, reject) => {
+    const providerRequest = https.request(options, (providerResponse) => {
+      let responseText = '';
+
+      providerResponse.on('data', (chunk) => {
+        responseText += chunk.toString('utf8');
+      });
+
+      providerResponse.on('end', () => {
+        let parsed = {};
+        try {
+          parsed = responseText ? JSON.parse(responseText) : {};
+        } catch (error) {
+          const parseError = new Error('Google did not return JSON.');
+          parseError.statusCode = providerResponse.statusCode;
+          reject(parseError);
+          return;
+        }
+
+        if (providerResponse.statusCode < 200 || providerResponse.statusCode >= 300) {
+          const providerError = String(parsed.error || '').trim();
+          const message = parsed.error_description || parsed.error || `Google returned ${providerResponse.statusCode}.`;
+          const error = new Error(message);
+          error.statusCode = providerResponse.statusCode;
+          error.providerError = providerError;
+          reject(error);
+          return;
+        }
+
+        resolve(parsed);
+      });
+    });
+
+    providerRequest.on('error', reject);
+    providerRequest.on('timeout', () => {
+      providerRequest.destroy(new Error('Google request timed out.'));
+    });
+    providerRequest.write(body);
+    providerRequest.end();
+  });
+}
+
+function validateGoogleIdToken(idToken) {
+  const claims = decodeJwtPayload(idToken);
+  const issuer = String(claims.iss || '');
+  const audience = String(claims.aud || '');
+  const subject = String(claims.sub || '').trim();
+  const expiresAt = Number(claims.exp || 0);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  if (!subject) {
+    throw new Error('Google did not return a profile id.');
+  }
+  if (audience !== GOOGLE_CLIENT_ID) {
+    throw new Error('Google login audience did not match this server.');
+  }
+  if (issuer !== 'accounts.google.com' && issuer !== 'https://accounts.google.com') {
+    throw new Error('Google login issuer was not trusted.');
+  }
+  if (!Number.isFinite(expiresAt) || expiresAt <= nowSeconds) {
+    throw new Error('Google login token expired.');
+  }
+
+  return claims;
+}
+
+function decodeJwtPayload(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) {
+    throw new Error('Google did not return an identity token.');
+  }
+  const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+  const paddedPayload = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+  return JSON.parse(Buffer.from(paddedPayload, 'base64').toString('utf8'));
+}
+
+function upsertGoogleProfile(claims) {
+  const googleSub = sanitizeAdminText(claims.sub, 64);
+  const loginId = `google:${googleSub}`.slice(0, 40);
+  const now = Date.now();
+  const existing = playerProfilesByLoginId.get(loginId) || {
+    login_id: loginId,
+    provider: 'google',
+    google_sub: googleSub,
+    created_at: now,
+    progress: {}
+  };
+
+  existing.provider = 'google';
+  existing.google_sub = googleSub;
+  existing.name = sanitizeAdminText(claims.name || claims.given_name || existing.name || 'Google Player', 40);
+  existing.email = sanitizeAdminText(claims.email || existing.email || '', 120);
+  existing.email_verified = Boolean(claims.email_verified);
+  existing.picture = sanitizeAdminText(claims.picture || existing.picture || '', 240);
+  existing.updated_at = now;
+
+  playerProfilesByLoginId.set(loginId, existing);
+  savePlayerProfiles();
+  return existing;
+}
+
+function createProfileAuthSession(loginId) {
+  const now = Date.now();
+  const token = crypto.randomBytes(24).toString('hex');
+  authSessionsByToken.set(token, {
+    login_id: loginId,
+    created_at: now,
+    last_seen_at: now,
+    expires_at: now + PROFILE_AUTH_SESSION_TTL_MS
+  });
+  return token;
+}
+
+function getProfileAuthSession(token) {
+  const cleanToken = String(token || '').trim();
+  if (!cleanToken) {
+    return null;
+  }
+  const session = authSessionsByToken.get(cleanToken);
+  if (!session) {
+    return null;
+  }
+  const now = Date.now();
+  if (Number(session.expires_at || 0) <= now) {
+    authSessionsByToken.delete(cleanToken);
+    return null;
+  }
+  session.last_seen_at = now;
+  return session;
+}
+
+function cleanupProfileAuthSessions() {
+  const now = Date.now();
+  authSessionsByToken.forEach((session, token) => {
+    if (Number(session.expires_at || 0) <= now) {
+      authSessionsByToken.delete(token);
+    }
+  });
+}
+
+function serializePlayerProfile(profile) {
+  return {
+    login_id: profile.login_id || '',
+    provider: profile.provider || '',
+    google_sub: profile.google_sub || '',
+    name: profile.name || '',
+    email: profile.email || '',
+    email_verified: Boolean(profile.email_verified),
+    picture: profile.picture || '',
+    player_age: sanitizePositiveInt(profile.player_age, 120),
+    created_at: profile.created_at || 0,
+    updated_at: profile.updated_at || 0,
+    progress: sanitizeProfileProgress(profile.progress || {})
+  };
+}
+
+function sanitizeProfileProgress(progress) {
+  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) {
+    return {};
+  }
+
+  const cleanProgress = {};
+  copyCleanString(progress, cleanProgress, 'selected_marble_id', 80);
+  copyCleanString(progress, cleanProgress, 'selected_trail_id', 80);
+  copyCleanString(progress, cleanProgress, 'selected_field_id', 80);
+  copyCleanNumber(progress, cleanProgress, 'shoot_sensitivity', 0.5, 1.5);
+  if (typeof progress.aim_inverted === 'boolean') {
+    cleanProgress.aim_inverted = progress.aim_inverted;
+  }
+  copyCleanString(progress, cleanProgress, 'shooting_mechanic', 24);
+  cleanProgress.unlocked_marble_ids = sanitizeStringArray(progress.unlocked_marble_ids, 220, 80);
+  cleanProgress.unlocked_field_ids = sanitizeStringArray(progress.unlocked_field_ids, 120, 80);
+  cleanProgress.leaderboard_wins = sanitizeWinsDictionary(progress.leaderboard_wins);
+  cleanProgress.leaderboard_names = sanitizeNamesDictionary(progress.leaderboard_names);
+  return cleanProgress;
+}
+
+function mergeProfileProgress(existingProgress, nextProgress) {
+  const existing = sanitizeProfileProgress(existingProgress);
+  const next = sanitizeProfileProgress(nextProgress);
+  const merged = Object.assign({}, existing, next);
+  merged.unlocked_marble_ids = Array.from(new Set([].concat(existing.unlocked_marble_ids || [], next.unlocked_marble_ids || [])));
+  merged.unlocked_field_ids = Array.from(new Set([].concat(existing.unlocked_field_ids || [], next.unlocked_field_ids || [])));
+  merged.leaderboard_wins = Object.assign({}, existing.leaderboard_wins || {});
+  Object.entries(next.leaderboard_wins || {}).forEach(([key, wins]) => {
+    merged.leaderboard_wins[key] = Math.max(Number(merged.leaderboard_wins[key] || 0), Number(wins || 0));
+  });
+  merged.leaderboard_names = Object.assign({}, existing.leaderboard_names || {}, next.leaderboard_names || {});
+  return merged;
+}
+
+function copyCleanString(source, target, key, maxLength) {
+  const value = sanitizeAdminText(source[key], maxLength);
+  if (value) {
+    target[key] = value;
+  }
+}
+
+function copyCleanNumber(source, target, key, minValue, maxValue) {
+  const value = Number(source[key]);
+  if (Number.isFinite(value)) {
+    target[key] = Math.min(Math.max(value, minValue), maxValue);
+  }
+}
+
+function sanitizeStringArray(value, maxItems, maxLength) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const entries = [];
+  value.slice(0, maxItems).forEach((item) => {
+    const cleanItem = sanitizeAdminText(item, maxLength);
+    if (cleanItem && !entries.includes(cleanItem)) {
+      entries.push(cleanItem);
+    }
+  });
+  return entries;
+}
+
+function sanitizeWinsDictionary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const clean = {};
+  Object.keys(value).slice(0, 200).forEach((key) => {
+    const cleanKey = sanitizeAdminText(key, 80);
+    const wins = Math.max(Math.trunc(Number(value[key] || 0)), 0);
+    if (cleanKey && wins > 0) {
+      clean[cleanKey] = Math.min(wins, 1000000);
+    }
+  });
+  return clean;
+}
+
+function sanitizeNamesDictionary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const clean = {};
+  Object.keys(value).slice(0, 200).forEach((key) => {
+    const cleanKey = sanitizeAdminText(key, 80);
+    const cleanName = sanitizeAdminText(value[key], 40);
+    if (cleanKey && cleanName) {
+      clean[cleanKey] = cleanName;
+    }
+  });
+  return clean;
+}
+
+function loadPlayerProfiles() {
+  if (!PROFILE_STORE_PATH || !fs.existsSync(PROFILE_STORE_PATH)) {
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(PROFILE_STORE_PATH, 'utf8'));
+    const profiles = Array.isArray(parsed.profiles) ? parsed.profiles : [];
+    profiles.forEach((profile) => {
+      const loginId = sanitizeAdminText(profile.login_id, 40);
+      if (!loginId) {
+        return;
+      }
+      playerProfilesByLoginId.set(loginId, {
+        login_id: loginId,
+        provider: sanitizeAdminText(profile.provider || 'google', 24),
+        google_sub: sanitizeAdminText(profile.google_sub, 64),
+        name: sanitizeAdminText(profile.name || 'Google Player', 40),
+        email: sanitizeAdminText(profile.email, 120),
+        email_verified: Boolean(profile.email_verified),
+        picture: sanitizeAdminText(profile.picture, 240),
+        player_age: sanitizePositiveInt(profile.player_age, 120),
+        progress: sanitizeProfileProgress(profile.progress || {}),
+        created_at: Number(profile.created_at || Date.now()),
+        updated_at: Number(profile.updated_at || Date.now())
+      });
+    });
+  } catch (error) {
+    console.warn(`[profiles] could not load ${PROFILE_STORE_PATH}: ${error.message}`);
+  }
+}
+
+function savePlayerProfiles() {
+  try {
+    const profileStoreDirectory = path.dirname(PROFILE_STORE_PATH);
+    if (profileStoreDirectory && profileStoreDirectory !== '.') {
+      fs.mkdirSync(profileStoreDirectory, { recursive: true });
+    }
+    fs.writeFileSync(PROFILE_STORE_PATH, JSON.stringify({
+      version: 1,
+      updated_at: Date.now(),
+      profiles: Array.from(playerProfilesByLoginId.values()).map(serializePlayerProfile)
+    }, null, 2));
+  } catch (error) {
+    console.warn(`[profiles] could not save ${PROFILE_STORE_PATH}: ${error.message}`);
+  }
+}
+
 function recordPayment(record) {
   const now = Date.now();
   const cleanRecord = {
@@ -1655,6 +2160,7 @@ function recordPayment(record) {
     purpose: sanitizePaymentPurpose(record.purpose),
     amount: Math.max(Math.trunc(Number(record.amount || 0)), 0),
     gold_amount: Math.max(Math.trunc(Number(record.gold_amount || 0)), 0),
+    terms_accepted: Boolean(record.terms_accepted),
     state: sanitizeAdminText(record.state || 'PENDING', 30).toUpperCase(),
     created_at: now,
     updated_at: now
@@ -1783,8 +2289,10 @@ const outboundFlushTimer = setInterval(() => {
   });
 }, REALTIME_FLUSH_INTERVAL_MS);
 
+const profileAuthCleanupTimer = setInterval(cleanupProfileAuthSessions, PROFILE_AUTH_CLEANUP_INTERVAL_MS);
+
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`[server] BANO WebSocket server running on port ${PORT}`);
+  console.log(`[server] Bano ke WebSocket server running on port ${PORT}`);
 });
 
 process.on('SIGINT', shutdown);
@@ -2250,6 +2758,7 @@ function shutdown() {
   console.log('[server] shutting down');
   clearInterval(heartbeatTimer);
   clearInterval(outboundFlushTimer);
+  clearInterval(profileAuthCleanupTimer);
 
   websocketServer.clients.forEach((socket) => {
     if (socket.readyState === WebSocket.OPEN) {

@@ -30,56 +30,204 @@ const ONLINE_CHAT_BUTTON_OFFSET := Vector2(24.0, 92.0)
 const ONLINE_CHAT_BUTTON_DRAG_THRESHOLD: float = 8.0
 const PAYSTACK_INITIALIZE_ENDPOINT_PATH: String = "/payments/paystack/initialize"
 const PAYSTACK_STATUS_ENDPOINT_PATH: String = "/payments/paystack/status"
+const GOOGLE_AUTH_START_ENDPOINT_PATH: String = "/auth/google/device/start"
+const GOOGLE_AUTH_POLL_ENDPOINT_PATH: String = "/auth/google/device/poll"
+const GOOGLE_PROFILE_SAVE_ENDPOINT_PATH: String = "/profiles/save"
 const PAYMENT_STATUS_POLL_SECONDS: float = 3.0
 const PAYMENT_STATUS_MAX_POLLS: int = 65
+const GOOGLE_AUTH_DEFAULT_POLL_SECONDS: float = 5.0
 const TERMS_ACCEPTANCE_PATH: String = "user://terms_acceptance.save"
-const TERMS_VERSION: String = "2026-05-12"
+const TERMS_VERSION: String = "2026-05-15"
+const PAYMENT_TERMS_CHECKBOX_TEXT: String = "I understand that Gold/Coins are digital game currency only, have no real-money value, cannot be withdrawn, and payments/donations are non-refundable."
+const PAYMENT_FINAL_NOTICE_TEXT: String = "Check your amount carefully before paying. Donations and digital currency purchases are final and non-refundable."
+const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment terms checkbox before paying."
 const TERMS_TEXT: String = """
-BANO TERMS AND CONDITIONS
-Effective date: May 12, 2026
+Bano ke Terms and Conditions
 
-Please read these Terms carefully before playing BANO. By creating a player name, playing the game, joining online features, donating, or buying Gold, you agree to these Terms.
+These Terms and Conditions apply to your access and use of Bano ke ("the Game", "we", "us", or "our"), including online multiplayer features, player accounts, donations, and purchases of digital game currency or digital items.
 
-1. The Game
-BANO is a marble game with local gameplay, online party features, chat, customization, virtual currency, donations, and optional paid Gold packs. Features may change, be added, removed, paused, or updated at any time to improve the game, fix issues, comply with law, or protect players.
+By using the Game, creating a player profile, making a payment, or receiving any digital game currency, you agree to these Terms.
 
-2. Player Name and Account Data
-Your player name is used to identify you in the game, online parties, chat, and related game features. You must not use a name that is abusive, hateful, obscene, misleading, impersonates another person, infringes someone else's rights, or encourages harm. We may rename, restrict, suspend, or block access where needed to protect the game or other players.
+1. About the Game
 
-3. Online Play and Conduct
-Online features are provided as-is and may depend on your device, internet connection, servers, third-party services, and other players. You agree not to cheat, exploit bugs, harass others, spam chat, threaten people, upload harmful content, interfere with servers, reverse engineer online systems, or use the game for illegal activity. Online access may be limited, suspended, or removed for rule-breaking, technical reasons, or safety reasons.
+Bano ke is an entertainment game. The Game may include online multiplayer features, player profiles, leaderboards, digital currency, digital items, and optional payment features.
 
-4. Chat and Player Content
-Messages, names, and other content you submit are your responsibility. Do not share private information, payment credentials, passwords, or sensitive personal details in chat. We may moderate, filter, remove, or restrict content where we believe it is harmful, unlawful, abusive, fraudulent, or disruptive.
+The Game is provided for personal entertainment only. It is not a gambling service, betting service, investment service, financial service, banking service, money transfer service, or real-money earning platform.
 
-5. Virtual Currency and Items
-Gold, S coins, marbles, trails, fields, cosmetics, unlocks, and other in-game items are virtual content. They are licensed for use inside BANO only. They are not money, not stored value, not property, and cannot be sold, traded, transferred, redeemed, or exchanged for cash or real-world value unless the game officially provides that feature.
+2. Player Accounts and Profiles
 
-6. Payments, Gold Purchases, and Donations
-BANO may allow optional purchases of Gold and optional donations through third-party payment providers such as Paystack and M-Pesa. By submitting a payment, you confirm that you are authorized to use the phone number, payment account, or payment method. Payments are processed by third-party providers, and their own terms, fees, limits, delays, outages, reversals, fraud checks, and policies may apply.
+Players may create or use a player name, login ID, age, and other gameplay information.
 
-Gold is credited only after the payment provider confirms successful payment. Donations support the game and do not guarantee any item, advantage, service level, refund, or special treatment. Prices, pack sizes, currencies, rewards, and availability may change at any time.
+You are responsible for providing accurate information when required. You must not impersonate another person, use offensive names, abuse other players, exploit bugs, or use the Game for illegal activity.
 
-7. Refunds and Payment Problems
-Except where required by applicable law, completed purchases of virtual Gold and donations are final and non-refundable. If a payment is charged but Gold is not credited, contact support with the payment reference, phone number used, amount, and time of payment. We may investigate and, where our records and the payment provider confirm a successful uncredited purchase, provide the missing Gold or another reasonable remedy. We are not responsible for failed, reversed, unauthorized, incorrect, or fraudulent payments.
+We may suspend, restrict, reset, or remove access to any player profile if we believe the player has violated these Terms, abused payment systems, cheated, threatened other users, attempted fraud, or harmed the Game.
 
-8. Minors
-If you are under the age of legal majority where you live, you may use the game and make payments only with permission and supervision from a parent or legal guardian. A parent or guardian is responsible for any activity or payment made by a minor using their device, phone number, account, or payment method.
+3. Digital Game Currency
 
-9. Availability and No Guarantees
-BANO is provided on an "as is" and "as available" basis. We do not guarantee that the game, servers, payments, online features, chat, matchmaking, saved data, virtual items, or balances will always be available, uninterrupted, error-free, secure, or compatible with every device.
+The Game may use digital currency, including but not limited to "Gold", "Coins", or similar in-game balances.
 
-10. Limitation of Liability
-To the maximum extent allowed by law, BANO and its creator are not liable for indirect, incidental, special, consequential, punitive, or lost-profit damages, loss of data, loss of virtual items, network failures, device issues, payment provider issues, unauthorized use, or player conduct. Your sole remedy for dissatisfaction with the game is to stop using it, except where applicable law gives you non-waivable rights.
+Digital game currency is not real money.
 
-11. Security and Fair Play
-You must not attempt to bypass payment systems, generate fake purchases, modify balances, tamper with game files, exploit bugs, attack servers, automate unfair gameplay, or use unauthorized tools. We may reset balances, remove items, block access, or take other protective actions if cheating, fraud, abuse, or technical harm is suspected.
+Digital game currency:
+- has no cash value;
+- cannot be withdrawn;
+- cannot be exchanged for Kenyan Shillings or any other real-world currency;
+- cannot be transferred outside the Game;
+- cannot be sold, traded, or redeemed for real-world goods or services;
+- is only a limited digital feature for use inside the Game.
 
-12. Changes to These Terms
-These Terms may be updated as the game changes. If a material change is made, the game may ask you to accept the updated Terms before continuing. Continued use after changes means you accept the updated Terms.
+Buying, receiving, or using digital game currency does not give you ownership of real currency, shares, property, or financial value. You only receive a limited permission to use that digital currency inside the Game, subject to these Terms.
 
-13. Contact
-For payment issues, safety reports, or support, contact the game owner through the official support channel provided with BANO. Include enough details to help investigate, but do not send passwords or payment PINs.
+4. Donations and Optional Payments
+
+The Game may allow players to make optional payments or donations. Some donations or payments may reward the player with digital game currency or digital benefits.
+
+All payment amounts are shown before you confirm payment. You are responsible for checking the amount carefully before paying.
+
+Do not pay unless you are sure:
+- the amount is correct;
+- the phone number or payment account is correct;
+- you understand that the payment is for digital game content or support of the Game;
+- you understand that digital game currency is not real money;
+- you understand the no-refund policy below.
+
+5. No Refund Policy
+
+All donations, digital currency purchases, and digital item purchases are final and non-refundable.
+
+Once payment is made and the digital currency, digital item, or donation benefit is processed, we do not provide refunds, reversals, cash returns, or exchanges, except where required by applicable law or where we choose to correct a confirmed technical error.
+
+Please be careful before paying. If you enter the wrong amount, pay by mistake, change your mind, stop playing, lose access due to your own device/account issue, or decide you no longer want the digital currency, we are not required to refund the payment.
+
+6. Technical Errors
+
+If you paid successfully but did not receive the correct digital currency or digital benefit because of a confirmed server or payment processing error, contact us using the support details below.
+
+We may ask for:
+- payment reference;
+- phone number used for payment;
+- player name or login ID;
+- date and time of payment;
+- screenshot or proof of payment.
+
+If we confirm a technical issue, our usual remedy will be to credit the correct digital currency or digital item to your player profile. A cash refund is not guaranteed and may only be provided if required by law or approved by us.
+
+7. Chargebacks, Reversals, and Payment Disputes
+
+Payments may be processed through Paystack or other payment providers. By making a payment, you agree to comply with the payment provider's rules.
+
+If you file a false chargeback, payment dispute, or reversal after receiving digital currency or digital benefits, we may:
+- suspend or ban your player profile;
+- remove the digital currency or items connected to the disputed payment;
+- block future payments;
+- provide evidence to the payment provider that the digital content was delivered;
+- take any other action allowed by law.
+
+A payment dispute does not automatically mean you are entitled to keep digital currency or digital benefits.
+
+8. Payment Provider
+
+Payments are processed by Paystack or another third-party payment provider. We do not control all payment provider decisions, bank decisions, mobile money provider decisions, transaction delays, chargebacks, failed payments, reversals, or account reviews.
+
+Paystack and other providers may collect and process your payment information according to their own terms and privacy policies.
+
+We do not store your full card details, mobile money PIN, or sensitive payment credentials.
+
+9. Delivery of Digital Currency
+
+Digital currency or digital items are normally delivered inside the Game after a successful payment confirmation.
+
+Delivery may be delayed due to network problems, server issues, payment provider delays, phone network delays, or maintenance.
+
+Digital delivery means the digital currency or item is added to your player profile or made available inside the Game. No physical goods will be delivered.
+
+10. Age and Guardian Permission
+
+If you are under 18 years old, you must have permission from your parent or legal guardian before using paid features, making donations, or buying digital currency.
+
+Parents and guardians are responsible for payments made by minors using their device, phone number, account, mobile money wallet, card, or payment method.
+
+If you allow a child or another person to use your device or payment method, you are responsible for any payments they make.
+
+11. Fair Use and Prohibited Conduct
+
+You must not:
+- use the Game for gambling, betting, lotteries, cash prizes, or illegal activity;
+- sell or trade digital currency outside the Game;
+- attempt to convert digital currency into real money;
+- exploit bugs or server errors;
+- use cheats, bots, hacks, modified clients, or unauthorized tools;
+- threaten, harass, abuse, or scam other players;
+- attempt to reverse payments dishonestly;
+- interfere with servers, payment systems, or other players' access.
+
+We may restrict or permanently ban accounts that violate these rules.
+
+12. Changes to Digital Currency and Game Features
+
+We may update, rebalance, modify, limit, remove, or rename digital currency, items, prices, rewards, features, game modes, or multiplayer systems at any time.
+
+Digital currency and digital items may lose usefulness if the Game changes, if a feature is removed, or if a player is banned for violating these Terms.
+
+We are not required to provide refunds because of game updates, balance changes, removed features, downtime, or discontinued services, except where required by law.
+
+13. Server Availability
+
+The Game and online features may not always be available. Servers may go offline for maintenance, updates, errors, internet problems, hosting issues, payment provider issues, or reasons outside our control.
+
+We do not guarantee uninterrupted access to the Game, multiplayer servers, player profiles, digital currency, or payment features.
+
+14. Privacy and Player Data
+
+We may collect player information such as player name, login ID, age, game activity, payment reference, purchase records, device/network information, and server logs.
+
+We use this information to:
+- operate the Game;
+- show player profiles and multiplayer sessions;
+- process payments;
+- deliver digital currency;
+- prevent fraud and abuse;
+- respond to support requests;
+- comply with legal and payment provider obligations.
+
+Payment information may also be processed by Paystack or other payment providers according to their own privacy policies.
+
+15. Customer Support
+
+For payment questions, missing digital currency, technical issues, or account problems, contact:
+
+Name: Bano ke
+Email: bano.ke.254@gmail.com
+
+Support hours: Monday to Friday, 9:00 AM to 5:00 PM EAT
+
+When contacting support about a payment, include your payment reference, player name/login ID, phone number used for payment, amount paid, and date of payment.
+
+16. Limitation of Liability
+
+To the maximum extent allowed by law, we are not responsible for indirect losses, lost progress, lost profits, loss of data, device issues, network problems, payment provider delays, bank/mobile money issues, or inability to access the Game.
+
+Our responsibility for a confirmed payment delivery error is normally limited to correcting the digital currency or digital item inside the Game.
+
+17. Termination
+
+We may suspend, restrict, or terminate access to the Game or a player profile if you violate these Terms, abuse payments, cheat, commit fraud, or harm other players or the Game.
+
+If your account is suspended or banned for violating these Terms, you may lose access to digital currency, digital items, and online features without refund.
+
+18. Updates to These Terms
+
+We may update these Terms from time to time. The updated Terms will apply when posted or made available in the Game, website, or payment page.
+
+Continued use of the Game after updates means you accept the updated Terms.
+
+19. Governing Law
+
+These Terms are governed by the laws applicable in Kenya, unless another law is required to apply.
+
+20. Acceptance
+
+By using the Game or making a payment, you confirm that you have read, understood, and agreed to these Terms, including that digital game currency is not real money and that donations and digital currency purchases are non-refundable.
 """
 const GLASS_MARBLE_MODEL_SCENE: PackedScene = preload("res://glass_marble_model.tscn")
 const CUSTOMIZE_ROOM_SCENE_PATH: String = "res://customize_room.tscn"
@@ -113,8 +261,19 @@ var player_name_popup_save_button: Button
 var player_name_popup_status: Label
 var player_terms_checkbox: CheckBox
 var player_terms_view_button: Button
+var player_google_signin_button: Button
 var terms_popup: Window
 var terms_close_button: Button
+var google_auth_http_request: HTTPRequest
+var google_auth_request_kind: String = ""
+var google_auth_device_code: String = ""
+var google_auth_user_code: String = ""
+var google_auth_verification_url: String = ""
+var google_auth_poll_timer: float = -1.0
+var google_auth_poll_interval: float = GOOGLE_AUTH_DEFAULT_POLL_SECONDS
+var google_auth_expires_at_msec: int = 0
+var google_auth_pending_profile: Dictionary = {}
+var google_auth_pending_auth_token: String = ""
 
 var play_button: Button
 var host_lan_button: Button
@@ -129,6 +288,7 @@ var donate_button: Button
 var payment_popup: Window
 var payment_amount_input: LineEdit
 var payment_phone_input: LineEdit
+var payment_terms_checkbox: CheckBox
 var payment_submit_button: Button
 var payment_cancel_button: Button
 var payment_status_label: Label
@@ -268,6 +428,7 @@ const ONLINE_SCENE_LOAD_DELAY_SECONDS: float = 2.2
 
 var settings_popup: Window
 var settings_back_button: Button
+var settings_account_button: Button
 var shooting_mechanics_popup: Window
 var shooting_mechanics_button: Button
 var aim_inversion_button: Button
@@ -469,6 +630,7 @@ func _process(delta: float) -> void:
 	_process_online_scene_start(delta)
 	_process_online_chat_toast(delta)
 	_process_payment_status_poll(delta)
+	_process_google_auth_poll(delta)
 	_process_online_marble_preview(delta)
 	_process_customize_preview_spin(delta)
 	if customize_marble_belt_scroll == null:
@@ -685,7 +847,7 @@ func _ensure_donate_button() -> void:
 		add_child(donate_button)
 
 	donate_button.text = "DONATE"
-	donate_button.tooltip_text = "Support Bano"
+	donate_button.tooltip_text = "Support Bano ke"
 	donate_button.focus_mode = Control.FOCUS_NONE
 	donate_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	donate_button.offset_left = -184.0
@@ -718,7 +880,7 @@ func _ensure_header_labels() -> void:
 		content_box.add_child(subtitle_label)
 	content_box.move_child(subtitle_label, 2)
 
-	title_label.text = "BANO"
+	title_label.text = "Bano ke"
 	subtitle_label.text = "CLEAN SHOTS, SHARP RICOCHETS,\nONE MARBLE AT A TIME."
 	title_logo.texture = _load_texture_from_path(MENU_LOGO_PATH)
 	title_logo.show()
@@ -812,8 +974,8 @@ func _style_text() -> void:
 		title_logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		title_logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		title_logo.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		title_logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		title_logo.clip_contents = false
+		title_logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		title_logo.clip_contents = true
 		title_logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		title_logo.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
 
@@ -1061,8 +1223,8 @@ func _ensure_payment_popup() -> void:
 		payment_popup.name = "PaymentPopup"
 		add_child(payment_popup)
 
-	payment_popup.title = "Support BANO"
-	payment_popup.size = Vector2i(600, 500)
+	payment_popup.title = "Support Bano ke"
+	payment_popup.size = Vector2i(620, 620)
 	payment_popup.unresizable = true
 	payment_popup.borderless = true
 	payment_popup.transparent_bg = true
@@ -1131,9 +1293,32 @@ func _ensure_payment_popup() -> void:
 	_style_online_line_edit(payment_phone_input, Color(0.31, 0.97, 0.85, 1.0))
 	stack.add_child(payment_phone_input)
 
+	var payment_notice_label: Label = _create_settings_label(PAYMENT_FINAL_NOTICE_TEXT)
+	payment_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	payment_notice_label.add_theme_font_size_override("font_size", 13)
+	payment_notice_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.58, 0.96))
+	stack.add_child(payment_notice_label)
+
+	var payment_terms_row: HBoxContainer = HBoxContainer.new()
+	payment_terms_row.add_theme_constant_override("separation", 8)
+	stack.add_child(payment_terms_row)
+
+	payment_terms_checkbox = CheckBox.new()
+	payment_terms_checkbox.name = "PaymentTermsCheckbox"
+	payment_terms_checkbox.custom_minimum_size = Vector2(38, 38)
+	payment_terms_row.add_child(payment_terms_checkbox)
+
+	var payment_terms_label: Label = _create_settings_label(PAYMENT_TERMS_CHECKBOX_TEXT)
+	payment_terms_label.name = "PaymentTermsLabel"
+	payment_terms_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	payment_terms_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	payment_terms_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	payment_terms_label.add_theme_font_size_override("font_size", 13)
+	payment_terms_row.add_child(payment_terms_label)
+
 	payment_status_label = _create_settings_label("")
 	payment_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	payment_status_label.custom_minimum_size = Vector2(0, 76)
+	payment_status_label.custom_minimum_size = Vector2(0, 58)
 	payment_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stack.add_child(payment_status_label)
 
@@ -1174,6 +1359,8 @@ func _show_payment_popup() -> void:
 		return
 	payment_amount_input.text = ""
 	payment_phone_input.text = ""
+	if payment_terms_checkbox != null:
+		payment_terms_checkbox.button_pressed = false
 	payment_pending_invoice_id = ""
 	payment_pending_purpose = ""
 	payment_pending_gold_amount = 0
@@ -1211,6 +1398,9 @@ func _on_payment_submit_pressed() -> void:
 	if phone == "":
 		_set_payment_status("Enter a valid Safaricom number.")
 		return
+	if payment_terms_checkbox == null or not payment_terms_checkbox.button_pressed:
+		_set_payment_status(PAYMENT_TERMS_REQUIRED_STATUS)
+		return
 
 	var purpose: String = "donation"
 	var gold_amount: int = 0
@@ -1221,7 +1411,8 @@ func _on_payment_submit_pressed() -> void:
 		"gold_amount": gold_amount,
 		"player_name": _get_online_local_player_name(),
 		"player_login_id": _get_online_local_player_login_id(),
-		"player_age": _get_online_local_player_age()
+		"player_age": _get_online_local_player_age(),
+		"terms_accepted": true
 	}
 	payment_pending_purpose = purpose
 	payment_pending_gold_amount = gold_amount
@@ -1310,7 +1501,7 @@ func _handle_payment_status_response(response: Dictionary) -> void:
 			_refresh_online_currency_display()
 			_set_payment_status("Payment confirmed. Added %d Gold." % payment_pending_gold_amount)
 		else:
-			_set_payment_status("Donation received. Thank you for supporting BANO.")
+			_set_payment_status("Donation received. Thank you for supporting Bano ke.")
 		payment_pending_invoice_id = ""
 		payment_status_timer = -1.0
 		return
@@ -1719,7 +1910,7 @@ func _rebuild_credits_popup_contents() -> void:
 	credit_text.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0, 0.98))
 	content.add_child(credit_text)
 
-	var thanks: Label = _create_settings_label("Thanks for playing BANO.")
+	var thanks: Label = _create_settings_label("Thanks for playing Bano ke.")
 	thanks.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	thanks.add_theme_font_size_override("font_size", 18)
 	thanks.add_theme_color_override("font_color", Color(0.31, 0.97, 0.85, 0.92))
@@ -1876,6 +2067,22 @@ func _rebuild_player_name_popup_contents() -> void:
 	description.add_theme_color_override("font_color", Color(0.8, 0.9, 0.98, 0.94))
 	content.add_child(description)
 
+	player_google_signin_button = Button.new()
+	player_google_signin_button.name = "GoogleSignInButton"
+	player_google_signin_button.text = "SIGN IN WITH GOOGLE"
+	player_google_signin_button.custom_minimum_size = Vector2(0, 48)
+	player_google_signin_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(player_google_signin_button)
+	_style_popup_action_button(player_google_signin_button, Color(0.42, 0.72, 1.0, 1.0), 17, Vector2(0, 48))
+	if not player_google_signin_button.pressed.is_connected(_on_google_signin_pressed):
+		player_google_signin_button.pressed.connect(_on_google_signin_pressed)
+
+	var guest_label: Label = _create_settings_label("Or play as guest")
+	guest_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	guest_label.add_theme_font_size_override("font_size", 13)
+	guest_label.add_theme_color_override("font_color", Color(0.88, 0.94, 1.0, 0.72))
+	content.add_child(guest_label)
+
 	var name_label: Label = _create_online_section_label("PLAYER NAME")
 	name_label.add_theme_font_size_override("font_size", 15)
 	content.add_child(name_label)
@@ -1946,6 +2153,7 @@ func _rebuild_player_name_popup_contents() -> void:
 		player_name_popup_input.text_submitted.connect(_on_player_name_popup_submitted)
 	if not player_age_popup_input.text_submitted.is_connected(_on_player_age_popup_submitted):
 		player_age_popup_input.text_submitted.connect(_on_player_age_popup_submitted)
+	_ensure_google_auth_http_request()
 
 
 func _style_player_login_line_edit(line_edit: LineEdit) -> void:
@@ -2084,6 +2292,180 @@ func _show_terms_popup() -> void:
 func _hide_terms_popup() -> void:
 	if terms_popup != null:
 		terms_popup.hide()
+
+
+func _ensure_google_auth_http_request() -> void:
+	google_auth_http_request = get_node_or_null("GoogleAuthHTTPRequest") as HTTPRequest
+	if google_auth_http_request == null:
+		google_auth_http_request = HTTPRequest.new()
+		google_auth_http_request.name = "GoogleAuthHTTPRequest"
+		add_child(google_auth_http_request)
+	if not google_auth_http_request.request_completed.is_connected(_on_google_auth_http_request_completed):
+		google_auth_http_request.request_completed.connect(_on_google_auth_http_request_completed)
+
+
+func _on_google_signin_pressed() -> void:
+	_ensure_google_auth_http_request()
+	google_auth_device_code = ""
+	google_auth_user_code = ""
+	google_auth_verification_url = ""
+	google_auth_poll_timer = -1.0
+	google_auth_expires_at_msec = 0
+	google_auth_request_kind = "start"
+	_set_google_auth_status("Starting Google sign-in...")
+	_set_google_signin_button_state(true, "CONNECTING...")
+	var headers: PackedStringArray = PackedStringArray(["Content-Type: application/json"])
+	var error: Error = google_auth_http_request.request(_get_payment_server_url(GOOGLE_AUTH_START_ENDPOINT_PATH), headers, HTTPClient.METHOD_POST, JSON.stringify({}))
+	if error != OK:
+		google_auth_request_kind = ""
+		_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
+		_set_google_auth_status("Could not contact the login server.")
+
+
+func _process_google_auth_poll(delta: float) -> void:
+	if google_auth_device_code == "" or google_auth_poll_timer < 0.0:
+		return
+	if google_auth_expires_at_msec > 0 and Time.get_ticks_msec() >= google_auth_expires_at_msec:
+		google_auth_device_code = ""
+		google_auth_poll_timer = -1.0
+		_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
+		_set_google_auth_status("Google sign-in expired. Try again.")
+		return
+	google_auth_poll_timer -= delta
+	if google_auth_poll_timer > 0.0:
+		return
+	_request_google_auth_poll()
+
+
+func _request_google_auth_poll() -> void:
+	if google_auth_http_request == null or google_auth_device_code == "":
+		return
+	google_auth_request_kind = "poll"
+	google_auth_poll_timer = -1.0
+	_set_google_signin_button_state(true, "WAITING...")
+	var headers: PackedStringArray = PackedStringArray(["Content-Type: application/json"])
+	var payload: Dictionary = {
+		"device_code": google_auth_device_code
+	}
+	var error: Error = google_auth_http_request.request(_get_payment_server_url(GOOGLE_AUTH_POLL_ENDPOINT_PATH), headers, HTTPClient.METHOD_POST, JSON.stringify(payload))
+	if error != OK:
+		google_auth_poll_timer = 2.0
+		_set_google_auth_status("Still waiting for Google sign-in...")
+
+
+func _on_google_auth_http_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var request_kind: String = google_auth_request_kind
+	google_auth_request_kind = ""
+	if result != HTTPRequest.RESULT_SUCCESS or response_code <= 0:
+		if request_kind == "poll" and google_auth_device_code != "":
+			google_auth_poll_timer = google_auth_poll_interval
+			_set_google_auth_status("Waiting for Google sign-in... Code: %s" % google_auth_user_code)
+			return
+		_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
+		_set_google_auth_status("Could not reach the login server.")
+		return
+
+	var response_text: String = body.get_string_from_utf8()
+	var parsed: Variant = JSON.parse_string(response_text)
+	if typeof(parsed) != TYPE_DICTIONARY:
+		_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
+		_set_google_auth_status("Login server did not return JSON.")
+		return
+
+	var response: Dictionary = parsed
+	if response_code < 200 or response_code >= 300 or not bool(response.get("ok", false)):
+		google_auth_device_code = ""
+		google_auth_poll_timer = -1.0
+		_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
+		_set_google_auth_status(str(response.get("error", "Google sign-in failed.")))
+		return
+
+	match request_kind:
+		"start":
+			_handle_google_auth_start_response(response)
+		"poll":
+			_handle_google_auth_poll_response(response)
+		"profile_save":
+			_set_google_auth_status("Google profile connected. Progress sync is ready.")
+		_:
+			_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
+
+
+func _handle_google_auth_start_response(response: Dictionary) -> void:
+	google_auth_device_code = str(response.get("device_code", "")).strip_edges()
+	google_auth_user_code = str(response.get("user_code", "")).strip_edges()
+	google_auth_verification_url = str(response.get("verification_url", "https://www.google.com/device")).strip_edges()
+	google_auth_poll_interval = maxf(float(response.get("interval", GOOGLE_AUTH_DEFAULT_POLL_SECONDS)), 2.0)
+	var expires_in: int = max(int(response.get("expires_in", 1800)), 60)
+	google_auth_expires_at_msec = Time.get_ticks_msec() + (expires_in * 1000)
+	if google_auth_device_code == "" or google_auth_user_code == "":
+		_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
+		_set_google_auth_status("Google sign-in did not return a login code.")
+		return
+	if google_auth_verification_url != "":
+		OS.shell_open(google_auth_verification_url)
+	_set_google_auth_status("Google opened in your browser. Enter code %s, then return here." % google_auth_user_code)
+	google_auth_poll_timer = 1.0
+
+
+func _handle_google_auth_poll_response(response: Dictionary) -> void:
+	if bool(response.get("pending", false)):
+		google_auth_poll_interval = maxf(float(response.get("interval", google_auth_poll_interval)), 2.0)
+		google_auth_poll_timer = google_auth_poll_interval
+		_set_google_auth_status("Waiting for Google approval... Code: %s" % google_auth_user_code)
+		return
+
+	var profile: Dictionary = response.get("profile", {}) if typeof(response.get("profile", {})) == TYPE_DICTIONARY else {}
+	var auth_token: String = str(response.get("auth_token", "")).strip_edges()
+	if profile.is_empty() or auth_token == "":
+		google_auth_device_code = ""
+		google_auth_poll_timer = -1.0
+		_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
+		_set_google_auth_status("Google sign-in finished, but no profile was returned.")
+		return
+
+	profile["auth_token"] = auth_token
+	google_auth_pending_profile = profile.duplicate(true)
+	google_auth_pending_auth_token = auth_token
+	google_auth_device_code = ""
+	google_auth_poll_timer = -1.0
+	var google_name: String = str(profile.get("name", "")).strip_edges()
+	if google_name != "" and player_name_popup_input != null:
+		player_name_popup_input.text = google_name.left(18)
+	var remote_age: int = int(profile.get("player_age", 0))
+	if remote_age > 0 and player_age_popup_input != null and player_age_popup_input.text.strip_edges() == "":
+		player_age_popup_input.text = str(remote_age)
+	_set_google_signin_button_state(false, "GOOGLE CONNECTED")
+	var google_name_suffix: String = " as %s" % google_name if google_name != "" else ""
+	_set_google_auth_status("Google verified%s. Enter your age, accept the Terms, then Continue." % google_name_suffix)
+
+
+func _set_google_signin_button_state(is_busy: bool, label: String) -> void:
+	if player_google_signin_button != null:
+		player_google_signin_button.disabled = is_busy
+		player_google_signin_button.text = label
+
+
+func _set_google_auth_status(text_value: String) -> void:
+	if player_name_popup_status != null:
+		player_name_popup_status.text = text_value
+	elif player_name_status != null:
+		player_name_status.text = text_value
+
+
+func _save_google_profile_progress() -> void:
+	_ensure_google_auth_http_request()
+	var customization: Node = get_node_or_null("/root/CustomizationState")
+	if customization == null or not customization.has_method("get_google_profile_sync_payload"):
+		return
+	var payload: Dictionary = customization.call("get_google_profile_sync_payload")
+	if payload.is_empty():
+		return
+	google_auth_request_kind = "profile_save"
+	var headers: PackedStringArray = PackedStringArray(["Content-Type: application/json"])
+	var error: Error = google_auth_http_request.request(_get_payment_server_url(GOOGLE_PROFILE_SAVE_ENDPOINT_PATH), headers, HTTPClient.METHOD_POST, JSON.stringify(payload))
+	if error != OK:
+		google_auth_request_kind = ""
 
 
 func _ensure_lan_popup() -> void:
@@ -2310,7 +2692,7 @@ func _ensure_online_rooms_page() -> void:
 	brand_stack.add_theme_constant_override("separation", 0)
 	brand_margin.add_child(brand_stack)
 
-	var brand_label: Label = _create_online_text_label("BANO ONLINE", 25, Color(0.98, 0.99, 1.0, 1.0), title_font)
+	var brand_label: Label = _create_online_text_label("Bano ke Online", 25, Color(0.98, 0.99, 1.0, 1.0), title_font)
 	brand_stack.add_child(brand_label)
 
 	var brand_subtitle: Label = _create_online_text_label("MARBLE BATTLE ARENA", 11, Color(0.83, 0.94, 1.0, 0.92), ui_font)
@@ -4316,7 +4698,7 @@ func _ensure_startup_loading_panel() -> void:
 	info_margin.add_child(stack)
 
 	startup_loading_title_label = Label.new()
-	startup_loading_title_label.text = "LOADING BANO"
+	startup_loading_title_label.text = "LOADING Bano ke"
 	startup_loading_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	startup_loading_title_label.add_theme_font_override("font", title_font)
 	startup_loading_title_label.add_theme_font_size_override("font_size", 34)
@@ -4392,7 +4774,7 @@ func _begin_startup_server_connection() -> void:
 func _update_startup_loading_screen(progress: float) -> void:
 	var eased_progress: float = progress * progress * (3.0 - 2.0 * progress)
 	if startup_loading_title_label != null:
-		startup_loading_title_label.text = "LOADING BANO"
+		startup_loading_title_label.text = "LOADING Bano ke"
 	if startup_loading_status_label != null:
 		if progress < 0.34:
 			startup_loading_status_label.text = "Warming up the arena lights..."
@@ -4519,12 +4901,19 @@ func _rebuild_settings_popup_contents() -> void:
 	shooting_mechanics_button.text = _get_selected_shooting_mechanic_name().to_upper()
 	rows.add_child(_create_settings_mechanics_row())
 
+	settings_account_button = Button.new()
+	settings_account_button.name = "SettingsAccountButton"
+	settings_account_button.text = "ACCOUNT / GOOGLE"
+	rows.add_child(_create_settings_account_row())
+
 	if not settings_back_button.pressed.is_connected(_hide_settings_popup):
 		settings_back_button.pressed.connect(_hide_settings_popup)
 	if not shooting_mechanics_button.pressed.is_connected(_on_shooting_mechanics_pressed):
 		shooting_mechanics_button.pressed.connect(_on_shooting_mechanics_pressed)
 	if not aim_inversion_button.pressed.is_connected(_on_aim_inversion_pressed):
 		aim_inversion_button.pressed.connect(_on_aim_inversion_pressed)
+	if not settings_account_button.pressed.is_connected(_on_settings_account_pressed):
+		settings_account_button.pressed.connect(_on_settings_account_pressed)
 
 
 func _create_settings_slider_row(label_text: String, icon_text: String, slider: HSlider) -> Panel:
@@ -4641,6 +5030,42 @@ func _create_settings_mechanics_row() -> Panel:
 	shooting_mechanics_button.add_theme_stylebox_override("pressed", _make_settings_control_style(Color(0.015, 0.0, 0.03, 0.98), Color(0.74, 0.12, 0.9, 1.0), 10))
 	_ensure_settings_dropdown_button_overlay(shooting_mechanics_button, _get_selected_shooting_mechanic_name().to_upper())
 	content.add_child(shooting_mechanics_button)
+	return row
+
+
+func _create_settings_account_row() -> Panel:
+	var row: Panel = _create_settings_row_panel()
+
+	var margin: MarginContainer = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	row.add_child(margin)
+
+	var content: HBoxContainer = HBoxContainer.new()
+	content.add_theme_constant_override("separation", 24)
+	margin.add_child(content)
+
+	content.add_child(_create_settings_icon_label("ID"))
+
+	var title: Label = _create_settings_row_title("PLAYER ACCOUNT")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(title)
+
+	settings_account_button.custom_minimum_size = Vector2(300, 50)
+	settings_account_button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	settings_account_button.add_theme_font_override("font", ui_font)
+	settings_account_button.add_theme_font_size_override("font_size", 18)
+	settings_account_button.add_theme_color_override("font_color", Color(0.98, 0.96, 1.0, 1.0))
+	settings_account_button.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.82))
+	settings_account_button.add_theme_constant_override("shadow_offset_y", 2)
+	settings_account_button.add_theme_constant_override("shadow_outline_size", 4)
+	settings_account_button.add_theme_stylebox_override("normal", _make_settings_control_style(Color(0.02, 0.005, 0.045, 0.82), Color(0.42, 0.72, 1.0, 0.92), 10))
+	settings_account_button.add_theme_stylebox_override("hover", _make_settings_control_style(Color(0.04, 0.01, 0.075, 0.9), Color(0.68, 0.9, 1.0, 1.0), 10))
+	settings_account_button.add_theme_stylebox_override("pressed", _make_settings_control_style(Color(0.015, 0.0, 0.03, 0.98), Color(0.28, 0.54, 0.9, 1.0), 10))
+	content.add_child(settings_account_button)
 	return row
 
 
@@ -7680,6 +8105,11 @@ func _on_settings_pressed() -> void:
 		settings_popup.show()
 
 
+func _on_settings_account_pressed() -> void:
+	_hide_settings_popup()
+	_show_player_name_popup()
+
+
 func _on_customize_pressed() -> void:
 	if customize_scene_path != "" and ResourceLoader.exists(customize_scene_path):
 		get_tree().change_scene_to_file(customize_scene_path)
@@ -7842,6 +8272,9 @@ func _init_player_name_controls() -> void:
 	var login_suffix: String = ""
 	if saved_login_id != "":
 		login_suffix = "  ID: %s" % saved_login_id
+	var provider_label: String = ""
+	if customization.has_method("get_player_auth_provider") and str(customization.call("get_player_auth_provider")) == "google":
+		provider_label = " with Google"
 	if saved_name.strip_edges() != "" and customization.has_method("has_chosen_shooting_mechanic") and not bool(customization.call("has_chosen_shooting_mechanic")):
 		shooting_mechanics_prompt_pending_after_name = true
 
@@ -7862,7 +8295,7 @@ func _init_player_name_controls() -> void:
 
 	if player_name_status:
 		if has_name:
-			player_name_status.text = "Logged in as %s%s" % [saved_name, login_suffix]
+			player_name_status.text = "Logged in%s as %s%s" % [provider_label, saved_name, login_suffix]
 		else:
 			player_name_status.text = "Create a player login for online parties and leaderboards."
 	if coin_balance_label:
@@ -7871,7 +8304,7 @@ func _init_player_name_controls() -> void:
 		coin_balance_label.text = "S coins: %d   Gold: %d" % [coin_balance, gold_balance]
 	if player_name_popup_status:
 		if has_name:
-			player_name_popup_status.text = "Logged in as %s%s" % [saved_name, login_suffix]
+			player_name_popup_status.text = "Logged in%s as %s%s" % [provider_label, saved_name, login_suffix]
 		else:
 			player_name_popup_status.text = "Create a login to unlock the main menu."
 
@@ -7960,7 +8393,17 @@ func _save_player_name(raw_name: String) -> void:
 			player_name_popup_status.text = "Please tick the Terms and Conditions checkbox before continuing."
 		return
 
-	if customization.has_method("set_player_name"):
+	var applied_google_profile: bool = false
+	if not google_auth_pending_profile.is_empty() and customization.has_method("set_google_player_profile"):
+		var google_profile: Dictionary = google_auth_pending_profile.duplicate(true)
+		google_profile["name"] = cleaned_name
+		google_profile["player_age"] = entered_age
+		google_profile["auth_token"] = google_auth_pending_auth_token
+		customization.call("set_google_player_profile", google_profile)
+		google_auth_pending_profile.clear()
+		google_auth_pending_auth_token = ""
+		applied_google_profile = true
+	elif customization.has_method("set_player_name"):
 		customization.call("set_player_name", cleaned_name)
 	if customization.has_method("set_player_age"):
 		customization.call("set_player_age", entered_age)
@@ -7968,6 +8411,8 @@ func _save_player_name(raw_name: String) -> void:
 		_save_terms_acceptance()
 	if not had_player_name:
 		shooting_mechanics_prompt_pending_after_name = true
+	if applied_google_profile:
+		_save_google_profile_progress()
 
 	_init_player_name_controls()
 	if shooting_mechanics_prompt_pending_after_name:
@@ -7979,6 +8424,8 @@ func _show_player_name_popup() -> void:
 		return
 	if player_terms_checkbox != null:
 		player_terms_checkbox.button_pressed = _terms_already_accepted()
+	if google_auth_pending_profile.is_empty() and google_auth_device_code == "":
+		_set_google_signin_button_state(false, "SIGN IN WITH GOOGLE")
 	var viewport_size: Vector2 = get_viewport_rect().size
 	var popup_width: int = maxi(360, mini(760, int(viewport_size.x) - 32))
 	var popup_height: int = maxi(460, mini(620, int(viewport_size.y) - 32))

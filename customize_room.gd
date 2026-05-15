@@ -8,7 +8,7 @@ const GALAXY_MODEL_PATH: String = "res://extracted_minecraft_java_editions_stars
 const MENU_SCENE_FALLBACKS: PackedStringArray = ["res://Start_Menu.tscn", "res://StartMenu.tscn"]
 const GLASS_BUTTON_EFFECTS = preload("res://glass_button_effects.gd")
 const SHOWROOM_HALO_SHADER: Shader = preload("res://shaders/showroom_halo.gdshader")
-const BANO_MENU_LOGO_PATH: String = "res://ui/bano_header_wordmark.png"
+const SHOWROOM_MENU_LOGO_PATH: String = "res://ui/bano_header_wordmark.png"
 const SHOWROOM_BACKGROUND_TEXTURE_PATH: String = "res://showroom/showroom_neon_background.png"
 const SHOWROOM_MODE_MARBLES: String = "marbles"
 const SHOWROOM_MODE_TRAILS: String = "trails"
@@ -46,6 +46,7 @@ var gold_store_page: Control
 var gold_store_popup: Window
 var gold_payment_popup: Window
 var gold_payment_phone_input: LineEdit
+var gold_payment_terms_checkbox: CheckBox
 var gold_payment_status_label: Label
 var gold_payment_buy_button: Button
 var gold_payment_cancel_button: Button
@@ -148,6 +149,9 @@ const SHOWROOM_RIGHT_SPOT_POSITION := Vector3(3.1, 5.45, 1.55)
 const SHOWROOM_RIGHT_SPOT_TARGET := Vector3(2.8, 2.55, -0.6)
 const PAYSTACK_INITIALIZE_ENDPOINT_PATH: String = "/payments/paystack/initialize"
 const PAYSTACK_STATUS_ENDPOINT_PATH: String = "/payments/paystack/status"
+const PAYMENT_TERMS_CHECKBOX_TEXT: String = "I understand that Gold/Coins are digital game currency only, have no real-money value, cannot be withdrawn, and payments/donations are non-refundable."
+const PAYMENT_FINAL_NOTICE_TEXT: String = "Check your amount carefully before paying. Donations and digital currency purchases are final and non-refundable."
+const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment terms checkbox before paying."
 const STORE_GOLD_POUCH_TEXTURE_PATH: String = "res://ui/store/gold_pouch.png"
 const STORE_GOLD_BOX_TEXTURE_PATH: String = "res://ui/store/gold_box.png"
 const STORE_GOLD_CHEST_TEXTURE_PATH: String = "res://ui/store/gold_chest.png"
@@ -870,7 +874,7 @@ func _build_ui() -> void:
 
 	# TITLE
 	title_label = Label.new()
-	title_label.text = "BANO"
+	title_label.text = "Bano ke"
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_size_override("font_size", 28)
@@ -980,16 +984,16 @@ func _build_reference_showroom_ui() -> void:
 	root.add_child(top_scrim)
 
 	title_logo = TextureRect.new()
-	title_logo.name = "BanoHeaderLogo"
+	title_logo.name = "HeaderLogo"
 	title_logo.anchor_left = 0.0
 	title_logo.anchor_top = 0.0
 	title_logo.anchor_right = 0.0
 	title_logo.anchor_bottom = 0.0
 	title_logo.offset_left = 16.0
 	title_logo.offset_top = 6.0
-	title_logo.offset_right = 440.0
-	title_logo.offset_bottom = 76.0
-	title_logo.texture = _load_showroom_ui_texture(BANO_MENU_LOGO_PATH)
+	title_logo.offset_right = 520.0
+	title_logo.offset_bottom = 98.0
+	title_logo.texture = _load_showroom_ui_texture(SHOWROOM_MENU_LOGO_PATH)
 	title_logo.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	title_logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	title_logo.clip_contents = true
@@ -1566,6 +1570,8 @@ func _on_gold_pack_buy_pressed(gold_amount: int = GOLD_PACK_AMOUNT, price_kes: i
 func _show_gold_payment_popup() -> void:
 	_ensure_gold_payment_popup()
 	gold_payment_phone_input.text = ""
+	if gold_payment_terms_checkbox != null:
+		gold_payment_terms_checkbox.button_pressed = false
 	gold_payment_pending_invoice_id = ""
 	gold_payment_status_timer = -1.0
 	gold_payment_status_poll_count = 0
@@ -1581,7 +1587,7 @@ func _ensure_gold_payment_popup() -> void:
 		gold_payment_popup = Window.new()
 		gold_payment_popup.name = "GoldPaymentPopup"
 		gold_payment_popup.title = "Buy Gold"
-		gold_payment_popup.size = Vector2i(560, 420)
+		gold_payment_popup.size = Vector2i(620, 560)
 		gold_payment_popup.unresizable = true
 		gold_payment_popup.borderless = true
 		gold_payment_popup.transparent_bg = true
@@ -1634,9 +1640,29 @@ func _rebuild_gold_payment_popup() -> void:
 	gold_payment_phone_input.add_theme_stylebox_override("normal", _make_showroom_style(Color(0.02, 0.03, 0.08, 0.9), Color(0.31, 0.97, 0.85, 0.9), 10, 1, 8))
 	stack.add_child(gold_payment_phone_input)
 
+	var payment_notice_label: Label = _make_showroom_label(PAYMENT_FINAL_NOTICE_TEXT, 13, Color(1.0, 0.9, 0.58, 0.96))
+	payment_notice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stack.add_child(payment_notice_label)
+
+	var payment_terms_row: HBoxContainer = HBoxContainer.new()
+	payment_terms_row.add_theme_constant_override("separation", 8)
+	stack.add_child(payment_terms_row)
+
+	gold_payment_terms_checkbox = CheckBox.new()
+	gold_payment_terms_checkbox.name = "GoldPaymentTermsCheckbox"
+	gold_payment_terms_checkbox.custom_minimum_size = Vector2(38, 38)
+	payment_terms_row.add_child(gold_payment_terms_checkbox)
+
+	var payment_terms_label: Label = _make_showroom_label(PAYMENT_TERMS_CHECKBOX_TEXT, 13, Color(0.9, 0.94, 1.0, 0.96))
+	payment_terms_label.name = "GoldPaymentTermsLabel"
+	payment_terms_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	payment_terms_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	payment_terms_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	payment_terms_row.add_child(payment_terms_label)
+
 	gold_payment_status_label = _make_showroom_label("", 14, Color(0.86, 0.9, 1.0, 1.0))
 	gold_payment_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	gold_payment_status_label.custom_minimum_size = Vector2(0, 72)
+	gold_payment_status_label.custom_minimum_size = Vector2(0, 56)
 	stack.add_child(gold_payment_status_label)
 
 	var buttons: HBoxContainer = HBoxContainer.new()
@@ -1677,12 +1703,16 @@ func _on_gold_payment_send_pressed() -> void:
 	if phone == "":
 		_set_gold_payment_status("Enter a valid Safaricom number.")
 		return
+	if gold_payment_terms_checkbox == null or not gold_payment_terms_checkbox.button_pressed:
+		_set_gold_payment_status(PAYMENT_TERMS_REQUIRED_STATUS)
+		return
 	var payload: Dictionary = {
 		"amount": gold_payment_selected_price,
 		"phone_number": phone,
 		"purpose": "gold",
 		"gold_amount": gold_payment_selected_amount,
-		"player_name": "Player"
+		"player_name": "Player",
+		"terms_accepted": true
 	}
 	var headers: PackedStringArray = PackedStringArray([
 		"Content-Type: application/json"

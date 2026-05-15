@@ -20,7 +20,7 @@ const DEFAULT_ONLINE_RELAY_PORT: int = 24580
 const DEFAULT_ONLINE_SERVER_URL: String = "ws://127.0.0.1:24580"
 const MAX_CLIENTS: int = 1
 const CONNECTION_TIMEOUT_SECONDS: float = 8.0
-const DISCOVERY_MAGIC: String = "BANO_LAN_DISCOVERY_V1"
+const DISCOVERY_MAGIC: String = "BKE_LAN_DISCOVERY_V1"
 const DISCOVERY_BROADCAST_INTERVAL: float = 0.65
 const DISCOVERY_REMINDER_SECONDS: float = 6.0
 const RELAY_ROOM_CODE_MIN: int = 1000
@@ -176,7 +176,7 @@ func start_online_relay_server(server_port: int = DEFAULT_ONLINE_RELAY_PORT) -> 
 	peer = new_peer
 	multiplayer.multiplayer_peer = peer
 	_set_status("Online relay server running on ws://0.0.0.0:%d" % port)
-	print("BANO online relay running on ws://0.0.0.0:%d" % port)
+	print("Bano ke online relay running on ws://0.0.0.0:%d" % port)
 	return OK
 
 

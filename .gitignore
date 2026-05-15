@@ -1,1 +1,3 @@
 multiplayer_server/.env
+multiplayer_server/player_profiles.json
+player_profiles.json

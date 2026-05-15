@@ -1,4 +1,4 @@
-# BANO Online Multiplayer Setup
+# Bano ke Online Multiplayer Setup
 
 This setup lets players on different networks play together. The phones do not connect directly to each other. Every phone connects to one public WebSocket server.
 
@@ -56,7 +56,7 @@ package.json
 Example server path:
 
 ```text
-/home/ubuntu/bano/multiplayer_server
+/home/ubuntu/bano-ke/multiplayer_server
 ```
 
 ## 4. Install Server Dependencies
@@ -64,7 +64,7 @@ Example server path:
 On the VPS:
 
 ```bash
-cd /home/ubuntu/bano/multiplayer_server
+cd /home/ubuntu/bano-ke/multiplayer_server
 npm install
 ```
 
@@ -127,18 +127,18 @@ The server keeps one open public room available for every player size. When a pu
 Create a systemd service:
 
 ```bash
-sudo nano /etc/systemd/system/bano-multiplayer.service
+sudo nano /etc/systemd/system/bano-ke-multiplayer.service
 ```
 
 Paste this:
 
 ```ini
 [Unit]
-Description=BANO Multiplayer Server
+Description=Bano ke Multiplayer Server
 After=network.target
 
 [Service]
-WorkingDirectory=/home/ubuntu/bano/multiplayer_server
+WorkingDirectory=/home/ubuntu/bano-ke/multiplayer_server
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=3
@@ -152,15 +152,15 @@ Enable it:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable bano-multiplayer
-sudo systemctl start bano-multiplayer
-sudo systemctl status bano-multiplayer
+sudo systemctl enable bano-ke-multiplayer
+sudo systemctl start bano-ke-multiplayer
+sudo systemctl status bano-ke-multiplayer
 ```
 
 View logs:
 
 ```bash
-journalctl -u bano-multiplayer -f
+journalctl -u bano-ke-multiplayer -f
 ```
 
 ## 9. Render Deployment
@@ -222,7 +222,7 @@ sudo apt install -y nginx certbot python3-certbot-nginx
 Create an Nginx site:
 
 ```bash
-sudo nano /etc/nginx/sites-available/bano-multiplayer
+sudo nano /etc/nginx/sites-available/bano-ke-multiplayer
 ```
 
 Paste this, replacing `your-domain.com`:
@@ -246,7 +246,7 @@ server {
 Enable it:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/bano-multiplayer /etc/nginx/sites-enabled/bano-multiplayer
+sudo ln -s /etc/nginx/sites-available/bano-ke-multiplayer /etc/nginx/sites-enabled/bano-ke-multiplayer
 sudo nginx -t
 sudo systemctl reload nginx
 ```

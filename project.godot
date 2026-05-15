@@ -14,7 +14,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="Bano GAME"
+config/name="Bano ke"
 run/main_scene="uid://qai677rukhyw"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://ui/bano_app_icon.png"

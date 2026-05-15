@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BANO Admin Dashboard</title>
+  <title>Bano ke Admin Dashboard</title>
   <style>
     :root {
       color-scheme: light;
@@ -312,7 +312,7 @@
 </head>
 <body>
   <header>
-    <h1>BANO Admin Dashboard</h1>
+    <h1>Bano ke Admin Dashboard</h1>
     <p>Live multiplayer sessions, registered players, and party activity.</p>
   </header>
 
@@ -406,6 +406,7 @@
                 <th>Player</th>
                 <th>Amount</th>
                 <th>Gold</th>
+                <th>Terms</th>
                 <th>Status</th>
                 <th>Invoice</th>
                 <th>Updated</th>
@@ -613,7 +614,7 @@
     function renderPayments(payments) {
       paymentCountEl.textContent = `${payments.length} recent`;
       if (payments.length === 0) {
-        paymentsEl.innerHTML = '<tr><td colspan="6" class="empty">No payment records yet.</td></tr>';
+        paymentsEl.innerHTML = '<tr><td colspan="7" class="empty">No payment records yet.</td></tr>';
         return;
       }
 
@@ -624,6 +625,7 @@
             <td><div class="name">${escapeHtml(payment.player_name || 'Unknown')}</div><div class="subtle">${escapeHtml(payment.player_login_id || '')}</div></td>
             <td>KES ${payment.amount || 0}</td>
             <td>${payment.gold_amount || 0}</td>
+            <td>${payment.terms_accepted ? 'Yes' : 'No'}</td>
             <td><span class="badge ${complete ? 'ok' : 'warn'}">${escapeHtml(payment.state || 'PENDING')}</span></td>
             <td>${escapeHtml(payment.invoice_id || payment.api_ref || '-')}</td>
             <td>${formatTime(payment.updated_at)}</td>

@@ -1,8 +1,8 @@
 {
-  "name": "bano-multiplayer-server",
+  "name": "bano-ke-multiplayer-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Dedicated WebSocket party server for BANO online multiplayer.",
+  "description": "Dedicated WebSocket party server for Bano ke online multiplayer.",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

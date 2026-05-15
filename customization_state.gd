@@ -1,7 +1,7 @@
 extends Node
 
 const SAVE_PATH: String = "user://customization.json"
-const SAVE_VERSION: int = 8
+const SAVE_VERSION: int = 9
 
 const DEFAULT_MARBLE_ID: String = "pearl_drift"
 const DEFAULT_TRAIL_ID: String = "comet"
@@ -48,6 +48,10 @@ var player_name: String = DEFAULT_PLAYER_NAME
 var player_age: int = 0
 var player_login_id: String = ""
 var player_login_created_at: int = 0
+var player_auth_provider: String = "guest"
+var player_auth_email: String = ""
+var player_auth_picture: String = ""
+var player_auth_token: String = ""
 var shoot_sensitivity: float = DEFAULT_SHOOT_SENSITIVITY
 var aim_inverted: bool = DEFAULT_AIM_INVERTED
 var shooting_mechanic: String = DEFAULT_SHOOTING_MECHANIC
@@ -1021,8 +1025,46 @@ func get_player_login_summary() -> Dictionary:
 	return {
 		"id": get_player_login_id(),
 		"name": get_player_name(),
+		"provider": get_player_auth_provider(),
+		"email": player_auth_email,
 		"created_at": player_login_created_at
 	}
+
+
+func get_player_auth_provider() -> String:
+	return player_auth_provider if player_auth_provider.strip_edges() != "" else "guest"
+
+
+func get_player_auth_token() -> String:
+	return player_auth_token
+
+
+func is_google_player_login() -> bool:
+	return get_player_auth_provider() == "google" and player_login_id.begins_with("google:")
+
+
+func set_google_player_profile(profile: Dictionary) -> void:
+	var google_login_id: String = str(profile.get("login_id", "")).strip_edges()
+	if google_login_id == "":
+		return
+	player_login_id = google_login_id.left(40)
+	player_auth_provider = "google"
+	player_auth_email = str(profile.get("email", "")).strip_edges().left(120)
+	player_auth_picture = str(profile.get("picture", "")).strip_edges().left(240)
+	player_auth_token = str(profile.get("auth_token", "")).strip_edges().left(128)
+	var profile_name: String = str(profile.get("name", "")).strip_edges()
+	if profile_name != "":
+		player_name = profile_name.left(18)
+	if player_login_created_at <= 0:
+		player_login_created_at = int(Time.get_unix_time_from_system())
+	var remote_age: int = int(profile.get("player_age", 0))
+	if remote_age > 0 and player_age <= 0:
+		player_age = clampi(remote_age, 1, 120)
+	var progress_value: Variant = profile.get("progress", {})
+	if typeof(progress_value) == TYPE_DICTIONARY:
+		var progress: Dictionary = progress_value
+		_apply_remote_progress(progress)
+	save_state()
 
 
 func _ensure_player_login_id() -> void:
@@ -1040,7 +1082,7 @@ func _generate_player_login_id() -> String:
 	var code: String = ""
 	for _index in range(6):
 		code += alphabet.substr(rng.randi_range(0, alphabet.length() - 1), 1)
-	return "BANO-%s" % code
+	return "BKE-%s" % code
 
 
 func get_coin_balance() -> int:
@@ -1352,6 +1394,80 @@ func _get_leaderboard_key_for_winner(clean_name: String) -> String:
 	return clean_name
 
 
+func get_google_profile_sync_payload() -> Dictionary:
+	if not is_google_player_login() or player_auth_token.strip_edges() == "":
+		return {}
+	return {
+		"auth_token": player_auth_token,
+		"name": player_name,
+		"player_age": player_age,
+		"progress": _get_remote_progress_payload()
+	}
+
+
+func _get_remote_progress_payload() -> Dictionary:
+	return {
+		"selected_marble_id": selected_marble_id,
+		"selected_trail_id": selected_trail_id,
+		"selected_field_id": selected_field_id,
+		"shoot_sensitivity": get_shoot_sensitivity(),
+		"aim_inverted": is_aim_inverted(),
+		"shooting_mechanic": get_shooting_mechanic(),
+		"unlocked_marble_ids": _packed_string_array_to_array(unlocked_marble_ids),
+		"unlocked_field_ids": _packed_string_array_to_array(unlocked_field_ids),
+		"leaderboard_wins": leaderboard_wins,
+		"leaderboard_names": leaderboard_names
+	}
+
+
+func _packed_string_array_to_array(values: PackedStringArray) -> Array:
+	var result: Array = []
+	for value in values:
+		result.append(str(value))
+	return result
+
+
+func _apply_remote_progress(progress: Dictionary) -> void:
+	var remote_unlocked_marbles: Array = progress.get("unlocked_marble_ids", []) if typeof(progress.get("unlocked_marble_ids", [])) == TYPE_ARRAY else []
+	for marble_id_variant in remote_unlocked_marbles:
+		var marble_id: String = str(marble_id_variant).strip_edges()
+		if marble_presets.has(marble_id) and not _is_marble_hidden(marble_id) and not unlocked_marble_ids.has(marble_id):
+			unlocked_marble_ids.append(marble_id)
+
+	var remote_unlocked_fields: Array = progress.get("unlocked_field_ids", []) if typeof(progress.get("unlocked_field_ids", [])) == TYPE_ARRAY else []
+	for field_id_variant in remote_unlocked_fields:
+		var field_id: String = str(field_id_variant).strip_edges()
+		if field_presets.has(field_id) and not unlocked_field_ids.has(field_id):
+			unlocked_field_ids.append(field_id)
+
+	var remote_marble_id: String = str(progress.get("selected_marble_id", "")).strip_edges()
+	if remote_marble_id != "" and marble_presets.has(remote_marble_id) and not _is_marble_hidden(remote_marble_id) and is_marble_unlocked(remote_marble_id):
+		selected_marble_id = remote_marble_id
+	var remote_trail_id: String = str(progress.get("selected_trail_id", "")).strip_edges()
+	if remote_trail_id != "" and trail_presets.has(remote_trail_id):
+		selected_trail_id = remote_trail_id
+	var remote_field_id: String = str(progress.get("selected_field_id", "")).strip_edges()
+	if remote_field_id != "" and field_presets.has(remote_field_id) and is_field_unlocked(remote_field_id):
+		selected_field_id = remote_field_id
+
+	if progress.has("shoot_sensitivity"):
+		shoot_sensitivity = clampf(float(progress.get("shoot_sensitivity", shoot_sensitivity)), MIN_SHOOT_SENSITIVITY, MAX_SHOOT_SENSITIVITY)
+	if progress.has("aim_inverted"):
+		aim_inverted = bool(progress.get("aim_inverted", aim_inverted))
+	var remote_mechanic: String = str(progress.get("shooting_mechanic", "")).strip_edges()
+	if _is_valid_shooting_mechanic(remote_mechanic):
+		shooting_mechanic = remote_mechanic
+
+	var remote_wins: Dictionary = progress.get("leaderboard_wins", {}) if typeof(progress.get("leaderboard_wins", {})) == TYPE_DICTIONARY else {}
+	var remote_names: Dictionary = progress.get("leaderboard_names", {}) if typeof(progress.get("leaderboard_names", {})) == TYPE_DICTIONARY else {}
+	for key_value in remote_wins.keys():
+		var key: String = str(key_value).strip_edges()
+		var wins: int = int(remote_wins.get(key_value, 0))
+		if key != "" and wins > int(leaderboard_wins.get(key, 0)):
+			leaderboard_wins[key] = wins
+			leaderboard_names[key] = str(remote_names.get(key_value, leaderboard_names.get(key, key))).strip_edges()
+
+
 func load_state() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
 		return
@@ -1373,6 +1489,10 @@ func load_state() -> void:
 	var saved_player_age: int = int(data.get("player_age", 0))
 	var saved_player_login_id: String = str(data.get("player_login_id", "")).strip_edges()
 	var saved_player_login_created_at: int = int(data.get("player_login_created_at", 0))
+	var saved_player_auth_provider: String = str(data.get("player_auth_provider", "guest")).strip_edges()
+	var saved_player_auth_email: String = str(data.get("player_auth_email", "")).strip_edges()
+	var saved_player_auth_picture: String = str(data.get("player_auth_picture", "")).strip_edges()
+	var saved_player_auth_token: String = str(data.get("player_auth_token", "")).strip_edges()
 	var saved_shoot_sensitivity: float = float(data.get("shoot_sensitivity", DEFAULT_SHOOT_SENSITIVITY))
 	var saved_aim_inverted: bool = bool(data.get("aim_inverted", DEFAULT_AIM_INVERTED))
 	var saved_shooting_mechanic: String = str(data.get("shooting_mechanic", DEFAULT_SHOOTING_MECHANIC))
@@ -1391,8 +1511,12 @@ func load_state() -> void:
 	if saved_player_name != "":
 		player_name = saved_player_name.left(18)
 	player_age = clampi(saved_player_age, 0, 120)
-	player_login_id = saved_player_login_id.left(32)
+	player_login_id = saved_player_login_id.left(40)
 	player_login_created_at = saved_player_login_created_at
+	player_auth_provider = saved_player_auth_provider if saved_player_auth_provider != "" else "guest"
+	player_auth_email = saved_player_auth_email.left(120)
+	player_auth_picture = saved_player_auth_picture.left(240)
+	player_auth_token = saved_player_auth_token.left(128)
 	if player_name.strip_edges() != "":
 		_ensure_player_login_id()
 	shoot_sensitivity = clampf(saved_shoot_sensitivity, MIN_SHOOT_SENSITIVITY, MAX_SHOOT_SENSITIVITY)
@@ -1460,6 +1584,10 @@ func save_state() -> void:
 		"player_age": player_age,
 		"player_login_id": player_login_id,
 		"player_login_created_at": player_login_created_at,
+		"player_auth_provider": get_player_auth_provider(),
+		"player_auth_email": player_auth_email,
+		"player_auth_picture": player_auth_picture,
+		"player_auth_token": player_auth_token,
 		"shoot_sensitivity": get_shoot_sensitivity(),
 		"aim_inverted": is_aim_inverted(),
 		"shooting_mechanic": get_shooting_mechanic(),

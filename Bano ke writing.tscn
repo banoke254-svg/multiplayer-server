@@ -10,7 +10,7 @@ albedo_color = Color(0.172294, 0.363365, 0.417409, 1)
 
 [sub_resource type="TextMesh" id="TextMesh_ptbnh"]
 material = SubResource("StandardMaterial3D_toyeg")
-text = "BANO"
+text = "Bano ke"
 font = SubResource("SystemFont_3eh57")
 font_size = 100
 uppercase = true
