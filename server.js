@@ -12,7 +12,7 @@ loadEnvFile(path.join(__dirname, '.env'));
 const PORT = Number.parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const ADMIN_HTML_PATH = path.join(__dirname, 'admin.html');
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
+const PAYSTACK_SECRET_KEY = sanitizeSecretKey(process.env.PAYSTACK_SECRET_KEY || '');
 const PAYSTACK_API_HOST = 'api.paystack.co';
 const GOLD_PACK_TIERS = new Map([
   [100, 10],
@@ -92,6 +92,25 @@ function loadEnvFile(envPath) {
       process.env[key] = value;
     }
   });
+}
+
+function sanitizeSecretKey(value) {
+  let cleanValue = String(value || '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim();
+
+  if (cleanValue.startsWith('PAYSTACK_SECRET_KEY=')) {
+    cleanValue = cleanValue.slice('PAYSTACK_SECRET_KEY='.length).trim();
+  }
+
+  if (
+    (cleanValue.startsWith('"') && cleanValue.endsWith('"'))
+    || (cleanValue.startsWith("'") && cleanValue.endsWith("'"))
+  ) {
+    cleanValue = cleanValue.slice(1, -1).trim();
+  }
+
+  return cleanValue;
 }
 
 class RoomManager {
@@ -1298,10 +1317,30 @@ function normalizeMpesaPhone(value) {
   let digits = String(value || '').replace(/\D/g, '');
   if (digits.length === 10 && digits.startsWith('0')) {
     digits = `254${digits.slice(1)}`;
-  } else if (digits.length === 9 && digits.startsWith('7')) {
+  } else if (digits.length === 9 && /^[17]/.test(digits)) {
     digits = `254${digits}`;
   }
-  return /^2547\d{8}$/.test(digits) ? digits : '';
+  return /^254[17]\d{8}$/.test(digits) ? digits : '';
+}
+
+function getPaystackMpesaPhoneCandidates(phoneNumber) {
+  const digits = String(phoneNumber || '').replace(/\D/g, '');
+  const candidates = [];
+
+  if (/^254[17]\d{8}$/.test(digits)) {
+    candidates.push(digits);
+    candidates.push(`+${digits}`);
+    candidates.push(`0${digits.slice(3)}`);
+  } else if (phoneNumber) {
+    candidates.push(String(phoneNumber));
+  }
+
+  return Array.from(new Set(candidates.filter(Boolean)));
+}
+
+function isPaystackPhoneFormatError(error) {
+  const message = String(error && error.message || '').toLowerCase();
+  return message.includes('phone') && message.includes('format');
 }
 
 function sanitizePaymentPurpose(value) {
@@ -1374,7 +1413,7 @@ async function handlePaystackInitializeRequest(request, response) {
   };
 
   try {
-    const providerResponse = await postPaystackJson('POST', '/charge', payload);
+    const providerResponse = await postPaystackChargeWithPhoneFallback(payload, phoneNumber);
     const invoiceId = extractPaystackReference(providerResponse) || apiRef;
     recordPayment({
       invoice_id: invoiceId,
@@ -1403,6 +1442,21 @@ async function handlePaystackInitializeRequest(request, response) {
       provider_response: providerResponse
     });
   } catch (error) {
+    console.warn(
+      `[paystack] charge failed ref=${apiRef} purpose=${purpose} amount=${amount} phone=${maskPhoneForLog(phoneNumber)} status=${error.statusCode || 'unknown'} message=${error.message || 'unknown'}`
+    );
+    recordPayment({
+      invoice_id: apiRef,
+      api_ref: apiRef,
+      player_name: playerName,
+      player_login_id: playerLoginId,
+      player_age: playerAge,
+      phone_number: phoneNumber,
+      purpose,
+      amount,
+      gold_amount: goldAmount,
+      state: 'FAILED'
+    });
     writeJsonResponse(response, error.statusCode || 502, {
       ok: false,
       error: error.message || 'Paystack payment request failed.'
@@ -1474,7 +1528,10 @@ function postPaystackJson(method, requestPath, payload = null) {
   }
 
   return new Promise((resolve, reject) => {
-    const providerRequest = https.request(options, (providerResponse) => {
+    let providerRequest;
+
+    try {
+      providerRequest = https.request(options, (providerResponse) => {
       let responseBody = '';
       providerResponse.setEncoding('utf8');
       providerResponse.on('data', (chunk) => {
@@ -1499,7 +1556,11 @@ function postPaystackJson(method, requestPath, payload = null) {
         error.statusCode = providerResponse.statusCode;
         reject(error);
       });
-    });
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     providerRequest.on('timeout', () => {
       providerRequest.destroy(new Error('Paystack request timed out.'));
@@ -1510,6 +1571,39 @@ function postPaystackJson(method, requestPath, payload = null) {
     }
     providerRequest.end();
   });
+}
+
+async function postPaystackChargeWithPhoneFallback(payload, phoneNumber) {
+  const phoneCandidates = getPaystackMpesaPhoneCandidates(phoneNumber);
+  let lastError = null;
+
+  for (const candidate of phoneCandidates) {
+    const candidatePayload = Object.assign({}, payload, {
+      mobile_money: Object.assign({}, payload.mobile_money, {
+        phone: candidate
+      })
+    });
+
+    try {
+      return await postPaystackJson('POST', '/charge', candidatePayload);
+    } catch (error) {
+      lastError = error;
+      if (!isPaystackPhoneFormatError(error)) {
+        throw error;
+      }
+      console.log(`[paystack] retrying M-Pesa charge with alternate phone format after provider rejected ${maskPhoneForLog(candidate)}`);
+    }
+  }
+
+  throw lastError || new Error('Paystack payment request failed.');
+}
+
+function maskPhoneForLog(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length <= 4) {
+    return '****';
+  }
+  return `${'*'.repeat(Math.max(digits.length - 4, 4))}${digits.slice(-4)}`;
 }
 
 function extractPaystackReference(providerResponse) {
