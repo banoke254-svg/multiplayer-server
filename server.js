@@ -11,7 +11,9 @@ loadEnvFile(path.join(__dirname, '.env'));
 
 const PORT = Number.parseInt(process.env.PORT || '3000', 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
-const ADMIN_HTML_PATH = path.join(__dirname, 'admin.html');
+const ADMIN_HTML_PATH = fs.existsSync(path.join(__dirname, 'admin.html'))
+  ? path.join(__dirname, 'admin.html')
+  : path.join(__dirname, 'multiplayer_server', 'admin.html');
 const PAYSTACK_SECRET_KEY = sanitizeSecretKey(process.env.PAYSTACK_SECRET_KEY || '');
 const PAYSTACK_API_HOST = 'api.paystack.co';
 const GOLD_PACK_TIERS = new Map([
