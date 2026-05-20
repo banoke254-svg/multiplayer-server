@@ -1135,12 +1135,14 @@ func _run_lineup_phase() -> void:
 
 
 func _play_lineup_round(shooters: Array[Node3D]) -> void:
+	var lineup_shooters: Array[Node3D] = _filter_active_lineup_contenders(shooters)
 	var shooter_index: int = 0
-	for marble in shooters:
+	for marble in lineup_shooters:
 		if not active_marbles.has(marble):
 			continue
 
 		current_marble_index = shooter_index
+		_reset_marble_motion(marble, _get_lineup_position(lineup_shooters, shooter_index))
 		_emit_turn_state(marble)
 		await _activate_camera_for(marble)
 		await _perform_action_shot(marble, ACTION_MODE_LINEUP)
@@ -3542,6 +3544,16 @@ func _place_marbles_on_lineup(candidates: Array[Node3D]) -> void:
 	if candidates.is_empty():
 		return
 
+	var count: int = candidates.size()
+	for index in range(count):
+		var marble: Node3D = candidates[index]
+		if marble == null:
+			continue
+
+		_reset_marble_motion(marble, _get_lineup_position(candidates, index))
+
+
+func _get_lineup_position(candidates: Array[Node3D], index: int) -> Vector3:
 	var lineup_center: Vector3 = _get_lineup_center_anchor()
 	var target_position: Vector3 = hole.global_position if hole != null else lineup_center + Vector3.FORWARD
 	var hole_direction: Vector3 = _planar_direction_to(lineup_center, target_position)
@@ -3549,15 +3561,8 @@ func _place_marbles_on_lineup(candidates: Array[Node3D]) -> void:
 	if sideways.length_squared() <= 0.0001:
 		sideways = Vector3.RIGHT
 
-	var count: int = candidates.size()
-	for index in range(count):
-		var marble: Node3D = candidates[index]
-		if marble == null:
-			continue
-
-		var centered_index: float = float(index) - float(count - 1) * 0.5
-		var lineup_position: Vector3 = lineup_center + sideways * centered_index * lineup_side_spacing
-		_reset_marble_motion(marble, lineup_position)
+	var centered_index: float = float(index) - float(candidates.size() - 1) * 0.5
+	return lineup_center + sideways * centered_index * lineup_side_spacing
 
 
 func _reset_marble_motion(marble: Node3D, target_position: Vector3) -> void:
