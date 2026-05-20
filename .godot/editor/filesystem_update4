@@ -1,4 +1,8 @@
-res://start_menu.gd
+res://ai_marble1.gd
+res://ai_marble2.gd
+res://ai_marble3.gd
+res://ai_marble4.gd
+res://ai_marble.tscn
+res://marble.tscn
+res://playerm.gd
 res://turn_manager.gd
-res://MultiplayerManager.gd
-res://customize_room.gd

@@ -8,7 +8,9 @@ extends RigidBody3D
 @export var max_shot_impulse: float = 10.8
 @export var power_response_exponent: float = 2.35
 @export var min_shot_lift: float = 0.08
-@export var max_shot_lift: float = 0.58
+@export var max_shot_lift: float = 0.24
+@export var max_vertical_shot_impulse: float = 0.34
+@export var max_upward_velocity: float = 2.2
 @export var stop_threshold: float = 0.05
 @export var marbles: Array[Node3D]
 
@@ -34,6 +36,10 @@ func _ready() -> void:
 			"pattern_name": "aura",
 			"marble_scene_path": "res://marbles/marble_aura.tscn"
 		})
+
+
+func _physics_process(_delta: float) -> void:
+	_clamp_upward_velocity()
 
 
 func start_turn(turn_mgr: Node) -> void:
@@ -86,8 +92,29 @@ func shoot(aim: Vector3, force: float) -> void:
 	var shot_impulse: float = lerpf(min_shot_impulse, max_shot_impulse, shot_ratio) * float(shot_context.get("impulse_multiplier", 1.0))
 	var lift: float = lerpf(min_shot_lift, max_shot_lift, ease(shot_ratio, 1.15)) * float(shot_context.get("lift_multiplier", 1.0))
 	var shot_direction: Vector3 = shot_context.get("direction", aim.normalized())
-	apply_central_impulse(shot_direction * shot_impulse + Vector3.UP * lift)
+	apply_central_impulse(_make_realistic_shot_impulse(shot_direction, shot_impulse, lift, aim))
+	_clamp_upward_velocity()
 	print("AI", name, "shooting with impulse =", shot_impulse)
+
+
+func _make_realistic_shot_impulse(shot_direction: Vector3, shot_impulse: float, lift: float, fallback_aim: Vector3) -> Vector3:
+	var planar_direction := Vector3(shot_direction.x, 0.0, shot_direction.z)
+	if planar_direction.length_squared() <= 0.0001:
+		planar_direction = Vector3(fallback_aim.x, 0.0, fallback_aim.z)
+	if planar_direction.length_squared() <= 0.0001:
+		planar_direction = Vector3.FORWARD
+	planar_direction = planar_direction.normalized()
+
+	var directional_lift := maxf(shot_direction.y, 0.0) * shot_impulse
+	var vertical_impulse := minf(lift + directional_lift, max_vertical_shot_impulse)
+	return planar_direction * shot_impulse + Vector3.UP * vertical_impulse
+
+
+func _clamp_upward_velocity() -> void:
+	if linear_velocity.y > max_upward_velocity:
+		var clamped_velocity := linear_velocity
+		clamped_velocity.y = max_upward_velocity
+		linear_velocity = clamped_velocity
 
 
 func end_turn() -> void:

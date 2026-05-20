@@ -30,6 +30,7 @@ const THUMP_AUDIO_COOLDOWN: float = 0.08
 const PHYSICS_IMPACT_COOLDOWN: float = 0.05
 const PHYSICS_IMPACT_MIN_SPEED: float = 0.18
 const PHYSICS_IMPACT_MAX_SPEED: float = 16.0
+const LINEUP_DISTANCE_TIE_EPSILON: float = 0.035
 const ONLINE_REMOTE_DISCOVERY_GRACE_SECONDS: float = 0.85
 const ONLINE_REMOTE_READY_WAIT_SECONDS: float = 8.0
 const ONLINE_CLIENT_SYNC_REQUEST_INTERVAL: float = 0.7
@@ -95,6 +96,7 @@ const ACTION_MODE_ATTACK: int = 3
 @export var marble_collision_transfer_strength: float = 0.82
 @export var marble_collision_spin_transfer: float = 0.32
 @export var marble_collision_equal_deflect_strength: float = 1.0
+@export var marble_max_upward_velocity: float = 2.2
 @export var lan_state_send_rate: float = 24.0
 @export var online_state_send_rate: float = 36.0
 @export var lan_state_lerp_speed: float = 30.0
@@ -259,6 +261,7 @@ func _physics_process(delta: float) -> void:
 
 	_refresh_marble_name_tags()
 	for marble in active_marbles:
+		_clamp_marble_upward_velocity(marble)
 		if _should_respawn_marble(marble):
 			_respawn_marble(marble)
 	_cache_previous_marble_velocities()
@@ -1119,12 +1122,7 @@ func _run_lineup_phase() -> void:
 	_place_marbles_on_lineup(turn_order)
 	await _play_lineup_round(turn_order)
 
-	var first_marble: Node3D = null
-	var marbles_in_hole: Array[Node3D] = _collect_in_hole_marbles(active_marbles)
-	if marbles_in_hole.size() == 1:
-		first_marble = marbles_in_hole[0]
-	elif marbles_in_hole.size() > 1:
-		first_marble = await _resolve_lineup_tiebreak(marbles_in_hole)
+	var first_marble: Node3D = await _resolve_lineup_starter(active_marbles)
 
 	turn_order = active_marbles.duplicate()
 	turn_order.sort_custom(Callable(self , "_sort_marbles_by_lineup_distance"))
@@ -1152,28 +1150,64 @@ func _play_lineup_round(shooters: Array[Node3D]) -> void:
 			await _wait_seconds(turn_delay)
 
 
-func _resolve_lineup_tiebreak(contenders: Array[Node3D]) -> Node3D:
-	var tied_marbles: Array[Node3D] = []
-	for marble in contenders:
-		if marble != null and active_marbles.has(marble):
-			tied_marbles.append(marble)
+func _resolve_lineup_starter(candidates: Array) -> Node3D:
+	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
+	while contenders.size() > 1:
+		var result := _get_lineup_result(contenders)
+		var winner: Node3D = result.get("winner", null) as Node3D
+		if winner != null:
+			return winner
 
-	while tied_marbles.size() > 1:
-		print("Multiple lineup marbles reached the hole. Replaying closest-to-hole tiebreak for: %s" % _get_marble_names(tied_marbles))
-		_place_marbles_on_lineup(tied_marbles)
-		await _play_lineup_round(tied_marbles)
+		contenders = _filter_active_lineup_contenders(result.get("retry", []) as Array)
+		if contenders.size() > 1:
+			print("Lineup tied. Retrying starter selection for: %s" % _get_marble_names(contenders))
+			_place_marbles_on_lineup(contenders)
+			await _play_lineup_round(contenders)
 
-		var tied_in_hole: Array[Node3D] = _collect_in_hole_marbles(tied_marbles)
-		if tied_in_hole.size() == 1:
-			return tied_in_hole[0]
-		if tied_in_hole.size() > 1:
-			tied_marbles = tied_in_hole
+	return contenders[0] if not contenders.is_empty() else null
+
+
+func _get_lineup_result(candidates: Array) -> Dictionary:
+	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
+	if contenders.size() <= 1:
+		return {"winner": contenders[0] if not contenders.is_empty() else null, "retry": []}
+
+	var in_hole: Array[Node3D] = _collect_in_hole_marbles(contenders)
+	if in_hole.size() == 1:
+		return {"winner": in_hole[0], "retry": []}
+	if in_hole.size() > 1:
+		return {"winner": null, "retry": in_hole}
+
+	var closest: Array[Node3D] = _collect_closest_lineup_marbles(contenders)
+	if closest.size() == 1:
+		return {"winner": closest[0], "retry": []}
+	return {"winner": null, "retry": closest}
+
+
+func _filter_active_lineup_contenders(candidates: Array) -> Array[Node3D]:
+	var contenders: Array[Node3D] = []
+	for candidate in candidates:
+		var marble := candidate as Node3D
+		if marble != null and active_marbles.has(marble) and not contenders.has(marble):
+			contenders.append(marble)
+	return contenders
+
+
+func _collect_closest_lineup_marbles(candidates: Array) -> Array[Node3D]:
+	var closest: Array[Node3D] = []
+	var best_distance: float = INF
+	for candidate in candidates:
+		var marble := candidate as Node3D
+		if marble == null:
 			continue
 
-		tied_marbles.sort_custom(Callable(self , "_sort_marbles_by_lineup_distance"))
-		return tied_marbles[0]
-
-	return tied_marbles[0] if not tied_marbles.is_empty() else null
+		var distance: float = _distance_to_hole(marble)
+		if distance + LINEUP_DISTANCE_TIE_EPSILON < best_distance:
+			best_distance = distance
+			closest = [marble]
+		elif absf(distance - best_distance) <= LINEUP_DISTANCE_TIE_EPSILON:
+			closest.append(marble)
+	return closest
 
 
 func _play_match_turn(marble: Node3D) -> void:
@@ -3121,6 +3155,8 @@ func _apply_power_impact_response(source_body: RigidBody3D, other_body: RigidBod
 
 	source_body.linear_velocity = Vector3(source_after_planar.x, source_body.linear_velocity.y, source_after_planar.z)
 	other_body.linear_velocity = Vector3(other_after_planar.x, other_body.linear_velocity.y, other_after_planar.z)
+	_clamp_marble_upward_velocity(source_body)
+	_clamp_marble_upward_velocity(other_body)
 	previous_marble_velocities[source_body.get_instance_id()] = source_body.linear_velocity
 	previous_marble_velocities[other_body.get_instance_id()] = other_body.linear_velocity
 	source_body.sleeping = false
@@ -3132,6 +3168,16 @@ func _apply_power_impact_response(source_body: RigidBody3D, other_body: RigidBod
 		var spin_amount: float = tangent_velocity.length() * marble_collision_spin_transfer
 		source_body.angular_velocity -= spin_axis * spin_amount
 		other_body.angular_velocity += spin_axis * spin_amount
+
+
+func _clamp_marble_upward_velocity(marble: Node3D) -> void:
+	var body := marble as RigidBody3D
+	if body == null:
+		return
+	if body.linear_velocity.y > marble_max_upward_velocity:
+		var clamped_velocity := body.linear_velocity
+		clamped_velocity.y = marble_max_upward_velocity
+		body.linear_velocity = clamped_velocity
 
 
 func _load_audio_stream(path: String) -> AudioStream:

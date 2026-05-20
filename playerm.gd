@@ -16,7 +16,9 @@ const SHOOTING_MECHANIC_PRESS: String = "press"
 @export var power_response_exponent: float = 2.35
 @export var drag_input_smoothing: float = 0.32
 @export var min_shot_lift: float = 0.0
-@export var max_shot_lift: float = 0.42
+@export var max_shot_lift: float = 0.22
+@export var max_vertical_shot_impulse: float = 0.34
+@export var max_upward_velocity: float = 2.2
 @export var curve_start_ratio: float = 0.58
 @export var stop_threshold: float = 0.08
 @export var input_ready_velocity_threshold: float = 0.18
@@ -104,6 +106,10 @@ func _process(delta: float) -> void:
 		_update_press_shot_preview(true)
 	elif press_charging:
 		_cancel_press_shot()
+
+
+func _physics_process(_delta: float) -> void:
+	_clamp_upward_velocity()
 
 
 func _ensure_hold_shoot_button() -> void:
@@ -896,7 +902,8 @@ func _apply_current_shot() -> void:
 	var shot_lift := current_shot_lift * float(shot_context.get("lift_multiplier", 1.0))
 	var shot_direction: Vector3 = shot_context.get("direction", current_aim_direction)
 	sleeping = false
-	apply_central_impulse(shot_direction * shot_impulse + Vector3.UP * shot_lift)
+	apply_central_impulse(_make_realistic_shot_impulse(shot_direction, shot_impulse, shot_lift))
+	_clamp_upward_velocity()
 
 	is_turn = false
 	dragging = false
@@ -907,6 +914,26 @@ func _apply_current_shot() -> void:
 	_update_hold_shoot_button_visibility()
 	if turn_manager and turn_manager.has_method("notify_player_shot"):
 		turn_manager.notify_player_shot()
+
+
+func _make_realistic_shot_impulse(shot_direction: Vector3, shot_impulse: float, shot_lift: float) -> Vector3:
+	var planar_direction := Vector3(shot_direction.x, 0.0, shot_direction.z)
+	if planar_direction.length_squared() <= 0.0001:
+		planar_direction = Vector3(current_aim_direction.x, 0.0, current_aim_direction.z)
+	if planar_direction.length_squared() <= 0.0001:
+		planar_direction = Vector3.FORWARD
+	planar_direction = planar_direction.normalized()
+
+	var directional_lift := maxf(shot_direction.y, 0.0) * shot_impulse
+	var vertical_impulse := minf(shot_lift + directional_lift, max_vertical_shot_impulse)
+	return planar_direction * shot_impulse + Vector3.UP * vertical_impulse
+
+
+func _clamp_upward_velocity() -> void:
+	if linear_velocity.y > max_upward_velocity:
+		var clamped_velocity := linear_velocity
+		clamped_velocity.y = max_upward_velocity
+		linear_velocity = clamped_velocity
 
 
 func _get_hole_shot_context(base_direction: Vector3) -> Dictionary:

@@ -1,0 +1,88 @@
+.bano-intro {
+  background: #010106;
+  color: white;
+  overflow: hidden;
+}
+
+.bano-overlay {
+  pointer-events: none;
+}
+
+.bano-final-lockup {
+  left: 50%;
+  position: absolute;
+  text-align: center;
+  top: 59%;
+  transform-origin: center;
+  width: min(860px, 88vw);
+}
+
+.bano-logo {
+  color: #fff2c7;
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  font-size: 118px;
+  font-weight: 900;
+  letter-spacing: 10px;
+  line-height: 0.92;
+  margin-left: 10px;
+  position: relative;
+  text-shadow:
+    0 0 10px rgba(255, 233, 178, 0.9),
+    0 0 32px rgba(255, 159, 31, 0.8),
+    0 0 76px rgba(189, 70, 255, 0.78),
+    0 0 140px rgba(120, 40, 255, 0.55);
+}
+
+.bano-logo::before,
+.bano-logo::after {
+  content: attr(data-text);
+  inset: 0;
+  position: absolute;
+}
+
+.bano-logo::before {
+  color: #4fe5ff;
+  opacity: 0.3;
+  transform: translateX(-5px);
+}
+
+.bano-logo::after {
+  color: #ff9f1f;
+  opacity: 0.42;
+  transform: translateX(5px);
+}
+
+.bano-subtitle {
+  color: #ccefff;
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  font-size: 31px;
+  font-weight: 700;
+  letter-spacing: 7px;
+  line-height: 1.25;
+  margin-top: 28px;
+  text-shadow:
+    0 0 14px rgba(92, 219, 255, 0.92),
+    0 0 48px rgba(153, 72, 255, 0.62);
+}
+
+.bano-ke-mark {
+  display: block;
+  filter:
+    drop-shadow(0 0 10px rgba(246, 209, 255, 0.78))
+    drop-shadow(0 0 28px rgba(177, 63, 255, 0.86))
+    drop-shadow(0 0 70px rgba(109, 22, 255, 0.5));
+  height: auto;
+  margin: 0 auto 34px;
+  max-height: 250px;
+  max-width: 850px;
+  object-fit: contain;
+  width: 94%;
+}
+
+.bano-flash {
+  background:
+    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.92), rgba(194, 76, 255, 0.38) 18%, transparent 48%),
+    radial-gradient(circle at 50% 52%, rgba(44, 218, 255, 0.28), transparent 58%);
+  inset: 0;
+  position: absolute;
+}

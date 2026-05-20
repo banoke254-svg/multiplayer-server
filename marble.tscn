@@ -6,7 +6,7 @@
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_c16uf"]
 friction = 0.16
-bounce = 0.42
+bounce = 0.18
 
 [sub_resource type="SphereMesh" id="SphereMesh_7ritg"]
 radius = 0.2

@@ -1,0 +1,38 @@
+{
+  "name": "my-animation",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "start": "vite",
+    "serve": "vite",
+    "build": "tsc && vite build",
+    "remotion:studio": "remotion studio src/remotion/index.tsx",
+    "render": "remotion render src/remotion/index.tsx BanoIntro out/bano-intro-mobile.mp4 --timeout=120000 --concurrency=2",
+    "render:preview": "remotion render src/remotion/index.tsx BanoIntro out/bano-intro-mobile-preview.mp4 --frames=0-89 --timeout=120000 --concurrency=2",
+    "render:promo": "remotion render src/remotion/index.tsx BanoPromoTemplate out/bano-ke-reference-style.mp4 --timeout=120000 --concurrency=4",
+    "render:promo:preview": "remotion render src/remotion/index.tsx BanoPromoTemplate out/bano-ke-reference-style-preview.mp4 --frames=0-599 --timeout=120000 --concurrency=4"
+  },
+  "dependencies": {
+    "@motion-canvas/2d": "^3.17.2",
+    "@motion-canvas/core": "^3.17.2",
+    "@motion-canvas/ffmpeg": "^1.1.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@react-three/postprocessing": "^3.0.4",
+    "@remotion/cli": "^4.0.462",
+    "@remotion/three": "^4.0.462",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "postprocessing": "^6.39.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "remotion": "^4.0.462",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@motion-canvas/ui": "^3.17.2",
+    "@motion-canvas/vite-plugin": "^3.17.2",
+    "typescript": "^5.2.2",
+    "vite": "^4.0.0"
+  }
+}
