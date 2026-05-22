@@ -1277,17 +1277,17 @@ func get_shooting_mechanic_options() -> Array[Dictionary]:
 		{
 			"id": SHOOTING_MECHANIC_DRAG,
 			"name": "Classic Drag",
-			"description": "One finger aims and shoots by dragging."
+			"description": "Drag from the marble to aim and set power."
 		},
 		{
 			"id": SHOOTING_MECHANIC_SPLIT,
 			"name": "Split Control",
-			"description": "Left side aims. Right side drags to shoot."
+			"description": "Left side aims. Right side controls shot power."
 		},
 		{
 			"id": SHOOTING_MECHANIC_PRESS,
 			"name": "Hold Button",
-			"description": "Aim anywhere, then hold the shoot button for power."
+			"description": "Aim freely, then release as the power bar cycles."
 		}
 	]
 

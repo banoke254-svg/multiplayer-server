@@ -20,7 +20,8 @@ var hover_root: Node2D = null
 var hover_glow: Polygon2D = null
 var hover_arrow: Polygon2D = null
 var hover_label: Label = null
-var elimination_banner: Label = null
+var elimination_popup: Panel = null
+var elimination_popup_label: Label = null
 var turn_prompt_card: Panel = null
 var turn_prompt_label: Label = null
 var result_overlay: ColorRect = null
@@ -54,6 +55,7 @@ var online_chat_button_drag_started_by_touch: bool = false
 var online_chat_button_has_custom_position: bool = false
 var online_chat_button_custom_position: Vector2 = Vector2.ZERO
 var elimination_banner_time_left: float = 0.0
+var elimination_banner_duration: float = 0.0
 var hover_position_initialized: bool = false
 var smoothed_hover_position: Vector2 = Vector2.ZERO
 var pulse_time: float = 0.0
@@ -120,6 +122,8 @@ func _on_turn_changed(active_name: String, _active_index: int) -> void:
 
 
 func _style_hud() -> void:
+	_style_power_meter()
+
 	top_right.offset_left = -244.0
 	top_right.offset_right = -18.0
 	top_right.offset_top = 18.0
@@ -152,6 +156,51 @@ func _style_hud() -> void:
 			online_chat_bubble_button.position = _clamp_online_chat_button_position(online_chat_button_custom_position)
 		else:
 			online_chat_bubble_button.position = Vector2(18.0, chat_button_y)
+
+
+func _style_power_meter() -> void:
+	var ui_root: Node = get_parent()
+	var power_meter: Control = null
+	if ui_root != null:
+		power_meter = ui_root.get_node_or_null("PowerMeter") as Control
+	if power_meter == null:
+		return
+
+	power_meter.offset_left = 18.0
+	power_meter.offset_top = 150.0
+	power_meter.offset_right = 82.0
+	power_meter.offset_bottom = 472.0
+	power_meter.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var power_glass: PanelContainer = power_meter.get_node_or_null("PowerGlass") as PanelContainer
+	if power_glass != null:
+		power_glass.add_theme_stylebox_override("panel", _make_power_meter_panel_style())
+
+	var power_label: Label = power_meter.get_node_or_null("PowerLabel") as Label
+	if power_label != null:
+		power_label.offset_left = 0.0
+		power_label.offset_top = -25.0
+		power_label.offset_right = 64.0
+		power_label.offset_bottom = -2.0
+		power_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		power_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		power_label.add_theme_font_size_override("font_size", 14)
+		power_label.add_theme_color_override("font_color", Color(0.94, 0.99, 1.0, 1.0))
+		power_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.68))
+		power_label.add_theme_constant_override("shadow_offset_x", 0)
+		power_label.add_theme_constant_override("shadow_offset_y", 1)
+		power_label.add_theme_constant_override("shadow_outline_size", 2)
+
+	var power_bar: ProgressBar = power_meter.get_node_or_null("PowerBar") as ProgressBar
+	if power_bar != null:
+		power_bar.offset_left = 13.0
+		power_bar.offset_top = 15.0
+		power_bar.offset_right = 51.0
+		power_bar.offset_bottom = 288.0
+		power_bar.fill_mode = 3
+		power_bar.show_percentage = false
+		power_bar.add_theme_stylebox_override("background", _make_power_bar_track_style())
+		power_bar.add_theme_stylebox_override("fill", _make_power_bar_fill_style())
 
 
 func _build_hover_indicator() -> void:
@@ -295,25 +344,42 @@ func _build_result_overlay() -> void:
 
 
 func _build_elimination_banner() -> void:
-	elimination_banner = Label.new()
-	elimination_banner.name = "EliminationBanner"
-	elimination_banner.visible = false
-	elimination_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	elimination_banner.anchor_left = 0.5
-	elimination_banner.anchor_right = 0.5
-	elimination_banner.offset_left = -220.0
-	elimination_banner.offset_right = 220.0
-	elimination_banner.offset_top = 22.0
-	elimination_banner.offset_bottom = 64.0
-	elimination_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	elimination_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	elimination_banner.add_theme_font_size_override("font_size", 20)
-	elimination_banner.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42, 1.0))
-	elimination_banner.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.75))
-	elimination_banner.add_theme_constant_override("shadow_offset_x", 0)
-	elimination_banner.add_theme_constant_override("shadow_offset_y", 2)
-	elimination_banner.add_theme_constant_override("shadow_outline_size", 2)
-	add_child(elimination_banner)
+	elimination_popup = Panel.new()
+	elimination_popup.name = "EliminationPopup"
+	elimination_popup.set_anchors_preset(Control.PRESET_CENTER)
+	elimination_popup.offset_left = -250.0
+	elimination_popup.offset_top = -58.0
+	elimination_popup.offset_right = 250.0
+	elimination_popup.offset_bottom = 58.0
+	elimination_popup.pivot_offset = Vector2(250.0, 58.0)
+	elimination_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	elimination_popup.z_index = 560
+	elimination_popup.visible = false
+	elimination_popup.add_theme_stylebox_override("panel", _make_elimination_popup_style(Color(1.0, 0.86, 0.42, 1.0)))
+	add_child(elimination_popup)
+
+	var margin: MarginContainer = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	elimination_popup.add_child(margin)
+
+	elimination_popup_label = Label.new()
+	elimination_popup_label.name = "EliminationMessage"
+	elimination_popup_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	elimination_popup_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	elimination_popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	elimination_popup_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	elimination_popup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	elimination_popup_label.add_theme_font_size_override("font_size", 24)
+	elimination_popup_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42, 0.96))
+	elimination_popup_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.75))
+	elimination_popup_label.add_theme_constant_override("shadow_offset_x", 0)
+	elimination_popup_label.add_theme_constant_override("shadow_offset_y", 2)
+	elimination_popup_label.add_theme_constant_override("shadow_outline_size", 3)
+	margin.add_child(elimination_popup_label)
 
 
 func _build_currency_bar() -> void:
@@ -671,6 +737,14 @@ func _make_modal_style(fill_color: Color, border_color: Color) -> StyleBoxFlat:
 	return style
 
 
+func _make_elimination_popup_style(accent: Color) -> StyleBoxFlat:
+	var border_color := Color(accent.r, accent.g, accent.b, 0.66)
+	var style: StyleBoxFlat = _make_modal_style(Color(0.02, 0.04, 0.12, 0.46), border_color)
+	style.shadow_size = 12
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.18)
+	return style
+
+
 func _on_marble_eliminated(player_name: String) -> void:
 	_show_banner("%s HAS BEEN ELIMINATED" % player_name.to_upper(), Color(1.0, 0.86, 0.42, 1.0), 2.6)
 
@@ -893,14 +967,17 @@ func _sanitize_online_chat_text(text_value: String) -> String:
 
 
 func _show_banner(message: String, color: Color, duration: float) -> void:
-	if elimination_banner == null:
+	if elimination_popup == null or elimination_popup_label == null:
 		return
 
-	elimination_banner.text = message
-	elimination_banner.add_theme_color_override("font_color", color)
-	elimination_banner.modulate = Color(1.0, 1.0, 1.0, 1.0)
-	elimination_banner.visible = true
+	elimination_popup_label.text = message
+	elimination_popup_label.add_theme_color_override("font_color", Color(color.r, color.g, color.b, 0.96))
+	elimination_popup.add_theme_stylebox_override("panel", _make_elimination_popup_style(color))
+	elimination_popup.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	elimination_popup.scale = Vector2.ONE
+	elimination_popup.visible = true
 	elimination_banner_time_left = duration
+	elimination_banner_duration = duration
 
 
 func _update_turn_prompt() -> void:
@@ -980,14 +1057,18 @@ func _restart_match() -> void:
 
 
 func _update_elimination_banner(delta: float) -> void:
-	if elimination_banner == null or elimination_banner_time_left <= 0.0:
+	if elimination_popup == null or elimination_banner_time_left <= 0.0:
 		return
 
 	elimination_banner_time_left = maxf(elimination_banner_time_left - delta, 0.0)
-	var alpha: float = clampf(elimination_banner_time_left / 2.6, 0.0, 1.0)
-	elimination_banner.modulate = Color(1.0, 1.0, 1.0, alpha)
+	var popup_duration: float = maxf(elimination_banner_duration, 0.1)
+	var life_ratio: float = clampf(elimination_banner_time_left / popup_duration, 0.0, 1.0)
+	var alpha: float = 1.0 if life_ratio > 0.22 else clampf(life_ratio / 0.22, 0.0, 1.0)
+	var intro_scale: float = 1.0 + 0.08 * clampf((life_ratio - 0.82) / 0.18, 0.0, 1.0)
+	elimination_popup.modulate = Color(1.0, 1.0, 1.0, alpha)
+	elimination_popup.scale = Vector2.ONE * intro_scale
 	if elimination_banner_time_left <= 0.0:
-		elimination_banner.visible = false
+		elimination_popup.visible = false
 
 
 func _update_hover_indicator(delta: float) -> void:
@@ -1055,4 +1136,57 @@ func _make_hud_card_style(accent_color: Color, fill_color: Color) -> StyleBoxFla
 	style.expand_margin_top = 2
 	style.expand_margin_right = 2
 	style.expand_margin_bottom = 2
+	return style
+
+
+func _make_power_meter_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.018, 0.035, 0.055, 0.84)
+	style.border_color = Color(0.31, 0.97, 0.85, 0.94)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.corner_radius_top_left = 5
+	style.corner_radius_top_right = 18
+	style.corner_radius_bottom_right = 5
+	style.corner_radius_bottom_left = 18
+	style.shadow_size = 18
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.3)
+	style.content_margin_left = 0
+	style.content_margin_top = 0
+	style.content_margin_right = 0
+	style.content_margin_bottom = 0
+	return style
+
+
+func _make_power_bar_track_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.005, 0.012, 0.026, 0.88)
+	style.border_color = Color(0.18, 0.52, 0.58, 0.72)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 12
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 12
+	return style
+
+
+func _make_power_bar_fill_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(1.0, 0.82, 0.22, 0.94)
+	style.border_color = Color(0.31, 0.97, 0.85, 0.82)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 12
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 12
+	style.shadow_size = 8
+	style.shadow_color = Color(0.31, 0.97, 0.85, 0.35)
 	return style

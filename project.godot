@@ -27,6 +27,7 @@ CustomizationState="*res://customization_state.gd"
 CurrencyManager="*res://CurrencyManager.gd"
 GameManager="*res://GameManager.gd"
 NetworkManager="*res://NetworkManager.gd"
+UIFontManager="*res://ui_font_manager.gd"
 LanMultiplayer="*res://lan_multiplayer.gd"
 MultiplayerManager="*res://MultiplayerManager.gd"
 

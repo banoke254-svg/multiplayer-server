@@ -6,3 +6,7 @@ res://ai_marble.tscn
 res://marble.tscn
 res://playerm.gd
 res://turn_manager.gd
+res://customization_state.gd
+res://MultiplayerManager.gd
+res://pause_ui.gd
+res://start_menu.gd

@@ -7,6 +7,7 @@ signal connection_failed(message: String)
 signal connection_status_changed(message: String)
 signal rooms_updated(rooms: Array)
 signal online_players_updated(players: Array)
+signal online_rankings_updated(rankings: Array)
 signal room_created(room: Dictionary, code: String)
 signal room_joined(room: Dictionary)
 signal room_updated(room: Dictionary)
@@ -52,6 +53,7 @@ var online_player_count: int = 0
 var open_party_count: int = 0
 var running_party_count: int = 0
 var online_players_directory: Array = []
+var online_rankings: Array = []
 var online_friends: Array = []
 var incoming_friend_requests: Array = []
 var outgoing_friend_requests: Array = []
@@ -462,6 +464,10 @@ func get_online_players() -> Array:
 	return online_players_directory.duplicate(true)
 
 
+func get_online_rankings() -> Array:
+	return online_rankings.duplicate(true)
+
+
 func get_online_friends() -> Array:
 	return online_friends.duplicate(true)
 
@@ -568,12 +574,24 @@ func get_local_gold_balance() -> int:
 	return 0
 
 
+func get_local_country() -> String:
+	var locale: String = OS.get_locale()
+	var parts: PackedStringArray = locale.replace("-", "_").split("_")
+	if parts.size() >= 2:
+		var country: String = str(parts[parts.size() - 1]).strip_edges().to_upper()
+		if country.length() >= 2 and country.length() <= 3:
+			return country
+	return "Unknown"
+
+
 func _with_local_player_profile(payload: Dictionary) -> Dictionary:
 	var message: Dictionary = payload.duplicate(true)
 	if not message.has("name"):
 		message["name"] = get_local_player_name()
 	if not message.has("login_id"):
 		message["login_id"] = get_local_player_login_id()
+	if not message.has("country"):
+		message["country"] = get_local_country()
 	message["age"] = get_local_player_age()
 	message["coin_balance"] = get_local_coin_balance()
 	message["gold_balance"] = get_local_gold_balance()
@@ -725,8 +743,10 @@ func _handle_message(message: Dictionary) -> void:
 			open_party_count = int(message.get("open_parties", listed_rooms.size()))
 			running_party_count = int(message.get("running_parties", 0))
 			online_players_directory = _normalize_online_players(_array_from_message(message.get("online_players_list", message.get("players_online", []))))
+			online_rankings = _normalize_online_rankings(_array_from_message(message.get("rankings", message.get("ranking", message.get("leaderboard", [])))))
 			rooms_updated.emit(listed_rooms)
 			online_players_updated.emit(get_online_players())
+			online_rankings_updated.emit(get_online_rankings())
 		"online_players_update":
 			var updated_rooms: Array = _array_from_message(message.get("rooms", message.get("parties", [])))
 			if not updated_rooms.is_empty():
@@ -735,7 +755,9 @@ func _handle_message(message: Dictionary) -> void:
 			open_party_count = int(message.get("open_parties", open_party_count))
 			running_party_count = int(message.get("running_parties", running_party_count))
 			online_players_directory = _normalize_online_players(_array_from_message(message.get("online_players_list", message.get("players_online", []))))
+			online_rankings = _normalize_online_rankings(_array_from_message(message.get("rankings", message.get("ranking", message.get("leaderboard", [])))))
 			online_players_updated.emit(get_online_players())
+			online_rankings_updated.emit(get_online_rankings())
 		"room_created":
 			var created_room_payload = message.get("room", {})
 			if typeof(created_room_payload) != TYPE_DICTIONARY or (created_room_payload as Dictionary).is_empty():
@@ -1053,6 +1075,28 @@ func _normalize_online_players(raw_players: Array) -> Array:
 		player_data["is_local"] = player_id == client_id
 		seen_ids[player_id] = true
 		normalized.append(player_data)
+	return normalized
+
+
+func _normalize_online_rankings(raw_rankings: Array) -> Array:
+	var normalized: Array = []
+	for index in range(raw_rankings.size()):
+		var entry = raw_rankings[index]
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var entry_data: Dictionary = (entry as Dictionary).duplicate(true)
+		var player_name: String = str(entry_data.get("name", "Player")).strip_edges()
+		if player_name == "":
+			player_name = "Player %d" % (normalized.size() + 1)
+		entry_data["rank"] = int(entry_data.get("rank", normalized.size() + 1))
+		entry_data["name"] = player_name
+		entry_data["country"] = str(entry_data.get("country", "Unknown")).strip_edges()
+		if str(entry_data.get("country", "")) == "":
+			entry_data["country"] = "Unknown"
+		entry_data["points"] = int(entry_data.get("points", 0))
+		entry_data["wins"] = int(entry_data.get("wins", 0))
+		entry_data["eliminations"] = int(entry_data.get("eliminations", 0))
+		normalized.append(entry_data)
 	return normalized
 
 

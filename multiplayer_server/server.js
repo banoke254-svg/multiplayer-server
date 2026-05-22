@@ -23,6 +23,7 @@ const GOOGLE_API_HOST = 'oauth2.googleapis.com';
 const GOOGLE_DEVICE_CODE_PATH = '/device/code';
 const GOOGLE_TOKEN_PATH = '/token';
 const PROFILE_STORE_PATH = process.env.PROFILE_STORE_PATH || path.join(__dirname, 'player_profiles.json');
+const EVENTS_STORE_PATH = process.env.EVENTS_STORE_PATH || path.join(__dirname, 'game_events.json');
 const GOLD_PACK_TIERS = new Map([
   [100, 10],
   [175, 30],
@@ -38,6 +39,8 @@ const MAX_OUTBOUND_QUEUE_MESSAGES = Math.max(Number.parseInt(process.env.MAX_OUT
 const PROFILE_AUTH_SESSION_TTL_MS = Math.max(Number.parseInt(process.env.PROFILE_AUTH_SESSION_TTL_MS || String(7 * 24 * 60 * 60 * 1000), 10), 60 * 60 * 1000);
 const PROFILE_AUTH_CLEANUP_INTERVAL_MS = Math.max(Number.parseInt(process.env.PROFILE_AUTH_CLEANUP_INTERVAL_MS || String(60 * 60 * 1000), 10), 60 * 1000);
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const RANKING_WIN_POINTS = 100;
+const RANKING_ELIMINATION_POINTS = 10;
 const CLIENT_INPUT_MESSAGES = new Set([
   'remote_player_aim',
   'remote_player_shot',
@@ -62,6 +65,7 @@ const paymentRecordsByInvoiceId = new Map();
 const paymentRecords = [];
 const playerProfilesByLoginId = new Map();
 const authSessionsByToken = new Map();
+let gameEvents = loadGameEvents();
 
 loadPlayerProfiles();
 
@@ -507,6 +511,7 @@ class RoomManager {
     }
     room.start_at = 0;
     room.started = true;
+    room.allow_ai = true;
     room.party_state = 'running';
     room.started_at = Date.now();
     room.updated_at = room.started_at;
@@ -609,6 +614,10 @@ class RoomManager {
       cleanPayload.sent_at = room.updated_at;
     }
 
+    if (messageType === 'match_finished') {
+      applyMatchRankingAwards(room, cleanPayload);
+    }
+
     const serverMessage = {
       type: 'game_message',
       sender_id: client.id,
@@ -695,6 +704,10 @@ class RoomManager {
         id: client.id,
         name: client.name || 'Player',
         login_id: client.login_id || '',
+        country: client.country || 'Unknown',
+        points: getRankingStatsForClient(client).points,
+        wins: getRankingStatsForClient(client).wins,
+        eliminations: getRankingStatsForClient(client).eliminations,
         age: client.age || 0,
         coin_balance: client.coin_balance || 0,
         gold_balance: client.gold_balance || 0,
@@ -809,12 +822,17 @@ function serializeOnlinePlayers() {
     .filter((client) => client.connected === true)
     .map((client) => {
       const room = rooms.get(client.room_id || '');
+      const ranking = getRankingStatsForClient(client);
 
       return {
         id: client.id,
         client_id: client.id,
         name: client.name || 'Player',
         login_id: client.login_id || '',
+        country: client.country || 'Unknown',
+        points: ranking.points,
+        wins: ranking.wins,
+        eliminations: ranking.eliminations,
         age: client.age || 0,
         coin_balance: client.coin_balance || 0,
         gold_balance: client.gold_balance || 0,
@@ -826,6 +844,77 @@ function serializeOnlinePlayers() {
         room_capacity: room ? room.max_players : 0
       };
     });
+}
+
+function serializePlayerRankings() {
+  const entriesByKey = new Map();
+
+  playerProfilesByLoginId.forEach((profile, loginId) => {
+    const cleanLoginId = String(loginId || profile.login_id || '').trim();
+    const points = Number(profile.ranking_points || 0);
+    const wins = Number(profile.ranking_wins || 0);
+    const eliminations = Number(profile.ranking_eliminations || 0);
+
+    if (!cleanLoginId || points <= 0 && wins <= 0 && eliminations <= 0) {
+      return;
+    }
+
+    entriesByKey.set(`login:${cleanLoginId}`, {
+      login_id: cleanLoginId,
+      name: profile.name || 'Player',
+      country: profile.country || 'Unknown',
+      points,
+      wins,
+      eliminations,
+      connected: false,
+      last_seen_at: Number(profile.last_seen_at || profile.updated_at || 0)
+    });
+  });
+
+  Array.from(clientsById.values()).forEach((client) => {
+    const ranking = getRankingStatsForClient(client);
+    const loginId = String(client.login_id || '').trim();
+    const key = loginId ? `login:${loginId}` : `client:${client.id}`;
+    const existing = entriesByKey.get(key) || {};
+    entriesByKey.set(key, Object.assign({}, existing, {
+      id: client.id,
+      client_id: client.id,
+      login_id: loginId,
+      name: client.name || existing.name || 'Player',
+      country: client.country || existing.country || 'Unknown',
+      points: Math.max(Number(existing.points || 0), ranking.points),
+      wins: Math.max(Number(existing.wins || 0), ranking.wins),
+      eliminations: Math.max(Number(existing.eliminations || 0), ranking.eliminations),
+      connected: client.connected === true,
+      last_seen_at: Math.max(Number(existing.last_seen_at || 0), Number(client.last_seen_at || 0))
+    }));
+  });
+
+  return Array.from(entriesByKey.values())
+    .sort((first, second) => {
+      if (Number(second.points || 0) !== Number(first.points || 0)) {
+        return Number(second.points || 0) - Number(first.points || 0);
+      }
+      if (Number(second.wins || 0) !== Number(first.wins || 0)) {
+        return Number(second.wins || 0) - Number(first.wins || 0);
+      }
+      if (Number(second.eliminations || 0) !== Number(first.eliminations || 0)) {
+        return Number(second.eliminations || 0) - Number(first.eliminations || 0);
+      }
+      return String(first.name || '').localeCompare(String(second.name || ''));
+    })
+    .slice(0, 50)
+    .map((entry, index) => Object.assign({ rank: index + 1 }, entry));
+}
+
+function getRankingStatsForClient(client) {
+  const loginId = String(client && client.login_id || '').trim();
+  const profile = loginId ? playerProfilesByLoginId.get(loginId) : null;
+  return {
+    points: Number(profile && profile.ranking_points || client && client.ranking_points || 0),
+    wins: Number(profile && profile.ranking_wins || client && client.ranking_wins || 0),
+    eliminations: Number(profile && profile.ranking_eliminations || client && client.ranking_eliminations || 0)
+  };
 }
 
 function serializeSocialClient(client) {
@@ -1018,6 +1107,7 @@ function buildOnlineDirectoryPayload() {
   const connectedClients = Array.from(clientsById.values()).filter((candidate) => candidate.connected).length;
   const runningParties = Array.from(rooms.values()).filter((room) => room.started).length;
   const onlinePlayers = serializeOnlinePlayers();
+  const rankings = serializePlayerRankings();
 
   return {
     type: 'online_players_update',
@@ -1025,6 +1115,9 @@ function buildOnlineDirectoryPayload() {
     parties: roomList,
     online_players_list: onlinePlayers,
     players_online: onlinePlayers,
+    rankings,
+    ranking: rankings,
+    leaderboard: rankings,
     online_players: connectedClients,
     open_parties: roomList.length,
     running_parties: runningParties,
@@ -1070,6 +1163,7 @@ function buildAdminSnapshot() {
       .map(serializeAdminRoom)
       .sort((first, second) => second.updated_at - first.updated_at)
       ,
+    events: getPublishedGameEvents(false),
     payments: paymentRecords
       .slice(-100)
       .reverse()
@@ -1089,6 +1183,10 @@ function serializeAdminPlayer(client) {
     age: client.age || 0,
     coin_balance: client.coin_balance || 0,
     gold_balance: client.gold_balance || 0,
+    country: client.country || 'Unknown',
+    points: Number(client.ranking_points || 0),
+    wins: Number(client.ranking_wins || 0),
+    eliminations: Number(client.ranking_eliminations || 0),
     purchases: summarizePaymentsForClient(client),
     connected: client.connected === true,
     ip: client.ip || 'unknown',
@@ -1212,6 +1310,15 @@ const httpServer = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'GET' && requestUrl.pathname === '/events') {
+    writeJsonResponse(response, 200, {
+      ok: true,
+      server_time: Date.now(),
+      events: getPublishedGameEvents(true)
+    });
+    return;
+  }
+
   if (request.method === 'GET' && requestUrl.pathname === '/admin') {
     serveAdminDashboard(response);
     return;
@@ -1226,6 +1333,18 @@ const httpServer = http.createServer(async (request, response) => {
       return;
     }
     writeJsonResponse(response, 200, buildAdminSnapshot());
+    return;
+  }
+
+  if (request.method === 'POST' && requestUrl.pathname === '/admin/events') {
+    if (!isAdminRequestAuthorized(request, requestUrl)) {
+      writeJsonResponse(response, 401, {
+        ok: false,
+        error: 'Admin token is required.'
+      });
+      return;
+    }
+    await handleAdminEventsRequest(request, response);
     return;
   }
 
@@ -1329,15 +1448,23 @@ function writeJsonResponse(response, statusCode, payload) {
 async function readJsonRequest(request, maxBytes = 16 * 1024) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let tooLarge = false;
     request.setEncoding('utf8');
     request.on('data', (chunk) => {
+      if (tooLarge) {
+        return;
+      }
       body += chunk;
       if (Buffer.byteLength(body, 'utf8') > maxBytes) {
-        reject(new Error('Request body too large.'));
-        request.destroy();
+        tooLarge = true;
+        body = '';
       }
     });
     request.on('end', () => {
+      if (tooLarge) {
+        reject(new Error(`Request body too large. Keep images smaller than ${Math.max(1, Math.floor(maxBytes / (1024 * 1024)))} MB.`));
+        return;
+      }
       if (body.trim() === '') {
         resolve({});
         return;
@@ -1384,6 +1511,103 @@ function isPaystackPhoneFormatError(error) {
 
 function sanitizePaymentPurpose(value) {
   return String(value || '').toLowerCase() === 'gold' ? 'gold' : 'donation';
+}
+
+function applyMatchRankingAwards(room, payload) {
+  if (!room || room.ranking_recorded === true) {
+    return;
+  }
+
+  const playerStats = Array.isArray(payload.players) ? payload.players : [];
+  const winnerClientId = String(payload.winner_client_id || payload.winner_id || '').trim();
+  let awardsApplied = 0;
+
+  playerStats.forEach((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      return;
+    }
+
+    const clientId = String(entry.client_id || entry.id || '').trim();
+    if (!clientId || !room.players.includes(clientId)) {
+      return;
+    }
+
+    const eliminations = sanitizePositiveInt(entry.eliminations, 100);
+    const won = Boolean(entry.won) || clientId === winnerClientId;
+    if (eliminations <= 0 && !won) {
+      return;
+    }
+
+    const client = clientsById.get(clientId);
+    awardRankingPoints(client, {
+      client_id: clientId,
+      name: sanitizeAdminText(entry.name || '', 40),
+      country: sanitizeCountry(entry.country || ''),
+      eliminations,
+      won
+    });
+    awardsApplied += 1;
+  });
+
+  if (awardsApplied <= 0 && winnerClientId && room.players.includes(winnerClientId)) {
+    awardRankingPoints(clientsById.get(winnerClientId), {
+      client_id: winnerClientId,
+      name: sanitizeAdminText(payload.winner_name || '', 40),
+      country: sanitizeCountry(payload.winner_country || ''),
+      eliminations: 0,
+      won: true
+    });
+    awardsApplied += 1;
+  }
+
+  if (awardsApplied > 0) {
+    room.ranking_recorded = true;
+    room.party_state = 'finished';
+    room.updated_at = Date.now();
+    savePlayerProfiles();
+    broadcastOnlineDirectory();
+  }
+}
+
+function awardRankingPoints(client, award) {
+  const eliminations = sanitizePositiveInt(award.eliminations, 100);
+  const wins = award.won ? 1 : 0;
+  const points = wins * RANKING_WIN_POINTS + eliminations * RANKING_ELIMINATION_POINTS;
+
+  if (points <= 0) {
+    return;
+  }
+
+  if (client) {
+    client.ranking_points = Number(client.ranking_points || 0) + points;
+    client.ranking_wins = Number(client.ranking_wins || 0) + wins;
+    client.ranking_eliminations = Number(client.ranking_eliminations || 0) + eliminations;
+    if (award.country && award.country !== 'Unknown') {
+      client.country = award.country;
+    }
+  }
+
+  const loginId = String(client && client.login_id || award.login_id || '').trim();
+  if (!loginId) {
+    return;
+  }
+
+  const now = Date.now();
+  const profile = playerProfilesByLoginId.get(loginId) || {
+    login_id: loginId,
+    provider: loginId.startsWith('google:') ? 'google' : 'guest',
+    created_at: now,
+    progress: {}
+  };
+
+  profile.name = sanitizeAdminText(award.name || client && client.name || profile.name || 'Player', 40) || 'Player';
+  profile.country = sanitizeCountry(award.country || client && client.country || profile.country || '');
+  profile.ranking_points = Number(profile.ranking_points || 0) + points;
+  profile.ranking_wins = Number(profile.ranking_wins || 0) + wins;
+  profile.ranking_eliminations = Number(profile.ranking_eliminations || 0) + eliminations;
+  profile.updated_at = now;
+  profile.last_seen_at = now;
+  playerProfilesByLoginId.set(loginId, profile);
 }
 
 function isPaymentTermsAccepted(value) {
@@ -2017,6 +2241,13 @@ function serializePlayerProfile(profile) {
     email: profile.email || '',
     email_verified: Boolean(profile.email_verified),
     picture: profile.picture || '',
+    country: profile.country || 'Unknown',
+    points: Number(profile.ranking_points || 0),
+    wins: Number(profile.ranking_wins || 0),
+    eliminations: Number(profile.ranking_eliminations || 0),
+    ranking_points: Number(profile.ranking_points || 0),
+    ranking_wins: Number(profile.ranking_wins || 0),
+    ranking_eliminations: Number(profile.ranking_eliminations || 0),
     player_age: sanitizePositiveInt(profile.player_age, 120),
     created_at: profile.created_at || 0,
     updated_at: profile.updated_at || 0,
@@ -2118,6 +2349,118 @@ function sanitizeNamesDictionary(value) {
   return clean;
 }
 
+function loadGameEvents() {
+  if (!EVENTS_STORE_PATH || !fs.existsSync(EVENTS_STORE_PATH)) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(EVENTS_STORE_PATH, 'utf8'));
+    const events = Array.isArray(parsed.events) ? parsed.events : (Array.isArray(parsed) ? parsed : []);
+    return sanitizeGameEvents(events, false);
+  } catch (error) {
+    console.warn(`[events] could not load ${EVENTS_STORE_PATH}: ${error.message}`);
+    return [];
+  }
+}
+
+function saveGameEvents() {
+  try {
+    const eventsStoreDirectory = path.dirname(EVENTS_STORE_PATH);
+    if (eventsStoreDirectory && eventsStoreDirectory !== '.') {
+      fs.mkdirSync(eventsStoreDirectory, { recursive: true });
+    }
+    fs.writeFileSync(EVENTS_STORE_PATH, JSON.stringify({
+      version: 1,
+      updated_at: Date.now(),
+      events: gameEvents
+    }, null, 2));
+  } catch (error) {
+    console.warn(`[events] could not save ${EVENTS_STORE_PATH}: ${error.message}`);
+  }
+}
+
+function getPublishedGameEvents(publishedOnly) {
+  return gameEvents
+    .filter((event) => !publishedOnly || event.published !== false)
+    .sort((first, second) => Number(second.updated_at || 0) - Number(first.updated_at || 0))
+    .map((event) => Object.assign({}, event));
+}
+
+function sanitizeGameEvents(rawEvents, assignIds = true) {
+  if (!Array.isArray(rawEvents)) {
+    return [];
+  }
+
+  const now = Date.now();
+  return rawEvents
+    .slice(0, 30)
+    .map((event, index) => {
+      if (!event || typeof event !== 'object' || Array.isArray(event)) {
+        return null;
+      }
+
+      const cleanEvent = {
+        id: sanitizeAdminText(event.id, 80),
+        title: sanitizeAdminText(event.title || 'Live Event', 80),
+        date: sanitizeAdminText(event.date || event.when || 'Date TBA', 80),
+        prize: sanitizeAdminText(event.prize || 'TBA', 80),
+        description: sanitizeAdminText(event.description || event.body || '', 900),
+        image_url: sanitizeEventImageUrl(event.image_url || event.poster_url || event.image || ''),
+        published: event.published !== false,
+        created_at: Number(event.created_at || now),
+        updated_at: Number(event.updated_at || now),
+        order: Number.isFinite(Number(event.order)) ? Number(event.order) : index
+      };
+
+      if (!cleanEvent.id && assignIds) {
+        cleanEvent.id = `event_${now}_${index}_${crypto.randomBytes(3).toString('hex')}`;
+      } else if (!cleanEvent.id) {
+        cleanEvent.id = `event_${now}_${index}`;
+      }
+
+      return cleanEvent;
+    })
+    .filter(Boolean)
+    .sort((first, second) => Number(first.order || 0) - Number(second.order || 0));
+}
+
+function sanitizeEventImageUrl(value) {
+  const cleanValue = String(value || '').trim();
+  if (!cleanValue) {
+    return '';
+  }
+  if (cleanValue.length > 1_800_000) {
+    return '';
+  }
+  if (/^data:image\/(png|jpeg|jpg|webp);base64,[a-z0-9+/=\s]+$/i.test(cleanValue)) {
+    return cleanValue.replace(/\s/g, '');
+  }
+  if (/^https?:\/\/[^\s]+$/i.test(cleanValue)) {
+    return cleanValue.slice(0, 1000);
+  }
+  return '';
+}
+
+async function handleAdminEventsRequest(request, response) {
+  try {
+    const payload = await readJsonRequest(request, 12 * 1024 * 1024);
+    const nextEvents = sanitizeGameEvents(Array.isArray(payload.events) ? payload.events : [], true);
+    gameEvents = nextEvents.map((event) => Object.assign({}, event, { updated_at: Date.now() }));
+    saveGameEvents();
+    writeJsonResponse(response, 200, {
+      ok: true,
+      server_time: Date.now(),
+      events: getPublishedGameEvents(false)
+    });
+  } catch (error) {
+    writeJsonResponse(response, 400, {
+      ok: false,
+      error: error.message || 'Could not save events.'
+    });
+  }
+}
+
 function loadPlayerProfiles() {
   if (!PROFILE_STORE_PATH || !fs.existsSync(PROFILE_STORE_PATH)) {
     return;
@@ -2139,6 +2482,10 @@ function loadPlayerProfiles() {
         email: sanitizeAdminText(profile.email, 120),
         email_verified: Boolean(profile.email_verified),
         picture: sanitizeAdminText(profile.picture, 240),
+        country: sanitizeCountry(profile.country || ''),
+        ranking_points: sanitizePositiveInt(profile.ranking_points, 1000000000),
+        ranking_wins: sanitizePositiveInt(profile.ranking_wins, 1000000),
+        ranking_eliminations: sanitizePositiveInt(profile.ranking_eliminations, 1000000),
         player_age: sanitizePositiveInt(profile.player_age, 120),
         progress: sanitizeProfileProgress(profile.progress || {}),
         created_at: Number(profile.created_at || Date.now()),
@@ -2328,6 +2675,10 @@ function createClient(socket, request) {
     age: 0,
     coin_balance: 0,
     gold_balance: 0,
+    country: getClientCountry(request),
+    ranking_points: 0,
+    ranking_wins: 0,
+    ranking_eliminations: 0,
     socket,
     room_id: '',
     connected: true,
@@ -2377,6 +2728,9 @@ function handleMessage(client, data, socket) {
     if (!client.registered_at) {
       client.registered_at = Date.now();
     }
+  }
+  if (typeof message.country === 'string' && message.country.trim() !== '') {
+    client.country = sanitizeCountry(message.country);
   }
   updateClientProfileNumbers(client, message);
   const identityChanged = client.name !== previousName || client.login_id !== previousLoginId || client.age !== previousAge;
@@ -2585,6 +2939,10 @@ function persistClientPlayerInfo(client) {
   if (cleanAge > 0) {
     existing.player_age = cleanAge;
   }
+  existing.country = sanitizeCountry(client.country || existing.country || '');
+  existing.ranking_points = Math.max(Number(existing.ranking_points || 0), Number(client.ranking_points || 0));
+  existing.ranking_wins = Math.max(Number(existing.ranking_wins || 0), Number(client.ranking_wins || 0));
+  existing.ranking_eliminations = Math.max(Number(existing.ranking_eliminations || 0), Number(client.ranking_eliminations || 0));
   existing.updated_at = now;
   existing.last_seen_at = now;
 
@@ -2817,6 +3175,28 @@ function getClientIp(request) {
   }
 
   return request.socket.remoteAddress || 'unknown';
+}
+
+function getClientCountry(request) {
+  if (!request || !request.headers) {
+    return 'Unknown';
+  }
+
+  return sanitizeCountry(
+    request.headers['cf-ipcountry']
+    || request.headers['x-vercel-ip-country']
+    || request.headers['cloudfront-viewer-country']
+    || request.headers['x-country-code']
+    || ''
+  );
+}
+
+function sanitizeCountry(value) {
+  const cleanValue = String(value || '').trim();
+  if (!cleanValue || cleanValue === 'XX' || cleanValue === 'T1') {
+    return 'Unknown';
+  }
+  return cleanValue.slice(0, 40);
 }
 
 function shutdown() {

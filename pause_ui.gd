@@ -1,6 +1,9 @@
 extends Control
 
 const GLASS_BUTTON_EFFECTS = preload("res://glass_button_effects.gd")
+const SHOOTING_MECHANIC_DRAG_IMAGE_PATH: String = "res://ui/shoot_mechanic_drag.png"
+const SHOOTING_MECHANIC_SPLIT_IMAGE_PATH: String = "res://ui/shoot_mechanic_split.png"
+const SHOOTING_MECHANIC_HOLD_IMAGE_PATH: String = "res://ui/shoot_mechanic_hold.png"
 
 @export_file("*.tscn") var main_menu_scene_path: String = "res://Start_Menu.tscn"
 
@@ -189,10 +192,10 @@ func _ensure_shooting_mechanics_popup() -> void:
 	var panel: Panel = Panel.new()
 	panel.name = "Panel"
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.offset_left = -380.0
-	panel.offset_top = -190.0
-	panel.offset_right = 380.0
-	panel.offset_bottom = 190.0
+	panel.offset_left = -430.0
+	panel.offset_top = -220.0
+	panel.offset_right = 430.0
+	panel.offset_bottom = 220.0
 	panel.add_theme_stylebox_override("panel", _make_settings_panel_style(Color(0.03, 0.05, 0.12, 0.96), Color(0.72, 0.36, 1.0, 1.0)))
 	shooting_mechanics_popup.add_child(panel)
 
@@ -280,8 +283,9 @@ func _create_shooting_mechanic_card(option: Dictionary, selected: bool) -> Butto
 	margin.add_child(stack)
 
 	var preview: TextureRect = TextureRect.new()
-	preview.custom_minimum_size = Vector2(0, 94)
-	preview.texture = _create_shooting_mechanic_preview_texture(str(option.get("id", "drag")))
+	preview.custom_minimum_size = Vector2(0, 112)
+	preview.texture = _get_shooting_mechanic_preview_texture(str(option.get("id", "drag")))
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	stack.add_child(preview)
 
@@ -361,9 +365,9 @@ func _get_shooting_mechanic_options() -> Array:
 		if typeof(options) == TYPE_ARRAY:
 			return options
 	return [
-		{"id": "drag", "name": "Classic Drag", "description": "One finger aims and shoots by dragging."},
-		{"id": "split", "name": "Split Control", "description": "Left side aims. Right side drags to shoot."},
-		{"id": "press", "name": "Hold Button", "description": "Aim anywhere, then hold the shoot button for power."}
+		{"id": "drag", "name": "Classic Drag", "description": "Drag from the marble to aim and set power."},
+		{"id": "split", "name": "Split Control", "description": "Left side aims. Right side controls shot power."},
+		{"id": "press", "name": "Hold Button", "description": "Aim freely, then release as the power bar cycles."}
 	]
 
 
@@ -379,6 +383,21 @@ func _get_shoot_sensitivity_value() -> float:
 	if customization != null and customization.has_method("get_shoot_sensitivity"):
 		return float(customization.call("get_shoot_sensitivity"))
 	return 1.0
+
+
+func _get_shooting_mechanic_preview_texture(mechanic_id: String) -> Texture2D:
+	var texture_path: String = SHOOTING_MECHANIC_DRAG_IMAGE_PATH
+	match mechanic_id:
+		"split":
+			texture_path = SHOOTING_MECHANIC_SPLIT_IMAGE_PATH
+		"press":
+			texture_path = SHOOTING_MECHANIC_HOLD_IMAGE_PATH
+		_:
+			texture_path = SHOOTING_MECHANIC_DRAG_IMAGE_PATH
+	var texture := load(texture_path)
+	if texture is Texture2D:
+		return texture as Texture2D
+	return _create_shooting_mechanic_preview_texture(mechanic_id)
 
 
 func _create_shooting_mechanic_preview_texture(mechanic_id: String) -> Texture2D:

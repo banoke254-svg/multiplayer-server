@@ -9,7 +9,7 @@ extends RigidBody3D
 @export var power_response_exponent: float = 2.35
 @export var min_shot_lift: float = 0.08
 @export var max_shot_lift: float = 0.24
-@export var max_vertical_shot_impulse: float = 0.34
+@export var max_vertical_shot_impulse: float = 0.52
 @export var max_upward_velocity: float = 2.2
 @export var stop_threshold: float = 0.05
 @export var marbles: Array[Node3D]
@@ -162,8 +162,8 @@ func _get_hole_shot_context(base_direction: Vector3) -> Dictionary:
 
 	var assist_direction := (base_direction.normalized() + outward * lerpf(0.72, 1.05, depth_ratio) + Vector3.UP * lerpf(0.82, 1.18, depth_ratio)).normalized()
 	var adjusted_direction := base_direction.normalized().slerp(assist_direction, lerpf(0.42, 0.68, depth_ratio)).normalized()
-	var lift_multiplier := lerpf(2.0, 2.65, depth_ratio)
-	var impulse_multiplier := lerpf(1.18, 1.32, depth_ratio)
+	var lift_multiplier := lerpf(2.45, 3.25, depth_ratio)
+	var impulse_multiplier := lerpf(1.42, 1.62, depth_ratio)
 	return {"direction": adjusted_direction, "lift_multiplier": lift_multiplier, "impulse_multiplier": impulse_multiplier}
 
 

@@ -115,8 +115,12 @@ const ACTION_MODE_ATTACK: int = 3
 @export var ai_attack_impulse_bias: float = 0.42
 @export var ai_attack_impulse_per_meter: float = 0.64
 @export var ai_line_penalty_radius: float = 0.9
-@export var ai_jitter_degrees_goal: float = 1.35
-@export var ai_jitter_degrees_attack: float = 2.35
+@export var ai_jitter_degrees_goal: float = 0.9
+@export var ai_jitter_degrees_attack: float = 1.55
+@export var ai_lineup_jitter_degrees: float = 3.2
+@export var ai_skill_spread: float = 0.18
+@export var ai_lineup_mistake_chance: float = 0.12
+@export var ai_power_variation: float = 0.07
 @export var ai_attack_escape_alignment_weight: float = 0.34
 @export var ai_attack_clear_lane_bonus: float = 0.12
 @export var ai_attack_score_margin: float = 0.14
@@ -125,13 +129,15 @@ const ACTION_MODE_ATTACK: int = 3
 @export var ai_touch_then_hole_bonus: float = 0.52
 @export var ai_touch_then_hole_alignment_tolerance: float = 1.25
 @export var ai_touch_then_hole_hole_weight: float = 0.085
-@export var ai_hole_exit_force_multiplier: float = 1.18
-@export var ai_hole_exit_force_step: float = 0.09
-@export var ai_hole_exit_force_max: float = 1.42
+@export var ai_hole_exit_force_multiplier: float = 1.38
+@export var ai_hole_exit_force_step: float = 0.14
+@export var ai_hole_exit_force_max: float = 1.78
+@export var ai_hole_exit_min_force_ratio: float = 0.74
 @export var out_of_bounds_fall_y: float = -1.8
 @export var respawn_edge_margin: float = 2.4
 @export var respawn_height_above_ground: float = 0.26
 @export var respawn_marble_clearance: float = 1.0
+@export var hole_occupant_respawn_clearance: float = 1.25
 @export var lineup_side_spacing: float = 0.75
 @export var elimination_coin_reward: int = 10
 @export var win_coin_reward: int = 100
@@ -141,6 +147,7 @@ var turn_order: Array[Node3D] = []
 var current_marble_index: int = 0
 var player_has_shot: bool = false
 var _game_loop_started: bool = false
+var lineup_starter_decided: bool = false
 var game_phase: int = GAME_PHASE_LINEUP
 var current_action_mode: int = ACTION_MODE_NONE
 var current_actor: Node3D = null
@@ -149,8 +156,14 @@ var pending_attack_victim: Node3D = null
 var stored_approach_victim: Node3D = null
 var stored_approach_owner: Node3D = null
 var current_shot_entered_hole: bool = false
+var current_shot_started_in_hole: bool = false
+var current_shot_left_hole: bool = false
+var current_hole_owner: Node3D = null
+var hole_entry_order_this_shot: Array[Node3D] = []
+var pending_hole_turn_marble: Node3D = null
 var ai_hole_attack_attempts: Dictionary = {}
 var stroke_counts: Dictionary = {}
+var elimination_counts_by_marble_name: Dictionary = {}
 var respawn_surfaces: Array[CollisionShape3D] = []
 var lineup_anchor: Vector3 = Vector3.ZERO
 var player_eliminations_this_match: int = 0
@@ -163,6 +176,7 @@ var impact_sound_streams: Array[AudioStream] = []
 var shot_sound_streams: Array[AudioStream] = []
 var thump_sound_streams: Array[AudioStream] = []
 var marble_trail_roots: Dictionary = {}
+var ai_profiles: Dictionary = {}
 var lan: Node = null
 var lan_enabled: bool = false
 var lan_is_host: bool = false
@@ -228,6 +242,7 @@ func _ready() -> void:
 		return
 
 	_assign_ai_player_names()
+	_assign_ai_profiles()
 	_ensure_marble_name_tags()
 	_connect_marble_signals()
 	_connect_hole_signals()
@@ -262,6 +277,7 @@ func _physics_process(delta: float) -> void:
 	_refresh_marble_name_tags()
 	for marble in active_marbles:
 		_clamp_marble_upward_velocity(marble)
+		_keep_marble_above_hole_floor(marble)
 		if _should_respawn_marble(marble):
 			_respawn_marble(marble)
 	_cache_previous_marble_velocities()
@@ -414,11 +430,16 @@ func _apply_online_active_marble_roster() -> void:
 	if not online_enabled:
 		return
 
+	var online_players: Array = _get_online_human_players_snapshot()
 	var roster_names: Dictionary = {}
 	for client_id_variant in online_marble_name_by_client_id.keys():
 		var marble_name: String = str(online_marble_name_by_client_id.get(client_id_variant, ""))
 		if marble_name != "":
 			roster_names[marble_name] = true
+
+	var online_ai_marble_names: PackedStringArray = _get_online_ai_marble_names(online_players.size())
+	for marble_name in online_ai_marble_names:
+		roster_names[marble_name] = true
 
 	if roster_names.is_empty():
 		return
@@ -442,7 +463,7 @@ func _apply_online_active_marble_roster() -> void:
 		_set_online_marble_roster_enabled(marble, should_play)
 
 	var online_marbles: Array[Node3D] = []
-	for player in _get_online_human_players_snapshot():
+	for player in online_players:
 		if typeof(player) != TYPE_DICTIONARY:
 			continue
 		var client_id: String = str((player as Dictionary).get("id", ""))
@@ -450,6 +471,11 @@ func _apply_online_active_marble_roster() -> void:
 		var assigned_marble: Node3D = marble_by_name.get(marble_name, null) as Node3D
 		if assigned_marble != null and not online_marbles.has(assigned_marble):
 			online_marbles.append(assigned_marble)
+
+	for marble_name in online_ai_marble_names:
+		var ai_marble: Node3D = marble_by_name.get(marble_name, null) as Node3D
+		if ai_marble != null and not online_marbles.has(ai_marble):
+			online_marbles.append(ai_marble)
 
 	for marble in all_marbles:
 		var should_play: bool = roster_names.has(String(marble.name))
@@ -526,6 +552,57 @@ func _append_online_player_source(source, output: Array, seen_ids: Dictionary) -
 			player_data["name"] = "Player %d" % (output.size() + 1)
 		output.append(player_data)
 		seen_ids[client_id] = true
+
+
+func _get_online_ai_marble_names(human_count: int) -> PackedStringArray:
+	var names: PackedStringArray = PackedStringArray()
+	var ai_count: int = _get_online_ai_count()
+	if ai_count <= 0:
+		return names
+
+	var start_index: int = clampi(human_count, 0, 4)
+	for ai_index in range(ai_count):
+		var marble_name: String = _get_online_marble_name_for_player_index(start_index + ai_index)
+		if marble_name == "":
+			continue
+		if names.has(marble_name):
+			continue
+		names.append(marble_name)
+	return names
+
+
+func _get_online_ai_count() -> int:
+	if online == null:
+		return 0
+
+	if online.has_method("get_ai_count"):
+		var method_count: int = int(online.call("get_ai_count"))
+		if method_count > 0:
+			return method_count
+
+	var room_data: Dictionary = {}
+	if online.has_method("get_room"):
+		var room_value = online.call("get_room")
+		if typeof(room_value) == TYPE_DICTIONARY:
+			room_data = room_value as Dictionary
+
+	if room_data.has("ai_count"):
+		return max(int(room_data.get("ai_count", 0)), 0)
+
+	var ai_players_value = room_data.get("ai_players", [])
+	if typeof(ai_players_value) == TYPE_ARRAY:
+		return (ai_players_value as Array).size()
+
+	var slots_value = room_data.get("slots", [])
+	if typeof(slots_value) == TYPE_ARRAY:
+		var count: int = 0
+		var slots: Array = slots_value as Array
+		for slot in slots:
+			if typeof(slot) == TYPE_DICTIONARY and bool((slot as Dictionary).get("is_ai", false)):
+				count += 1
+		return count
+
+	return 0
 
 
 func _has_online_remote_players() -> bool:
@@ -1096,6 +1173,7 @@ func _run_game_loop() -> void:
 		return
 
 	game_phase = GAME_PHASE_MATCH
+	lineup_starter_decided = true
 	current_marble_index = 0
 	_emit_turn_state()
 
@@ -1117,12 +1195,22 @@ func _run_game_loop() -> void:
 
 func _run_lineup_phase() -> void:
 	game_phase = GAME_PHASE_LINEUP
+	lineup_starter_decided = false
+	current_actor = null
+	current_action_mode = ACTION_MODE_NONE
+	current_hole_owner = null
+	pending_hole_turn_marble = null
+	hole_entry_order_this_shot.clear()
 	turn_order = active_marbles.duplicate()
 	current_marble_index = 0
 	_place_marbles_on_lineup(turn_order)
 	await _play_lineup_round(turn_order)
 
 	var first_marble: Node3D = await _resolve_lineup_starter(active_marbles)
+	lineup_starter_decided = first_marble != null
+	if first_marble != null and _is_marble_in_hole(first_marble):
+		current_hole_owner = first_marble
+	pending_hole_turn_marble = null
 
 	turn_order = active_marbles.duplicate()
 	turn_order.sort_custom(Callable(self , "_sort_marbles_by_lineup_distance"))
@@ -1141,6 +1229,7 @@ func _play_lineup_round(shooters: Array[Node3D]) -> void:
 		if not active_marbles.has(marble):
 			continue
 
+		_lock_non_lineup_controls(marble)
 		current_marble_index = shooter_index
 		_reset_marble_motion(marble, _get_lineup_position(lineup_shooters, shooter_index))
 		_emit_turn_state(marble)
@@ -1150,6 +1239,22 @@ func _play_lineup_round(shooters: Array[Node3D]) -> void:
 
 		if turn_delay > 0.0:
 			await _wait_seconds(turn_delay)
+
+	_lock_non_lineup_controls(null)
+
+
+func _lock_non_lineup_controls(allowed_marble: Node3D) -> void:
+	for marble in active_marbles:
+		if marble == null or marble == allowed_marble:
+			continue
+		if marble.has_method("set_turn"):
+			marble.call("set_turn", false, self)
+		elif marble.has_method("end_turn"):
+			marble.call("end_turn")
+		if marble.has_method("end_aim_preview"):
+			marble.call("end_aim_preview")
+	if allowed_marble == null:
+		lan_client_remote_turn_input_enabled = false
 
 
 func _resolve_lineup_starter(candidates: Array) -> Node3D:
@@ -1217,6 +1322,10 @@ func _play_match_turn(marble: Node3D) -> void:
 		return
 
 	_clear_stored_approach_victim(marble)
+	var active_hole_owner: Node3D = _enforce_single_hole_occupant(marble if _is_marble_in_hole(marble) else current_hole_owner)
+	if active_hole_owner != null and active_hole_owner != marble:
+		pending_hole_turn_marble = active_hole_owner
+		return
 	await _activate_camera_for(marble)
 
 	while active_marbles.has(marble) and active_marbles.size() > 1:
@@ -1263,6 +1372,9 @@ func _perform_action_shot(marble: Node3D, action_mode: int) -> Dictionary:
 	pending_approach_victim = null
 	pending_attack_victim = null
 	current_shot_entered_hole = false
+	current_shot_started_in_hole = marble != null and _is_marble_in_hole(marble)
+	current_shot_left_hole = false
+	hole_entry_order_this_shot.clear()
 
 	if marble != null and marble != player_marble:
 		if action_mode == ACTION_MODE_ATTACK:
@@ -1277,11 +1389,19 @@ func _perform_action_shot(marble: Node3D, action_mode: int) -> Dictionary:
 	else:
 		await _perform_ai_shot(marble, action_mode)
 
+	_track_current_actor_hole_entry()
 	current_actor = null
 	current_action_mode = ACTION_MODE_NONE
 
 	if not active_marbles.has(marble):
 		return {"success": false}
+
+	var preferred_hole_owner: Node3D = marble if _is_marble_in_hole(marble) else null
+	var shot_hole_owner: Node3D = _enforce_single_hole_occupant(preferred_hole_owner)
+	if shot_hole_owner == marble:
+		pending_hole_turn_marble = null
+	elif shot_hole_owner != null:
+		pending_hole_turn_marble = shot_hole_owner
 
 	match action_mode:
 		ACTION_MODE_LINEUP:
@@ -1340,8 +1460,12 @@ func _perform_action_shot(marble: Node3D, action_mode: int) -> Dictionary:
 				var victim_name: String = _display_name_for_marble(victim)
 				_eliminate_marble(victim, marble)
 				return {"success": true, "victim_name": victim_name}
-			if current_shot_entered_hole or _is_marble_in_hole(marble):
+			var attack_ended_in_hole: bool = _is_marble_in_hole(marble)
+			if attack_ended_in_hole:
+				current_hole_owner = marble
 				return {"success": true, "entered_hole": true, "kept_turn_in_hole": true}
+			if current_hole_owner == marble:
+				current_hole_owner = null
 			return {"success": false}
 
 	return {"success": false}
@@ -1452,6 +1576,7 @@ func _choose_ai_strategy_for_mode(marble: Node3D, action_mode: int) -> Dictionar
 
 func _choose_ai_goal_strategy(marble: Node3D, action_mode: int) -> Dictionary:
 	var best_goal: Dictionary = _build_ai_goal_candidate(marble, action_mode)
+	var profile: Dictionary = _get_ai_profile(marble)
 	if action_mode != ACTION_MODE_LINEUP:
 		for target in active_marbles:
 			if target == null or target == marble:
@@ -1460,12 +1585,15 @@ func _choose_ai_goal_strategy(marble: Node3D, action_mode: int) -> Dictionary:
 			var combo_candidate: Dictionary = _build_ai_touch_then_hole_candidate(marble, target)
 			if combo_candidate.is_empty():
 				continue
-			if best_goal.is_empty() or float(combo_candidate.get("score", -INF)) > float(best_goal.get("score", -INF)):
+			var combo_score: float = float(combo_candidate.get("score", -INF)) + randf_range(-0.08, 0.08) * float(profile.get("creativity", 1.0))
+			var goal_score: float = float(best_goal.get("score", -INF)) + randf_range(-0.05, 0.05)
+			if best_goal.is_empty() or combo_score > goal_score:
 				best_goal = combo_candidate
 
-	var selected_force: float = float(best_goal.get("force", 1.5))
+	var context: String = "lineup" if action_mode == ACTION_MODE_LINEUP else "goal"
+	var selected_force: float = _apply_ai_force_personality(marble, float(best_goal.get("force", 1.5)), context)
 	var selected_aim: Vector3 = best_goal.get("aim", Vector3.FORWARD)
-	var jittered_aim: Vector3 = _apply_ai_aim_jitter(selected_aim, "goal")
+	var jittered_aim: Vector3 = _apply_ai_aim_jitter(selected_aim, context, marble)
 	return {"force": selected_force, "aim": jittered_aim}
 
 
@@ -1484,11 +1612,12 @@ func _choose_ai_attack_strategy(marble: Node3D) -> Dictionary:
 
 	var selected_force: float = _scale_force_for_marble(
 		marble,
-		float(best_attack.get("force", 1.5)),
+		_apply_ai_force_personality(marble, float(best_attack.get("force", 1.5)), "attack"),
 		_get_ai_hole_exit_multiplier(marble)
 	)
+	selected_force = _ensure_ai_hole_exit_force(marble, selected_force)
 	var selected_aim: Vector3 = best_attack.get("aim", Vector3.FORWARD)
-	var jittered_aim: Vector3 = _apply_ai_aim_jitter(selected_aim, "attack")
+	var jittered_aim: Vector3 = _apply_ai_aim_jitter(selected_aim, "attack", marble)
 	return {"force": selected_force, "aim": jittered_aim}
 
 
@@ -1601,42 +1730,70 @@ func _build_ai_attack_candidate(marble: Node3D, target: Node3D) -> Dictionary:
 
 
 func _estimate_ai_force_for_distance(marble: Node3D, distance: float, for_attack: bool, shot_context: String = "approach", line_penalty: float = 0.0) -> float:
+	if marble == null:
+		return 1.5
+
 	var min_force: float = float(marble.get("min_force_value")) if marble.get("min_force_value") != null else 0.8
 	var max_force: float = float(marble.get("max_force_value")) if marble.get("max_force_value") != null else 3.5
 	var min_impulse: float = float(marble.get("min_shot_impulse")) if marble.get("min_shot_impulse") != null else 0.08
 	var max_impulse: float = float(marble.get("max_shot_impulse")) if marble.get("max_shot_impulse") != null else 10.8
 	var exponent: float = float(marble.get("power_response_exponent")) if marble.get("power_response_exponent") != null else 2.35
-	var desired_impulse: float = ai_attack_impulse_bias + distance * ai_attack_impulse_per_meter if for_attack else ai_goal_impulse_bias + distance * ai_goal_impulse_per_meter
-	var distance_ratio: float = clampf(distance / 13.5, 0.0, 1.0)
-	var awareness_multiplier: float = 1.0
-	match shot_context:
-		"lineup":
-			awareness_multiplier = lerpf(0.78, 1.02, distance_ratio)
-		"approach":
-			awareness_multiplier = lerpf(0.68, 1.08, distance_ratio)
-			if distance < 3.2:
-				awareness_multiplier *= 0.82
-		"combo":
-			awareness_multiplier = lerpf(0.86, 1.18, clampf(distance / 15.0, 0.0, 1.0))
-		"attack":
-			awareness_multiplier = lerpf(0.74, 1.14, clampf(distance / 10.5, 0.0, 1.0))
-			if distance < 2.8:
-				awareness_multiplier *= 0.86
-		_:
-			awareness_multiplier = 1.0
-	if line_penalty > 0.12 and shot_context != "attack":
-		awareness_multiplier *= 0.92
-	desired_impulse *= awareness_multiplier
-
+	var desired_impulse: float = _estimate_ai_desired_impulse(marble, distance, for_attack, shot_context, line_penalty)
 	desired_impulse = clampf(desired_impulse, min_impulse, max_impulse)
 	if max_impulse <= min_impulse:
 		return max_force
 
 	var effective_ratio: float = clampf(inverse_lerp(min_impulse, max_impulse, desired_impulse), 0.0, 1.0)
 	var force_ratio: float = pow(effective_ratio, 1.0 / maxf(exponent, 0.01))
-	var force: float = lerpf(min_force, max_force, force_ratio)
-	var variation: float = randf_range(0.97, 1.03)
-	return clampf(force * variation, min_force, max_force)
+	return clampf(lerpf(min_force, max_force, force_ratio), min_force, max_force)
+
+
+func _estimate_ai_desired_impulse(marble: Node3D, distance: float, for_attack: bool, shot_context: String, line_penalty: float) -> float:
+	var clean_distance: float = maxf(distance, 0.0)
+	var distance_ratio: float = clampf(clean_distance / 13.5, 0.0, 1.0)
+	var root_distance: float = sqrt(clean_distance)
+	var desired_impulse: float = 0.0
+
+	match shot_context:
+		"lineup":
+			desired_impulse = ai_goal_impulse_bias + clean_distance * (ai_goal_impulse_per_meter * 0.94) + root_distance * 0.16
+			desired_impulse *= lerpf(0.92, 1.04, distance_ratio)
+		"approach":
+			desired_impulse = ai_goal_impulse_bias + clean_distance * (ai_goal_impulse_per_meter * 0.96) + root_distance * 0.14
+			desired_impulse *= lerpf(0.86, 1.08, distance_ratio)
+			if clean_distance < 3.2:
+				desired_impulse *= lerpf(0.82, 1.0, clean_distance / 3.2)
+		"combo":
+			desired_impulse = ai_goal_impulse_bias + clean_distance * (ai_goal_impulse_per_meter * 0.9) + root_distance * 0.22
+			desired_impulse *= lerpf(0.96, 1.14, clampf(clean_distance / 15.0, 0.0, 1.0))
+		"attack":
+			desired_impulse = ai_attack_impulse_bias + clean_distance * (ai_attack_impulse_per_meter * 0.92) + root_distance * 0.16
+			desired_impulse *= lerpf(0.82, 1.12, clampf(clean_distance / 10.5, 0.0, 1.0))
+			if clean_distance < 2.8:
+				desired_impulse *= lerpf(0.72, 0.94, clean_distance / 2.8)
+		_:
+			desired_impulse = ai_attack_impulse_bias + clean_distance * ai_attack_impulse_per_meter if for_attack else ai_goal_impulse_bias + clean_distance * ai_goal_impulse_per_meter
+
+	if for_attack or shot_context == "combo":
+		var contact_floor: float = lerpf(1.08, 2.65, clampf(clean_distance / 4.4, 0.0, 1.0))
+		desired_impulse = maxf(desired_impulse, contact_floor)
+	else:
+		var entry_radius: float = float(hole.get("entry_radius")) if hole != null and hole.get("entry_radius") != null else 1.5
+		var capture_floor: float = lerpf(1.32, 2.85, clampf(clean_distance / maxf(entry_radius * 2.6, 1.0), 0.0, 1.0))
+		desired_impulse = maxf(desired_impulse, capture_floor)
+
+	if line_penalty > 0.12:
+		var penalty_ratio: float = clampf(line_penalty / 0.55, 0.0, 1.0)
+		if for_attack:
+			desired_impulse *= lerpf(1.0, 1.08, penalty_ratio)
+		else:
+			desired_impulse *= lerpf(0.96, 0.88, penalty_ratio)
+
+	if _is_marble_in_hole(marble):
+		var depth_ratio: float = _get_marble_hole_depth_ratio(marble)
+		desired_impulse = desired_impulse * lerpf(1.12, 1.32, depth_ratio) + lerpf(0.42, 0.95, depth_ratio)
+
+	return desired_impulse
 
 
 func _line_crowding_penalty(marble: Node3D, target_position: Vector3, ignored_target: Node3D = null) -> float:
@@ -1685,6 +1842,19 @@ func _get_ai_hole_exit_multiplier(marble: Node3D) -> float:
 	return clampf(multiplier, 1.0, ai_hole_exit_force_max)
 
 
+func _ensure_ai_hole_exit_force(marble: Node3D, force: float) -> float:
+	if marble == null or not _is_marble_in_hole(marble):
+		return force
+
+	var min_force: float = float(marble.get("min_force_value")) if marble.get("min_force_value") != null else 0.8
+	var max_force: float = float(marble.get("max_force_value")) if marble.get("max_force_value") != null else 3.5
+	var attempt_count: int = int(ai_hole_attack_attempts.get(marble.name, 0))
+	var depth_ratio: float = _get_marble_hole_depth_ratio(marble)
+	var required_ratio: float = clampf(ai_hole_exit_min_force_ratio + depth_ratio * 0.1 + float(maxi(attempt_count - 1, 0)) * 0.035, 0.0, 0.92)
+	var required_force: float = lerpf(min_force, max_force, required_ratio)
+	return clampf(maxf(force, required_force), min_force, max_force)
+
+
 func _scale_force_for_marble(marble: Node3D, base_force: float, multiplier: float) -> float:
 	if marble == null:
 		return base_force
@@ -1694,14 +1864,43 @@ func _scale_force_for_marble(marble: Node3D, base_force: float, multiplier: floa
 	return clampf(base_force * multiplier, min_force, max_force)
 
 
-func _apply_ai_aim_jitter(aim: Vector3, strategy_type: String) -> Vector3:
+func _apply_ai_aim_jitter(aim: Vector3, strategy_type: String, marble: Node3D = null) -> Vector3:
 	var planar_aim: Vector3 = Vector3(aim.x, 0.0, aim.z)
 	if planar_aim.length_squared() <= 0.0001:
 		return Vector3.FORWARD
 
-	var jitter_degrees: float = ai_jitter_degrees_goal if strategy_type == "goal" else ai_jitter_degrees_attack
+	var profile: Dictionary = _get_ai_profile(marble)
+	var accuracy: float = float(profile.get("accuracy", 0.78))
+	var focus: float = float(profile.get("focus", 0.76))
+	var jitter_degrees: float = ai_jitter_degrees_goal
+	match strategy_type:
+		"attack":
+			jitter_degrees = ai_jitter_degrees_attack
+		"lineup":
+			jitter_degrees = ai_lineup_jitter_degrees
+		_:
+			jitter_degrees = ai_jitter_degrees_goal
+	jitter_degrees *= lerpf(1.65, 0.45, accuracy)
+	jitter_degrees *= randf_range(0.75, 1.35)
+	if strategy_type == "lineup" and randf() < ai_lineup_mistake_chance * lerpf(1.35, 0.35, focus):
+		jitter_degrees += randf_range(2.5, 7.5)
 	var jitter_radians: float = deg_to_rad(randf_range(-jitter_degrees, jitter_degrees))
 	return planar_aim.normalized().rotated(Vector3.UP, jitter_radians).normalized()
+
+
+func _apply_ai_force_personality(marble: Node3D, force: float, context: String) -> float:
+	var profile: Dictionary = _get_ai_profile(marble)
+	var power_control: float = float(profile.get("power_control", 0.78))
+	var boldness: float = float(profile.get("boldness", 0.72))
+	var min_force: float = float(marble.get("min_force_value")) if marble != null and marble.get("min_force_value") != null else 0.8
+	var max_force: float = float(marble.get("max_force_value")) if marble != null and marble.get("max_force_value") != null else 3.5
+	var error_span: float = ai_power_variation * lerpf(1.5, 0.45, power_control)
+	if context == "lineup":
+		error_span *= 1.45
+	var adjusted_force: float = force * randf_range(1.0 - error_span, 1.0 + error_span)
+	if context == "attack":
+		adjusted_force *= lerpf(0.94, 1.08, boldness)
+	return clampf(adjusted_force, min_force, max_force)
 
 
 func _wait_for_real_player_shot(action_mode: int = ACTION_MODE_NONE) -> void:
@@ -1737,6 +1936,7 @@ func _wait_for_player_shot_resolution(action_mode: int) -> void:
 
 		var delta: float = get_process_delta_time()
 		elapsed += delta
+		_track_current_actor_hole_entry()
 
 		if _player_action_can_resolve_immediately(action_mode):
 			if resolution_elapsed < 0.0:
@@ -1758,6 +1958,7 @@ func _wait_for_player_shot_resolution(action_mode: int) -> void:
 
 
 func _player_action_can_resolve_immediately(action_mode: int) -> bool:
+	_track_current_actor_hole_entry()
 	match action_mode:
 		ACTION_MODE_APPROACH:
 			if current_shot_entered_hole:
@@ -1779,6 +1980,7 @@ func _wait_for_all_marbles_to_stop() -> void:
 
 		var delta: float = get_process_delta_time()
 		elapsed += delta
+		_track_current_actor_hole_entry()
 
 		if _all_marbles_are_still():
 			settled_for += delta
@@ -1803,6 +2005,8 @@ func _wait_seconds(duration: float) -> void:
 
 func _all_marbles_are_still() -> bool:
 	for marble in active_marbles:
+		if marble == current_actor and _marble_is_in_hole_entry_area(marble) and not _is_marble_in_hole(marble):
+			return false
 		if _marble_has_moved(marble):
 			return false
 	return true
@@ -2566,7 +2770,8 @@ func _lan_remote_turn_started(action_mode: int) -> void:
 	_update_lan_power_meter(0.0, false)
 	_reset_lan_drag_reference_axes()
 	lan_client_game_phase = game_phase
-	lan_client_remote_turn_input_enabled = true
+	current_action_mode = action_mode
+	lan_client_remote_turn_input_enabled = action_mode != ACTION_MODE_NONE
 	if lan_client_active_marble_name == "" and lan_remote_player_marble != null:
 		lan_client_active_marble_name = String(lan_remote_player_marble.name)
 	if lan_client_active_display_name == "":
@@ -2867,6 +3072,45 @@ func _assign_ai_player_names() -> void:
 		var index: int = rng.randi_range(0, available_names.size() - 1)
 		ai_display_names[String(marble.name)] = available_names[index]
 		available_names.remove_at(index)
+
+
+func _assign_ai_profiles() -> void:
+	ai_profiles.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for marble in marbles:
+		if marble == null or not String(marble.name).begins_with("AI MARBLE"):
+			continue
+
+		var base_skill: float = rng.randf_range(0.66, 0.94)
+		ai_profiles[String(marble.name)] = {
+			"accuracy": clampf(base_skill + rng.randf_range(-ai_skill_spread, ai_skill_spread) * 0.45, 0.55, 0.98),
+			"power_control": clampf(base_skill + rng.randf_range(-ai_skill_spread, ai_skill_spread) * 0.5, 0.54, 0.98),
+			"boldness": rng.randf_range(0.42, 0.96),
+			"focus": clampf(base_skill + rng.randf_range(-0.14, 0.12), 0.52, 0.98),
+			"creativity": rng.randf_range(0.45, 1.0)
+		}
+
+
+func _get_ai_profile(marble: Node3D) -> Dictionary:
+	if marble == null:
+		return {
+			"accuracy": 0.72,
+			"power_control": 0.72,
+			"boldness": 0.7,
+			"focus": 0.72,
+			"creativity": 0.7
+		}
+	var marble_name := String(marble.name)
+	if not ai_profiles.has(marble_name):
+		ai_profiles[marble_name] = {
+			"accuracy": 0.7,
+			"power_control": 0.7,
+			"boldness": 0.68,
+			"focus": 0.7,
+			"creativity": 0.65
+		}
+	return ai_profiles[marble_name] as Dictionary
 
 
 func _ensure_marble_name_tags() -> void:
@@ -3249,22 +3493,69 @@ func _connect_hole_signals_deferred() -> void:
 
 
 func _on_hole_trap_body_entered(body: Node) -> void:
-	if current_actor == null or body == null:
+	if body == null or not (body is Node3D):
 		return
-	if body != current_actor:
+
+	var marble: Node3D = body as Node3D
+	if not active_marbles.has(marble):
 		return
-	if not _marble_has_reached_hole_bottom(body as Node3D):
+	if not _marble_is_committed_to_hole(marble):
+		return
+
+	_mark_marble_hole_entry(marble)
+
+
+func _mark_marble_hole_entry(marble: Node3D) -> void:
+	if marble == null or not active_marbles.has(marble):
+		return
+
+	if not hole_entry_order_this_shot.has(marble):
+		hole_entry_order_this_shot.append(marble)
+
+	if current_actor == null or marble != current_actor:
+		return
+
+	if current_action_mode == ACTION_MODE_ATTACK and current_shot_started_in_hole and not current_shot_left_hole:
+		current_hole_owner = marble
 		return
 
 	current_shot_entered_hole = true
-	if body == player_marble:
+	current_hole_owner = marble
+	if marble == player_marble:
 		player_entered_hole_this_match = true
+
+
+func _track_current_actor_hole_entry() -> void:
+	if current_actor == null or not active_marbles.has(current_actor):
+		return
+	var actor_in_hole: bool = _is_marble_in_hole(current_actor)
+	if current_action_mode == ACTION_MODE_ATTACK and current_shot_started_in_hole and not current_shot_left_hole:
+		if not actor_in_hole and not _marble_is_in_hole_entry_area(current_actor):
+			current_shot_left_hole = true
+	if actor_in_hole:
+		_mark_marble_hole_entry(current_actor)
 
 
 func _advance_turn_order() -> void:
 	if turn_order.is_empty():
 		current_marble_index = 0
 		return
+
+	var active_hole_owner: Node3D = _enforce_single_hole_occupant(current_hole_owner)
+	if active_hole_owner != null and active_marbles.has(active_hole_owner) and _is_marble_in_hole(active_hole_owner):
+		var active_hole_owner_index: int = turn_order.find(active_hole_owner)
+		if active_hole_owner_index != -1:
+			current_marble_index = active_hole_owner_index
+			pending_hole_turn_marble = null
+			return
+
+	if pending_hole_turn_marble != null and active_marbles.has(pending_hole_turn_marble) and _is_marble_in_hole(pending_hole_turn_marble):
+		var pending_index: int = turn_order.find(pending_hole_turn_marble)
+		if pending_index != -1:
+			current_marble_index = pending_index
+			pending_hole_turn_marble = null
+			return
+	pending_hole_turn_marble = null
 
 	current_marble_index = (current_marble_index + 1) % turn_order.size()
 	var attempts: int = 0
@@ -3424,6 +3715,9 @@ func _eliminate_marble(target: Node3D, attacker: Node3D) -> void:
 		return
 	var target_is_player: bool = _is_local_reward_marble(target)
 	var attacker_name: String = _display_name_for_marble(attacker) if attacker != null else "AI"
+	if attacker != null:
+		var attacker_key: String = String(attacker.name)
+		elimination_counts_by_marble_name[attacker_key] = int(elimination_counts_by_marble_name.get(attacker_key, 0)) + 1
 	if _is_local_reward_marble(attacker):
 		player_eliminations_this_match += 1
 		var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
@@ -3441,6 +3735,10 @@ func _eliminate_marble(target: Node3D, attacker: Node3D) -> void:
 	active_marbles.erase(target)
 	marbles.erase(target)
 	ai_hole_attack_attempts.erase(target.name)
+	if current_hole_owner == target:
+		current_hole_owner = null
+	if pending_hole_turn_marble == target:
+		pending_hole_turn_marble = null
 	marble_eliminated.emit(_display_name_for_marble(target))
 	if target_is_player and not _is_local_reward_marble(attacker):
 		player_disqualified.emit(attacker_name)
@@ -3482,6 +3780,62 @@ func _set_collision_disabled_recursive(node: Node, disabled: bool) -> void:
 		_set_collision_disabled_recursive(child, disabled)
 
 
+func _enforce_single_hole_occupant(preferred_owner: Node3D = null) -> Node3D:
+	var in_hole: Array[Node3D] = _collect_in_hole_marbles(active_marbles)
+	if in_hole.is_empty():
+		current_hole_owner = null
+		return null
+
+	var owner: Node3D = null
+	if preferred_owner != null and in_hole.has(preferred_owner):
+		owner = preferred_owner
+	elif current_hole_owner != null and in_hole.has(current_hole_owner):
+		owner = current_hole_owner
+	else:
+		for entrant in hole_entry_order_this_shot:
+			if entrant != null and in_hole.has(entrant):
+				owner = entrant
+				break
+
+	if owner == null:
+		owner = in_hole[0]
+	current_hole_owner = owner
+
+	for marble in in_hole:
+		if marble == null or marble == owner:
+			continue
+		_move_extra_hole_marble_out(marble, owner)
+
+	return owner
+
+
+func _move_extra_hole_marble_out(marble: Node3D, owner: Node3D) -> void:
+	if marble == null or not active_marbles.has(marble):
+		return
+
+	var respawn_position: Vector3 = _find_hole_overflow_respawn_position(marble)
+	_reset_marble_motion(marble, respawn_position)
+	if pending_hole_turn_marble == marble:
+		pending_hole_turn_marble = null
+	print("%s left the hole because %s already owns it." % [_display_name_for_marble(marble), _display_name_for_marble(owner)])
+
+
+func _find_hole_overflow_respawn_position(marble: Node3D) -> Vector3:
+	var respawn_position: Vector3 = _find_respawn_position(marble)
+	if hole == null:
+		return respawn_position
+
+	var pocket_radius: float = float(hole.get("pocket_radius")) if hole.get("pocket_radius") != null else 1.0
+	var minimum_distance: float = pocket_radius + hole_occupant_respawn_clearance
+	if _planar_distance(respawn_position, hole.global_position) >= minimum_distance:
+		return respawn_position
+
+	var exit_direction: Vector3 = _planar_direction_to(hole.global_position, respawn_position)
+	if exit_direction.length_squared() <= 0.0001:
+		exit_direction = Vector3.BACK
+	return hole.global_position + exit_direction * minimum_distance + Vector3.UP * respawn_height_above_ground
+
+
 func _collect_in_hole_marbles(candidates: Array[Node3D]) -> Array[Node3D]:
 	var in_hole: Array[Node3D] = []
 	for marble in candidates:
@@ -3513,7 +3867,38 @@ func _distance_to_hole(marble: Node3D) -> float:
 
 
 func _is_marble_in_hole(marble: Node3D) -> bool:
-	return _marble_has_reached_hole_bottom(marble)
+	return _marble_has_reached_hole_bottom(marble) or _marble_is_committed_to_hole(marble)
+
+
+func _marble_is_committed_to_hole(marble: Node3D) -> bool:
+	if marble == null or hole == null:
+		return false
+	if _marble_has_reached_hole_bottom(marble):
+		return true
+
+	var local_position: Vector3 = hole.to_local(marble.global_position)
+	var pocket_radius: float = float(hole.get("pocket_radius")) if hole.get("pocket_radius") != null else 1.0
+	var entry_radius: float = float(hole.get("entry_radius")) if hole.get("entry_radius") != null else pocket_radius * 1.45
+	var depth: float = float(hole.get("depth")) if hole.get("depth") != null else 1.0
+	var marble_radius: float = _get_marble_collision_radius(marble)
+	var planar_distance: float = Vector2(local_position.x, local_position.z).length()
+	var committed_y: float = -depth * 0.18
+	var committed_radius: float = minf(entry_radius * 0.78, maxf(pocket_radius * 1.16, marble_radius * 2.8))
+
+	return local_position.y <= committed_y and local_position.y >= -depth - marble_radius * 2.0 and planar_distance <= committed_radius
+
+
+func _marble_is_in_hole_entry_area(marble: Node3D) -> bool:
+	if marble == null or hole == null:
+		return false
+
+	var local_position: Vector3 = hole.to_local(marble.global_position)
+	var entry_radius: float = float(hole.get("entry_radius")) if hole.get("entry_radius") != null else 1.5
+	var depth: float = float(hole.get("depth")) if hole.get("depth") != null else 1.0
+	var marble_radius: float = _get_marble_collision_radius(marble)
+	var planar_distance: float = Vector2(local_position.x, local_position.z).length()
+
+	return local_position.y <= 0.04 and local_position.y >= -depth - marble_radius * 2.0 and planar_distance <= entry_radius * 0.95
 
 
 func _marble_has_reached_hole_bottom(marble: Node3D) -> bool:
@@ -3527,8 +3912,52 @@ func _marble_has_reached_hole_bottom(marble: Node3D) -> bool:
 	var bottom_stop_height: float = float(hole.get("bottom_stop_height")) if hole.get("bottom_stop_height") != null else 0.18
 	var marble_radius: float = _get_marble_collision_radius(marble)
 	var bottom_touch_y: float = -hole_depth + bottom_stop_lift + bottom_stop_height + marble_radius * 1.15
+	var lowest_valid_y: float = -hole_depth - marble_radius * 1.2
 	var planar_distance: float = Vector2(local_position.x, local_position.z).length()
-	return planar_distance <= pocket_radius * 0.88 and local_position.y <= bottom_touch_y
+	return planar_distance <= pocket_radius * 0.88 and local_position.y <= bottom_touch_y and local_position.y >= lowest_valid_y
+
+
+func _keep_marble_above_hole_floor(marble: Node3D) -> void:
+	if marble == null or hole == null:
+		return
+
+	var body: RigidBody3D = marble as RigidBody3D
+	if body == null:
+		return
+
+	var local_position: Vector3 = hole.to_local(marble.global_position)
+	var pocket_radius: float = float(hole.get("pocket_radius")) if hole.get("pocket_radius") != null else 1.0
+	var hole_depth: float = float(hole.get("depth")) if hole.get("depth") != null else 1.0
+	var bottom_stop_lift: float = float(hole.get("bottom_stop_lift")) if hole.get("bottom_stop_lift") != null else 0.08
+	var bottom_stop_height: float = float(hole.get("bottom_stop_height")) if hole.get("bottom_stop_height") != null else 0.18
+	var marble_radius: float = _get_marble_collision_radius(marble)
+	var planar_distance: float = Vector2(local_position.x, local_position.z).length()
+	var floor_y: float = -hole_depth + bottom_stop_lift + bottom_stop_height * 0.5 + marble_radius + 0.035
+
+	if planar_distance > pocket_radius * 1.05 or local_position.y >= floor_y:
+		return
+
+	local_position.y = floor_y
+	body.global_transform = Transform3D(body.global_transform.basis, hole.to_global(local_position))
+	if body.linear_velocity.y < 0.0:
+		var velocity: Vector3 = body.linear_velocity
+		velocity.y = 0.0
+		body.linear_velocity = velocity
+	body.sleeping = false
+
+
+func _get_marble_hole_depth_ratio(marble: Node3D) -> float:
+	if marble == null or hole == null:
+		return 0.0
+
+	var local_position: Vector3 = hole.to_local(marble.global_position)
+	var hole_depth: float = float(hole.get("depth")) if hole.get("depth") != null else 1.0
+	var bottom_stop_lift: float = float(hole.get("bottom_stop_lift")) if hole.get("bottom_stop_lift") != null else 0.08
+	var bottom_stop_height: float = float(hole.get("bottom_stop_height")) if hole.get("bottom_stop_height") != null else 0.18
+	var marble_radius: float = _get_marble_collision_radius(marble)
+	var bottom_touch_y: float = -hole_depth + bottom_stop_lift + bottom_stop_height + marble_radius * 1.15
+	var deepest_playable_y: float = -hole_depth + bottom_stop_lift + bottom_stop_height * 0.45 + marble_radius * 0.75
+	return clampf(inverse_lerp(bottom_touch_y, deepest_playable_y, local_position.y), 0.0, 1.0)
 
 
 func _get_marble_collision_radius(marble: Node3D) -> float:
@@ -3831,10 +4260,12 @@ func _fallback_respawn_position() -> Vector3:
 
 func _initialize_scoreboard() -> void:
 	stroke_counts.clear()
+	elimination_counts_by_marble_name.clear()
 	for marble in marbles:
 		if marble == null:
 			continue
 		stroke_counts[marble.name] = 0
+		elimination_counts_by_marble_name[marble.name] = 0
 
 
 func _register_shot(marble: Node3D) -> void:
@@ -3931,6 +4362,10 @@ func _lan_receive_turn_state(display_name: String, active_index: int, active_mar
 	lan_client_active_marble_name = active_marble_name
 	lan_client_game_phase = phase
 	game_phase = phase
+	if phase == GAME_PHASE_MATCH:
+		lineup_starter_decided = true
+	elif phase == GAME_PHASE_LINEUP:
+		lineup_starter_decided = false
 	if online_enabled and active_marble_name != "":
 		var active_marble: Node3D = _find_marble_by_name(active_marble_name)
 		if active_marble != null:
@@ -3963,8 +4398,18 @@ func get_active_marble() -> Node3D:
 func is_player_turn() -> bool:
 	if lan_enabled and not lan_is_host:
 		var local_marble: Node3D = _get_network_input_marble()
-		return lan_client_remote_turn_input_enabled and local_marble != null and lan_client_active_marble_name == String(local_marble.name) and game_phase != GAME_PHASE_FINISHED
-	return _get_current_turn_marble() == player_marble and game_phase != GAME_PHASE_FINISHED
+		return lan_client_remote_turn_input_enabled and local_marble != null and lan_client_active_marble_name == String(local_marble.name) and _is_play_input_allowed_for_phase()
+	if game_phase == GAME_PHASE_LINEUP:
+		return current_action_mode == ACTION_MODE_LINEUP and current_actor == player_marble
+	return _get_current_turn_marble() == player_marble and _is_play_input_allowed_for_phase()
+
+
+func _is_play_input_allowed_for_phase() -> bool:
+	if game_phase == GAME_PHASE_FINISHED:
+		return false
+	if game_phase == GAME_PHASE_LINEUP:
+		return current_action_mode == ACTION_MODE_LINEUP
+	return lineup_starter_decided
 
 
 func is_player_active() -> bool:
@@ -4050,11 +4495,57 @@ func _finish_game() -> void:
 		var customization: Node = get_node_or_null("/root/CustomizationState")
 		if customization != null and customization.has_method("record_match_win"):
 			customization.call("record_match_win", winner_name)
+		if online_enabled and lan_is_host:
+			_send_online_game_message("match_finished", _build_online_match_finished_payload(winner, winner_name))
 		game_finished.emit(winner_name)
 		print("%s wins the match." % winner_name)
 	else:
 		game_finished.emit("")
 		print("Game finished without a winner.")
+
+
+func _build_online_match_finished_payload(winner: Node3D, winner_name: String) -> Dictionary:
+	var winner_client_id: String = _get_online_client_id_for_result_marble(winner)
+	var player_entries: Array = []
+	var players: Array = _get_online_human_players_snapshot()
+	_build_online_player_assignments()
+
+	for player in players:
+		if typeof(player) != TYPE_DICTIONARY:
+			continue
+		var player_data: Dictionary = player as Dictionary
+		var client_id: String = str(player_data.get("id", "")).strip_edges()
+		if client_id == "":
+			continue
+		var marble_name: String = str(online_marble_name_by_client_id.get(client_id, "")).strip_edges()
+		var eliminations: int = int(elimination_counts_by_marble_name.get(marble_name, 0))
+		player_entries.append({
+			"client_id": client_id,
+			"name": str(player_data.get("name", "Player")),
+			"login_id": str(player_data.get("login_id", "")),
+			"country": str(player_data.get("country", "Unknown")),
+			"marble_name": marble_name,
+			"eliminations": eliminations,
+			"won": client_id != "" and client_id == winner_client_id
+		})
+
+	return {
+		"winner_name": winner_name,
+		"winner_client_id": winner_client_id,
+		"players": player_entries
+	}
+
+
+func _get_online_client_id_for_result_marble(marble: Node3D) -> String:
+	if marble == null:
+		return ""
+	_build_online_player_assignments()
+	var marble_name: String = String(marble.name)
+	for client_id_variant in online_marble_name_by_client_id.keys():
+		var client_id: String = str(client_id_variant)
+		if str(online_marble_name_by_client_id.get(client_id_variant, "")) == marble_name:
+			return client_id
+	return _get_online_client_id_for_marble(marble)
 
 
 func _get_turn_order_names() -> PackedStringArray:

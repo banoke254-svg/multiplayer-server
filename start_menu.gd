@@ -33,6 +33,7 @@ const PAYSTACK_STATUS_ENDPOINT_PATH: String = "/payments/paystack/status"
 const GOOGLE_AUTH_START_ENDPOINT_PATH: String = "/auth/google/device/start"
 const GOOGLE_AUTH_POLL_ENDPOINT_PATH: String = "/auth/google/device/poll"
 const GOOGLE_PROFILE_SAVE_ENDPOINT_PATH: String = "/profiles/save"
+const EVENTS_ENDPOINT_PATH: String = "/events"
 const PAYMENT_STATUS_POLL_SECONDS: float = 3.0
 const PAYMENT_STATUS_MAX_POLLS: int = 65
 const GOOGLE_AUTH_DEFAULT_POLL_SECONDS: float = 5.0
@@ -41,6 +42,8 @@ const TERMS_VERSION: String = "2026-05-15-email-consent"
 const PAYMENT_TERMS_CHECKBOX_TEXT: String = "I understand that Gold/Coins are digital game currency only, have no real-money value, cannot be withdrawn, payments/donations are non-refundable, and Bano ke may contact me by email or message about this payment, support, account notices, and game updates."
 const PAYMENT_FINAL_NOTICE_TEXT: String = "Check your amount carefully before paying. Donations and digital currency purchases are final and non-refundable."
 const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment and message consent checkbox before paying."
+const EVENT_NOTIFICATION_STATE_PATH: String = "user://event_notifications.save"
+const EVENT_NEWS_ITEMS: Array = []
 const TERMS_TEXT: String = """
 Bano ke Terms and Conditions
 
@@ -286,7 +289,17 @@ var credits_button: Button
 var settings_button: Button
 var quit_button: Button
 var donate_button: Button
+var events_button: Button
 var payment_popup: Window
+var events_popup: Window
+var events_close_button: Button
+var event_news_http_request: HTTPRequest
+var live_event_news_items: Array = []
+var event_notification_panel: Panel
+var event_notification_title_label: Label
+var event_notification_text_label: Label
+var ranking_popup: Window
+var ranking_close_button: Button
 var payment_amount_input: LineEdit
 var payment_phone_input: LineEdit
 var payment_email_input: LineEdit
@@ -318,6 +331,7 @@ var online_rooms_page: Control
 var online_rooms_list: VBoxContainer
 var online_live_rooms_stack: VBoxContainer
 var online_players_list_stack: VBoxContainer
+var online_rankings_list_stack: VBoxContainer
 var online_friends_list_stack: VBoxContainer
 var online_friend_requests_list_stack: VBoxContainer
 var online_chat_log_stack: VBoxContainer
@@ -391,6 +405,9 @@ var online_chat_button_drag_touch_index: int = -1
 var online_chat_button_drag_started_by_touch: bool = false
 var online_chat_button_has_custom_position: bool = false
 var online_chat_button_custom_position: Vector2 = Vector2.ZERO
+var event_notification_timer: float = 0.0
+var event_notification_hash: String = ""
+var event_notification_unread: bool = false
 var online_pending_invite: Dictionary = {}
 var online_invite_room_hold_active: bool = false
 var online_invite_room_code: String = ""
@@ -476,9 +493,9 @@ var marble_preview_cache: Dictionary = {}
 var trail_preview_cache: Dictionary = {}
 var customize_marble_belt_target_scroll: float = 0.0
 
-var title_font: SystemFont
-var ui_font: SystemFont
-var icon_font: SystemFont
+var title_font: Font
+var ui_font: Font
+var icon_font: Font
 
 
 func _ready() -> void:
@@ -501,6 +518,10 @@ func _ready() -> void:
 	_ensure_player_name_popup()
 	_ensure_terms_popup()
 	_ensure_payment_popup()
+	_ensure_events_popup()
+	_ensure_ranking_popup()
+	_ensure_event_notification_panel()
+	_ensure_event_news_http_request()
 	_ensure_lan_popup()
 	_ensure_online_rooms_page()
 	_ensure_startup_loading_panel()
@@ -510,6 +531,8 @@ func _ready() -> void:
 	_init_online_server_input()
 	_hide_menu_popups()
 	_init_player_name_controls()
+	_request_event_news()
+	_check_event_news_notification()
 	_bind_lan_signals()
 	_bind_online_signals()
 	GLASS_BUTTON_EFFECTS.apply_to_tree(self )
@@ -631,6 +654,7 @@ func _process(delta: float) -> void:
 	_process_online_start_fallback(delta)
 	_process_online_scene_start(delta)
 	_process_online_chat_toast(delta)
+	_process_event_notification(delta)
 	_process_payment_status_poll(delta)
 	_process_google_auth_poll(delta)
 	_process_online_marble_preview(delta)
@@ -654,14 +678,47 @@ func _input(event: InputEvent) -> void:
 
 
 func _ensure_fonts() -> void:
-	title_font = SystemFont.new()
-	title_font.font_names = PackedStringArray(["Franklin Gothic Heavy", "Franklin Gothic", "Arial Black", "Impact", "Bahnschrift"])
+	title_font = _make_menu_font(900)
+	ui_font = _make_menu_font(700)
+	icon_font = _make_menu_font(700)
 
-	ui_font = SystemFont.new()
-	ui_font.font_names = PackedStringArray(["Bahnschrift", "Trebuchet MS", "Verdana", "Arial"])
 
-	icon_font = SystemFont.new()
-	icon_font.font_names = PackedStringArray(["Segoe UI Symbol", "Segoe Fluent Icons", "Arial Unicode MS", "Bahnschrift"])
+func _make_menu_font(weight: int) -> Font:
+	var font_manager: Node = get_node_or_null("/root/UIFontManager")
+	if font_manager != null and font_manager.has_method("get_game_font"):
+		var game_font: Font = font_manager.call("get_game_font", weight) as Font
+		if game_font != null:
+			return game_font
+	if font_manager != null and font_manager.has_method("get_bank_gothic_font"):
+		var managed_font: Font = font_manager.call("get_bank_gothic_font", weight) as Font
+		if managed_font != null:
+			return managed_font
+
+	var system_font := SystemFont.new()
+	system_font.font_names = PackedStringArray([
+		"BANGOKZ",
+		"Bangokz",
+		"Bangers",
+		"Showcard Gothic",
+		"Ravie",
+		"Snap ITC",
+		"Jokerman",
+		"Impact",
+		"Algerian",
+		"Stencil",
+		"Bank Gothic",
+		"BankGothic Md BT",
+		"Bank Gothic Medium",
+		"BankGothic",
+		"Copperplate Gothic Bold",
+		"Copperplate Gothic Light",
+		"Century Gothic",
+		"Bahnschrift",
+		"Arial"
+	])
+	system_font.font_weight = weight
+	system_font.subpixel_positioning = 0
+	return system_font
 
 
 func _setup_background() -> void:
@@ -858,6 +915,26 @@ func _ensure_donate_button() -> void:
 	donate_button.offset_bottom = 66.0
 	donate_button.custom_minimum_size = Vector2(166.0, 52.0)
 	donate_button.z_index = 90
+	_ensure_events_button()
+
+
+func _ensure_events_button() -> void:
+	events_button = get_node_or_null("EventsButton") as Button
+	if events_button == null:
+		events_button = Button.new()
+		events_button.name = "EventsButton"
+		add_child(events_button)
+
+	events_button.text = "EVENTS"
+	events_button.tooltip_text = "Upcoming Bano ke live events"
+	events_button.focus_mode = Control.FOCUS_NONE
+	events_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	events_button.offset_left = -184.0
+	events_button.offset_top = 74.0
+	events_button.offset_right = -18.0
+	events_button.offset_bottom = 126.0
+	events_button.custom_minimum_size = Vector2(166.0, 52.0)
+	events_button.z_index = 90
 
 
 func _ensure_header_labels() -> void:
@@ -1031,6 +1108,7 @@ func _style_buttons() -> void:
 	_apply_standard_menu_button_style(quit_button, Color(1.0, 0.35, 0.32, 1.0))
 	_apply_standard_menu_button_style(tutorial_button, Color(0.72, 0.36, 1.0, 1.0))
 	_style_donate_button()
+	_style_events_button()
 
 	if player_name_save_button != null:
 		_apply_standard_menu_button_style(player_name_save_button, Color(0.31, 0.97, 0.85, 1.0))
@@ -1061,6 +1139,23 @@ func _style_donate_button() -> void:
 	donate_button.add_theme_stylebox_override("normal", _make_settings_control_style(Color(0.035, 0.02, 0.055, 0.72), Color(1.0, 0.74, 0.24, 0.9), 12))
 	donate_button.add_theme_stylebox_override("hover", _make_settings_control_style(Color(0.07, 0.04, 0.1, 0.88), Color(1.0, 0.9, 0.48, 1.0), 12))
 	donate_button.add_theme_stylebox_override("pressed", _make_settings_control_style(Color(0.02, 0.01, 0.035, 0.96), Color(0.9, 0.58, 0.14, 1.0), 12))
+
+
+func _style_events_button() -> void:
+	if events_button == null:
+		return
+	events_button.flat = false
+	events_button.text = "EVENTS\nNEW" if event_notification_unread else "EVENTS"
+	events_button.add_theme_font_override("font", ui_font)
+	events_button.add_theme_font_size_override("font_size", 16)
+	events_button.add_theme_color_override("font_color", Color(0.98, 0.98, 1.0, 1.0))
+	events_button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+	events_button.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.65))
+	events_button.add_theme_constant_override("shadow_offset_y", 1)
+	events_button.add_theme_constant_override("shadow_outline_size", 2)
+	events_button.add_theme_stylebox_override("normal", _make_settings_control_style(Color(0.02, 0.035, 0.055, 0.72), Color(0.31, 0.97, 0.85, 0.9), 12))
+	events_button.add_theme_stylebox_override("hover", _make_settings_control_style(Color(0.04, 0.07, 0.1, 0.88), Color(0.52, 1.0, 0.93, 1.0), 12))
+	events_button.add_theme_stylebox_override("pressed", _make_settings_control_style(Color(0.01, 0.02, 0.035, 0.96), Color(0.2, 0.82, 0.74, 1.0), 12))
 
 
 func _apply_standard_menu_button_style(button: Button, accent_color: Color = Color(0.31, 0.97, 0.85, 1.0)) -> void:
@@ -1207,6 +1302,9 @@ func _bind_buttons():
 	if donate_button and not donate_button.pressed.is_connected(_on_donate_pressed):
 		donate_button.pressed.connect(_on_donate_pressed)
 
+	if events_button and not events_button.pressed.is_connected(_on_events_pressed):
+		events_button.pressed.connect(_on_events_pressed)
+
 	if player_name_save_button and not player_name_save_button.pressed.is_connected(_on_player_name_save_pressed):
 		player_name_save_button.pressed.connect(_on_player_name_save_pressed)
 
@@ -1216,6 +1314,11 @@ func _bind_buttons():
 
 func _on_donate_pressed() -> void:
 	_show_payment_popup()
+
+
+func _on_events_pressed() -> void:
+	_show_events_popup()
+	_mark_event_news_seen()
 
 
 func _ensure_payment_popup() -> void:
@@ -1390,6 +1493,499 @@ func _show_payment_popup() -> void:
 func _hide_payment_popup() -> void:
 	if payment_popup != null:
 		payment_popup.hide()
+
+
+func _ensure_event_news_http_request() -> void:
+	event_news_http_request = get_node_or_null("EventNewsHTTPRequest") as HTTPRequest
+	if event_news_http_request == null:
+		event_news_http_request = HTTPRequest.new()
+		event_news_http_request.name = "EventNewsHTTPRequest"
+		add_child(event_news_http_request)
+	if not event_news_http_request.request_completed.is_connected(_on_event_news_http_request_completed):
+		event_news_http_request.request_completed.connect(_on_event_news_http_request_completed)
+
+
+func _request_event_news() -> void:
+	if event_news_http_request == null:
+		_ensure_event_news_http_request()
+	if event_news_http_request == null:
+		return
+	if event_news_http_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+
+	var error: Error = event_news_http_request.request(_get_payment_server_url(EVENTS_ENDPOINT_PATH), PackedStringArray(), HTTPClient.METHOD_GET)
+	if error != OK:
+		push_warning("Could not request live events.")
+
+
+func _on_event_news_http_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
+		return
+
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+
+	var response: Dictionary = parsed as Dictionary
+	var events_value: Variant = response.get("events", [])
+	if typeof(events_value) != TYPE_ARRAY:
+		return
+
+	live_event_news_items = _normalize_event_news_items(events_value as Array)
+	_check_event_news_notification()
+	if events_popup != null and events_popup.visible:
+		_rebuild_events_popup_contents()
+
+
+func _normalize_event_news_items(raw_events: Array) -> Array:
+	var normalized: Array = []
+	for event_value in raw_events:
+		if typeof(event_value) != TYPE_DICTIONARY:
+			continue
+		var event_data: Dictionary = event_value as Dictionary
+		if bool(event_data.get("published", true)) == false:
+			continue
+		normalized.append({
+			"title": str(event_data.get("title", "Live Event")).strip_edges(),
+			"date": str(event_data.get("date", "Date TBA")).strip_edges(),
+			"prize": str(event_data.get("prize", "TBA")).strip_edges(),
+			"description": str(event_data.get("description", "")).strip_edges(),
+			"image_url": str(event_data.get("image_url", "")).strip_edges(),
+			"updated_at": int(event_data.get("updated_at", 0))
+		})
+	return normalized
+
+
+func _get_event_news_items() -> Array:
+	if not live_event_news_items.is_empty():
+		return live_event_news_items
+	return EVENT_NEWS_ITEMS
+
+
+func _ensure_events_popup() -> void:
+	events_popup = get_node_or_null("EventsPopup") as Window
+	if events_popup == null:
+		events_popup = Window.new()
+		events_popup.name = "EventsPopup"
+		add_child(events_popup)
+
+	events_popup.title = "Events"
+	events_popup.size = Vector2i(860, 620)
+	events_popup.unresizable = true
+	events_popup.borderless = true
+	events_popup.transparent_bg = true
+	events_popup.exclusive = true
+	events_popup.hide()
+	if not events_popup.close_requested.is_connected(_hide_events_popup):
+		events_popup.close_requested.connect(_hide_events_popup)
+	_rebuild_events_popup_contents()
+
+
+func _rebuild_events_popup_contents() -> void:
+	if events_popup == null:
+		return
+	for child in events_popup.get_children():
+		child.queue_free()
+
+	var content: VBoxContainer = _build_themed_popup_shell(events_popup, "LIVE EVENTS", Color(0.31, 0.97, 0.85, 0.95), _hide_events_popup)
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_configure_online_touch_scroll(scroll)
+	content.add_child(scroll)
+
+	var stack: VBoxContainer = VBoxContainer.new()
+	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stack.add_theme_constant_override("separation", 12)
+	scroll.add_child(stack)
+
+	var event_items: Array = _get_event_news_items()
+	if event_items.is_empty():
+		var watermark: Label = _create_settings_label("EVENTS COMING SOON")
+		watermark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		watermark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		watermark.add_theme_font_override("font", title_font)
+		watermark.add_theme_font_size_override("font_size", 38)
+		watermark.add_theme_color_override("font_color", Color(0.31, 0.97, 0.85, 0.28))
+		watermark.custom_minimum_size = Vector2(0, 360)
+		stack.add_child(watermark)
+		return
+
+	for event in event_items:
+		if typeof(event) != TYPE_DICTIONARY:
+			continue
+		stack.add_child(_create_event_news_card(event as Dictionary))
+
+
+func _create_event_news_card(event_data: Dictionary) -> Panel:
+	var card: Panel = Panel.new()
+	card.custom_minimum_size = Vector2(0, 170)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", _make_online_card_style(Color(0.015, 0.03, 0.06, 0.82), Color(0.31, 0.97, 0.85, 0.88), 12))
+
+	var margin: MarginContainer = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_bottom", 14)
+	card.add_child(margin)
+
+	var row: HBoxContainer = HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 14)
+	margin.add_child(row)
+
+	var image_texture: Texture2D = _create_event_image_texture(str(event_data.get("image_url", "")))
+	if image_texture != null:
+		var poster: TextureRect = TextureRect.new()
+		poster.custom_minimum_size = Vector2(190, 118)
+		poster.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		poster.texture = image_texture
+		poster.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		poster.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		poster.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(poster)
+
+	var stack: VBoxContainer = VBoxContainer.new()
+	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stack.add_theme_constant_override("separation", 7)
+	row.add_child(stack)
+
+	var title: Label = _create_online_text_label(str(event_data.get("title", "Live Event")).to_upper(), 20, Color(0.98, 0.99, 1.0, 1.0), title_font)
+	title.clip_text = true
+	stack.add_child(title)
+
+	var meta: Label = _create_online_text_label("%s  |  PRIZE: %s" % [str(event_data.get("date", "Date TBA")), str(event_data.get("prize", "TBA"))], 14, Color(1.0, 0.86, 0.28, 0.96), ui_font)
+	meta.clip_text = true
+	stack.add_child(meta)
+
+	var description: Label = _create_online_text_label(str(event_data.get("description", "")), 14, Color(0.82, 0.9, 1.0, 0.9), ui_font)
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stack.add_child(description)
+	return card
+
+
+func _create_event_image_texture(image_url: String) -> Texture2D:
+	if image_url == "" or not image_url.begins_with("data:image/"):
+		return null
+
+	var comma_index: int = image_url.find(",")
+	if comma_index <= 0:
+		return null
+
+	var header: String = image_url.substr(0, comma_index).to_lower()
+	var encoded: String = image_url.substr(comma_index + 1)
+	var bytes: PackedByteArray = Marshalls.base64_to_raw(encoded)
+	if bytes.is_empty():
+		return null
+
+	var image: Image = Image.new()
+	var error: Error = ERR_INVALID_DATA
+	if header.find("png") != -1:
+		error = image.load_png_from_buffer(bytes)
+	elif header.find("jpeg") != -1 or header.find("jpg") != -1:
+		error = image.load_jpg_from_buffer(bytes)
+	elif header.find("webp") != -1:
+		error = image.load_webp_from_buffer(bytes)
+	if error != OK:
+		return null
+
+	return ImageTexture.create_from_image(image)
+
+
+func _show_events_popup() -> void:
+	if events_popup == null:
+		_ensure_events_popup()
+	_request_event_news()
+	_rebuild_events_popup_contents()
+	if events_popup != null:
+		events_popup.popup_centered()
+		events_popup.show()
+
+
+func _hide_events_popup() -> void:
+	if events_popup != null:
+		events_popup.hide()
+
+
+func _ensure_event_notification_panel() -> void:
+	event_notification_panel = get_node_or_null("EventNotificationPanel") as Panel
+	if event_notification_panel == null:
+		event_notification_panel = Panel.new()
+		event_notification_panel.name = "EventNotificationPanel"
+		add_child(event_notification_panel)
+
+	event_notification_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	event_notification_panel.offset_left = -408.0
+	event_notification_panel.offset_top = 134.0
+	event_notification_panel.offset_right = -18.0
+	event_notification_panel.offset_bottom = 240.0
+	event_notification_panel.z_index = 140
+	event_notification_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	event_notification_panel.hide()
+	event_notification_panel.add_theme_stylebox_override("panel", _make_online_card_style(Color(0.015, 0.025, 0.055, 0.94), Color(0.31, 0.97, 0.85, 0.92), 12))
+	if not event_notification_panel.gui_input.is_connected(_on_event_notification_gui_input):
+		event_notification_panel.gui_input.connect(_on_event_notification_gui_input)
+
+	for child in event_notification_panel.get_children():
+		child.queue_free()
+
+	var margin: MarginContainer = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	event_notification_panel.add_child(margin)
+
+	var stack: VBoxContainer = VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 5)
+	margin.add_child(stack)
+
+	event_notification_title_label = _create_online_text_label("EVENT UPDATE", 13, Color(0.31, 0.97, 0.85, 1.0), ui_font)
+	event_notification_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	event_notification_title_label.clip_text = true
+	stack.add_child(event_notification_title_label)
+
+	event_notification_text_label = _create_online_text_label("", 16, Color(0.96, 0.99, 1.0, 1.0), ui_font)
+	event_notification_text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	event_notification_text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	event_notification_text_label.max_lines_visible = 2
+	stack.add_child(event_notification_text_label)
+
+
+func _check_event_news_notification() -> void:
+	event_notification_hash = _get_event_news_hash()
+	if event_notification_hash == "":
+		event_notification_unread = false
+		_style_events_button()
+		return
+
+	var saved_hash: String = _load_seen_event_news_hash()
+	event_notification_unread = saved_hash != event_notification_hash
+	_style_events_button()
+	if event_notification_unread:
+		_show_event_notification()
+
+
+func _get_event_news_hash() -> String:
+	var event_items: Array = _get_event_news_items()
+	if event_items.is_empty():
+		return ""
+	return str(JSON.stringify(event_items).hash())
+
+
+func _load_seen_event_news_hash() -> String:
+	if not FileAccess.file_exists(EVENT_NOTIFICATION_STATE_PATH):
+		return ""
+	var file: FileAccess = FileAccess.open(EVENT_NOTIFICATION_STATE_PATH, FileAccess.READ)
+	if file == null:
+		return ""
+	return file.get_as_text().strip_edges()
+
+
+func _save_seen_event_news_hash(hash_value: String) -> void:
+	var file: FileAccess = FileAccess.open(EVENT_NOTIFICATION_STATE_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(hash_value)
+
+
+func _mark_event_news_seen() -> void:
+	if event_notification_hash == "":
+		event_notification_hash = _get_event_news_hash()
+	if event_notification_hash != "":
+		_save_seen_event_news_hash(event_notification_hash)
+	event_notification_unread = false
+	event_notification_timer = 0.0
+	if event_notification_panel != null:
+		event_notification_panel.hide()
+	_style_events_button()
+
+
+func _show_event_notification() -> void:
+	var event_items: Array = _get_event_news_items()
+	if event_items.is_empty():
+		return
+	if event_notification_panel == null:
+		_ensure_event_notification_panel()
+	if event_notification_panel == null:
+		return
+
+	var latest_event: Dictionary = {}
+	var first_event: Variant = event_items[0]
+	if typeof(first_event) == TYPE_DICTIONARY:
+		latest_event = first_event as Dictionary
+	var title_text: String = str(latest_event.get("title", "New event announcement")).strip_edges()
+	if title_text == "":
+		title_text = "New event announcement"
+	if event_notification_title_label != null:
+		event_notification_title_label.text = "EVENT UPDATE"
+	if event_notification_text_label != null:
+		event_notification_text_label.text = title_text
+	event_notification_timer = 6.0
+	event_notification_panel.show()
+
+
+func _process_event_notification(delta: float) -> void:
+	if event_notification_timer <= 0.0:
+		return
+	event_notification_timer -= delta
+	if event_notification_timer <= 0.0:
+		event_notification_timer = 0.0
+		if event_notification_panel != null:
+			event_notification_panel.hide()
+
+
+func _on_event_notification_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+		_show_events_popup()
+		_mark_event_news_seen()
+	elif event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
+		_show_events_popup()
+		_mark_event_news_seen()
+
+
+func _ensure_ranking_popup() -> void:
+	ranking_popup = get_node_or_null("RankingPopup") as Window
+	if ranking_popup == null:
+		ranking_popup = Window.new()
+		ranking_popup.name = "RankingPopup"
+		add_child(ranking_popup)
+
+	ranking_popup.title = "Ranking"
+	ranking_popup.size = Vector2i(900, 660)
+	ranking_popup.unresizable = true
+	ranking_popup.borderless = true
+	ranking_popup.transparent_bg = true
+	ranking_popup.exclusive = true
+	ranking_popup.hide()
+	if not ranking_popup.close_requested.is_connected(_hide_ranking_popup):
+		ranking_popup.close_requested.connect(_hide_ranking_popup)
+	_rebuild_ranking_popup_contents()
+
+
+func _rebuild_ranking_popup_contents() -> void:
+	if ranking_popup == null:
+		return
+	for child in ranking_popup.get_children():
+		child.queue_free()
+
+	var content: VBoxContainer = _build_themed_popup_shell(ranking_popup, "PLAYER RANKING", Color(1.0, 0.82, 0.2, 0.95), _hide_ranking_popup)
+	var note: Label = _create_settings_label("Points come from games won and players eliminated.")
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	note.add_theme_font_size_override("font_size", 14)
+	note.add_theme_color_override("font_color", Color(0.82, 0.9, 1.0, 0.88))
+	content.add_child(note)
+
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_configure_online_touch_scroll(scroll)
+	content.add_child(scroll)
+
+	var stack: VBoxContainer = VBoxContainer.new()
+	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stack.add_theme_constant_override("separation", 10)
+	scroll.add_child(stack)
+
+	var rankings: Array = _get_online_rankings_snapshot()
+	if rankings.is_empty():
+		var empty_label: Label = _create_settings_label("No ranking points yet.")
+		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		empty_label.add_theme_font_size_override("font_size", 28)
+		empty_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.28, 0.34))
+		empty_label.custom_minimum_size = Vector2(0, 340)
+		stack.add_child(empty_label)
+		return
+
+	for ranking in rankings:
+		if typeof(ranking) != TYPE_DICTIONARY:
+			continue
+		stack.add_child(_create_online_ranking_row(ranking as Dictionary))
+
+
+func _show_ranking_popup() -> void:
+	if ranking_popup == null:
+		_ensure_ranking_popup()
+	_rebuild_ranking_popup_contents()
+	if ranking_popup != null:
+		ranking_popup.popup_centered()
+		ranking_popup.show()
+
+
+func _hide_ranking_popup() -> void:
+	if ranking_popup != null:
+		ranking_popup.hide()
+
+
+func _build_themed_popup_shell(target_popup: Window, heading_text: String, accent: Color, close_callable: Callable) -> VBoxContainer:
+	var background_rect: TextureRect = TextureRect.new()
+	background_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	background_rect.texture = load(BACKGROUND_PATH)
+	background_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	background_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	background_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	target_popup.add_child(background_rect)
+
+	var shade: ColorRect = ColorRect.new()
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.005, 0.006, 0.025, 0.72)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	target_popup.add_child(shade)
+
+	var root: MarginContainer = MarginContainer.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_theme_constant_override("margin_left", 28)
+	root.add_theme_constant_override("margin_top", 26)
+	root.add_theme_constant_override("margin_right", 28)
+	root.add_theme_constant_override("margin_bottom", 26)
+	target_popup.add_child(root)
+
+	var panel: Panel = Panel.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _make_menu_panel_style(Color(0.012, 0.004, 0.035, 0.92), accent))
+	root.add_child(panel)
+
+	var panel_margin: MarginContainer = MarginContainer.new()
+	panel_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel_margin.add_theme_constant_override("margin_left", 22)
+	panel_margin.add_theme_constant_override("margin_top", 20)
+	panel_margin.add_theme_constant_override("margin_right", 22)
+	panel_margin.add_theme_constant_override("margin_bottom", 20)
+	panel.add_child(panel_margin)
+
+	var stack: VBoxContainer = VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 14)
+	panel_margin.add_child(stack)
+
+	var header: HBoxContainer = HBoxContainer.new()
+	header.add_theme_constant_override("separation", 14)
+	header.custom_minimum_size = Vector2(0, 58)
+	stack.add_child(header)
+
+	var close_button: Button = Button.new()
+	close_button.text = "<"
+	close_button.custom_minimum_size = Vector2(64, 54)
+	_style_popup_action_button(close_button, accent, 30, Vector2(64, 54))
+	header.add_child(close_button)
+	if not close_button.pressed.is_connected(close_callable):
+		close_button.pressed.connect(close_callable)
+
+	var heading: Label = _create_settings_label(heading_text)
+	heading.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_theme_font_override("font", title_font)
+	heading.add_theme_font_size_override("font_size", 34)
+	heading.add_theme_color_override("font_color", Color(0.98, 0.96, 1.0, 1.0))
+	heading.add_theme_color_override("font_shadow_color", accent)
+	heading.add_theme_constant_override("shadow_outline_size", 10)
+	header.add_child(heading)
+	return stack
 
 
 func _on_payment_amount_changed(_text: String) -> void:
@@ -2616,6 +3212,7 @@ func _ensure_online_rooms_page() -> void:
 	online_party_slot_status_labels.clear()
 	online_live_rooms_stack = null
 	online_players_list_stack = null
+	online_rankings_list_stack = null
 	online_friends_list_stack = null
 	online_friend_requests_list_stack = null
 	online_chat_log_stack = null
@@ -2780,8 +3377,8 @@ func _ensure_online_rooms_page() -> void:
 	top_bar.add_child(gear_button)
 	gear_button.pressed.connect(_on_settings_pressed)
 
-	online_refresh_button = _create_online_top_button("REFRESH", Color(0.08, 0.9, 1.0, 1.0))
-	online_refresh_button.name = "OnlineRefreshButton"
+	online_refresh_button = _create_online_top_button("RANKING", Color(0.08, 0.9, 1.0, 1.0))
+	online_refresh_button.name = "OnlineRankingButton"
 	top_bar.add_child(online_refresh_button)
 
 	online_back_button = _create_online_top_button("BACK", Color(0.72, 0.36, 1.0, 1.0))
@@ -2958,6 +3555,24 @@ func _ensure_online_rooms_page() -> void:
 	players_scroll.add_child(online_players_list_stack)
 	_attach_online_touch_scroll_content(online_players_list_stack, players_scroll)
 
+	var rankings_tab: VBoxContainer = VBoxContainer.new()
+	rankings_tab.name = "RANKING"
+	rankings_tab.add_theme_constant_override("separation", 8)
+	directory_tabs.add_child(rankings_tab)
+
+	var rankings_scroll: ScrollContainer = ScrollContainer.new()
+	rankings_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rankings_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_configure_online_touch_scroll(rankings_scroll)
+	rankings_tab.add_child(rankings_scroll)
+
+	online_rankings_list_stack = VBoxContainer.new()
+	online_rankings_list_stack.name = "OnlineRankingsListStack"
+	online_rankings_list_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	online_rankings_list_stack.add_theme_constant_override("separation", 8)
+	rankings_scroll.add_child(online_rankings_list_stack)
+	_attach_online_touch_scroll_content(online_rankings_list_stack, rankings_scroll)
+
 	var friends_tab: VBoxContainer = VBoxContainer.new()
 	friends_tab.name = "FRIENDS"
 	friends_tab.add_theme_constant_override("separation", 8)
@@ -3017,8 +3632,8 @@ func _ensure_online_rooms_page() -> void:
 
 	if not online_back_button.pressed.is_connected(_hide_online_rooms_page):
 		online_back_button.pressed.connect(_hide_online_rooms_page)
-	if not online_refresh_button.pressed.is_connected(_on_online_refresh_pressed):
-		online_refresh_button.pressed.connect(_on_online_refresh_pressed)
+	if not online_refresh_button.pressed.is_connected(_on_online_ranking_pressed):
+		online_refresh_button.pressed.connect(_on_online_ranking_pressed)
 	if not online_quick_match_button.pressed.is_connected(_on_online_quick_match_pressed):
 		online_quick_match_button.pressed.connect(_on_online_quick_match_pressed)
 	if not online_private_create_button.pressed.is_connected(_on_online_private_create_pressed):
@@ -5825,9 +6440,9 @@ func _get_shooting_mechanic_options() -> Array:
 		if typeof(options) == TYPE_ARRAY:
 			return options
 	return [
-		{"id": "drag", "name": "Classic Drag", "description": "One finger aims and shoots by dragging."},
-		{"id": "split", "name": "Split Control", "description": "Left side aims. Right side drags to shoot."},
-		{"id": "press", "name": "Hold Button", "description": "Aim anywhere, then hold the shoot button for power."}
+		{"id": "drag", "name": "Classic Drag", "description": "Drag from the marble to aim and set power."},
+		{"id": "split", "name": "Split Control", "description": "Left side aims. Right side controls shot power."},
+		{"id": "press", "name": "Hold Button", "description": "Aim freely, then release as the power bar cycles."}
 	]
 
 
@@ -5901,6 +6516,8 @@ func _show_online_rooms_page() -> void:
 		glass_panel.hide()
 	if donate_button:
 		donate_button.hide()
+	if events_button:
+		events_button.hide()
 	if background:
 		background.hide()
 	if background_overlay:
@@ -6039,15 +6656,16 @@ func _process_online_scene_start(delta: float) -> void:
 	_start_main_scene()
 
 
-func _on_online_refresh_pressed() -> void:
-	online_room_refresh_timer = 0.0
+func _on_online_ranking_pressed() -> void:
 	var online: Node = get_node_or_null("/root/MultiplayerManager")
-	if online == null:
-		return
-	if online_status_label != null:
-		online_status_label.text = "Refreshing parties..."
-	if online.has_method("request_rooms"):
+	if online != null and online.has_method("request_rooms"):
+		online_room_refresh_timer = 0.0
 		online.call("request_rooms")
+	_refresh_online_rankings_list()
+	_select_online_directory_tab("RANKING")
+	_show_ranking_popup()
+	if online_current_room_label != null:
+		online_current_room_label.text = _format_online_ranking_summary()
 
 
 func _on_online_quick_match_pressed() -> void:
@@ -6086,6 +6704,39 @@ func _format_local_leaderboard_text() -> String:
 			int(entry.get("wins", 0))
 		])
 	return "\n".join(lines)
+
+
+func _format_online_ranking_summary() -> String:
+	var rankings: Array = _get_online_rankings_snapshot()
+	if rankings.is_empty():
+		return "RANKING\nNo points yet. Win games or eliminate players to score."
+	var lines: PackedStringArray = PackedStringArray(["RANKING"])
+	var limit: int = mini(rankings.size(), 3)
+	for index in range(limit):
+		if typeof(rankings[index]) != TYPE_DICTIONARY:
+			continue
+		var entry: Dictionary = rankings[index] as Dictionary
+		lines.append("%d. %s  |  %s  |  %d pts" % [
+			int(entry.get("rank", index + 1)),
+			str(entry.get("name", "Player")),
+			str(entry.get("country", "Unknown")),
+			int(entry.get("points", 0))
+		])
+	return "\n".join(lines)
+
+
+func _select_online_directory_tab(tab_name: String) -> void:
+	if online_rooms_page == null:
+		return
+	var tabs: TabContainer = online_rooms_page.get_node_or_null("OnlineRoomsContent/OnlineBodyRow/OnlineSocialPanel/OnlineDirectoryTabs") as TabContainer
+	if tabs == null:
+		tabs = online_rooms_page.find_child("OnlineDirectoryTabs", true, false) as TabContainer
+	if tabs == null:
+		return
+	for index in range(tabs.get_tab_count()):
+		if tabs.get_tab_title(index).to_upper() == tab_name.to_upper():
+			tabs.current_tab = index
+			return
 
 
 func _on_online_public_room_pressed(human_capacity: int) -> void:
@@ -6250,6 +6901,7 @@ func _refresh_online_rooms_view() -> void:
 
 	_refresh_online_live_rooms_list()
 	_refresh_online_players_list()
+	_refresh_online_rankings_list()
 	_refresh_online_friends_list()
 	_refresh_online_friend_requests_list()
 
@@ -6528,6 +7180,34 @@ func _refresh_online_players_list() -> void:
 	_bind_online_touch_scroll_children(online_players_list_stack)
 
 
+func _refresh_online_rankings_list() -> void:
+	if online_rankings_list_stack == null:
+		return
+	_clear_node_children(online_rankings_list_stack)
+
+	var rankings: Array = _get_online_rankings_snapshot()
+	if rankings.is_empty():
+		var empty_label: Label = Label.new()
+		empty_label.text = "No ranking points yet. Win games or eliminate players to climb the board."
+		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_label.add_theme_font_override("font", ui_font)
+		empty_label.add_theme_font_size_override("font_size", 14)
+		empty_label.add_theme_color_override("font_color", Color(0.82, 0.9, 1.0, 0.86))
+		online_rankings_list_stack.add_child(empty_label)
+		_bind_online_touch_scroll_children(online_rankings_list_stack)
+		return
+
+	var shown_count: int = 0
+	for ranking in rankings:
+		if typeof(ranking) != TYPE_DICTIONARY:
+			continue
+		online_rankings_list_stack.add_child(_create_online_ranking_row(ranking as Dictionary))
+		shown_count += 1
+		if shown_count >= 25:
+			break
+	_bind_online_touch_scroll_children(online_rankings_list_stack)
+
+
 func _refresh_online_friends_list() -> void:
 	if online_friends_list_stack == null:
 		return
@@ -6616,6 +7296,70 @@ func _get_online_players_snapshot() -> Array:
 	_append_online_player_entries(entries, seen_ids, online_latest_players)
 	_append_online_player_entries(entries, seen_ids, _collect_players_from_online_rooms())
 	return entries
+
+
+func _get_online_rankings_snapshot() -> Array:
+	var online: Node = get_node_or_null("/root/MultiplayerManager")
+	if online != null and online.has_method("get_online_rankings"):
+		var rankings_value = online.call("get_online_rankings")
+		if typeof(rankings_value) == TYPE_ARRAY:
+			return (rankings_value as Array).duplicate(true)
+	return []
+
+
+func _create_online_ranking_row(ranking_data: Dictionary) -> Panel:
+	var rank: int = int(ranking_data.get("rank", 0))
+	if rank <= 0:
+		rank = 1
+	var accent: Color = Color(1.0, 0.82, 0.2, 0.92) if rank == 1 else Color(0.31, 0.97, 0.85, 0.78)
+	var row: Panel = Panel.new()
+	row.custom_minimum_size = Vector2(0, 86)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_stylebox_override("panel", _make_online_card_style(Color(0.015, 0.03, 0.06, 0.76), accent, 10))
+
+	var margin: MarginContainer = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 9)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 9)
+	row.add_child(margin)
+
+	var line: HBoxContainer = HBoxContainer.new()
+	line.add_theme_constant_override("separation", 10)
+	margin.add_child(line)
+
+	var rank_label: Label = _create_online_text_label("#%d" % rank, 20, Color(0.98, 0.99, 1.0, 1.0), ui_font)
+	rank_label.custom_minimum_size = Vector2(46, 0)
+	rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rank_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	line.add_child(rank_label)
+
+	var text_stack: VBoxContainer = VBoxContainer.new()
+	text_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_stack.add_theme_constant_override("separation", 1)
+	line.add_child(text_stack)
+
+	var player_name: String = str(ranking_data.get("name", "Player")).strip_edges()
+	if player_name == "":
+		player_name = "Player"
+	var country: String = str(ranking_data.get("country", "Unknown")).strip_edges()
+	if country == "":
+		country = "Unknown"
+	var name_label: Label = _create_online_text_label("%s  |  %s" % [player_name, country], 16, Color(0.98, 0.99, 1.0, 1.0), ui_font)
+	name_label.clip_text = true
+	text_stack.add_child(name_label)
+
+	var detail_label: Label = _create_online_text_label("%d wins  |  %d eliminations" % [int(ranking_data.get("wins", 0)), int(ranking_data.get("eliminations", 0))], 12, Color(0.82, 0.9, 1.0, 0.86), ui_font)
+	detail_label.clip_text = true
+	text_stack.add_child(detail_label)
+
+	var points_label: Label = _create_online_text_label("%d PTS" % int(ranking_data.get("points", 0)), 16, Color(1.0, 0.86, 0.28, 1.0), ui_font)
+	points_label.custom_minimum_size = Vector2(82, 0)
+	points_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	points_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	line.add_child(points_label)
+	return row
 
 
 func _get_online_local_player_name() -> String:
@@ -7548,6 +8292,8 @@ func _bind_online_signals() -> void:
 		online.rooms_updated.connect(_on_online_rooms_updated)
 	if online.has_signal("online_players_updated") and not online.online_players_updated.is_connected(_on_online_players_updated):
 		online.online_players_updated.connect(_on_online_players_updated)
+	if online.has_signal("online_rankings_updated") and not online.online_rankings_updated.is_connected(_on_online_rankings_updated):
+		online.online_rankings_updated.connect(_on_online_rankings_updated)
 	if online.has_signal("room_created") and not online.room_created.is_connected(_on_online_room_created_new):
 		online.room_created.connect(_on_online_room_created_new)
 	if online.has_signal("room_joined") and not online.room_joined.is_connected(_on_online_room_joined):
@@ -7618,9 +8364,16 @@ func _on_online_players_updated(players: Array) -> void:
 	online_latest_players = players.duplicate(true)
 	_refresh_online_stat_display()
 	_refresh_online_players_list()
+	_refresh_online_rankings_list()
 	_refresh_online_friends_list()
 	_refresh_online_friend_requests_list()
 	_maybe_follow_invite_host(online_latest_players)
+
+
+func _on_online_rankings_updated(_rankings: Array) -> void:
+	_refresh_online_rankings_list()
+	if ranking_popup != null and ranking_popup.visible:
+		_rebuild_ranking_popup_contents()
 
 
 func _on_online_room_created_new(room: Dictionary, code: String) -> void:
@@ -8155,6 +8908,8 @@ func _on_customize_pressed() -> void:
 			glass_panel.hide()
 		if donate_button:
 			donate_button.hide()
+		if events_button:
+			events_button.hide()
 		if background:
 			background.hide()
 		if background_overlay:
@@ -8227,6 +8982,8 @@ func _hide_online_rooms_page() -> void:
 		glass_panel.show()
 	if donate_button:
 		donate_button.show()
+	if events_button:
+		events_button.show()
 	if background:
 		background.show()
 	if background_overlay:
@@ -8245,6 +9002,8 @@ func _hide_customize_popup() -> void:
 		glass_panel.show()
 	if donate_button:
 		donate_button.show()
+	if events_button:
+		events_button.show()
 	if background:
 		background.show()
 	if background_overlay:
@@ -8265,6 +9024,10 @@ func _hide_menu_popups() -> void:
 		settings_popup.hide()
 	if shooting_mechanics_popup:
 		shooting_mechanics_popup.hide()
+	if events_popup:
+		events_popup.hide()
+	if ranking_popup:
+		ranking_popup.hide()
 	if lan_popup:
 		lan_popup.hide()
 	if online_rooms_page:
@@ -8275,6 +9038,8 @@ func _hide_menu_popups() -> void:
 		glass_panel.show()
 	if donate_button:
 		donate_button.show()
+	if events_button:
+		events_button.show()
 	if background:
 		background.show()
 	if background_overlay:

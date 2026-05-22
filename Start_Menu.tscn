@@ -4,16 +4,16 @@
 [ext_resource type="Texture2D" path="res://Untitled design (17).png" id="2_pbjr1"]
 
 [sub_resource type="SystemFont" id="SystemFont_pbjr1"]
-font_names = PackedStringArray("Chiller")
+font_names = PackedStringArray("BANGOKZ", "Bangokz", "Bangers", "Showcard Gothic", "Ravie", "Snap ITC", "Jokerman", "Impact", "Algerian", "Stencil", "Bank Gothic", "BankGothic Md BT", "Bank Gothic Medium", "BankGothic", "Copperplate Gothic Bold", "Century Gothic")
 
 [sub_resource type="SystemFont" id="SystemFont_xcwll"]
-font_names = PackedStringArray("Chiller")
+font_names = PackedStringArray("BANGOKZ", "Bangokz", "Bangers", "Showcard Gothic", "Ravie", "Snap ITC", "Jokerman", "Impact", "Algerian", "Stencil", "Bank Gothic", "BankGothic Md BT", "Bank Gothic Medium", "BankGothic", "Copperplate Gothic Bold", "Century Gothic")
 
 [sub_resource type="SystemFont" id="SystemFont_gfy38"]
-font_names = PackedStringArray("Chiller")
+font_names = PackedStringArray("BANGOKZ", "Bangokz", "Bangers", "Showcard Gothic", "Ravie", "Snap ITC", "Jokerman", "Impact", "Algerian", "Stencil", "Bank Gothic", "BankGothic Md BT", "Bank Gothic Medium", "BankGothic", "Copperplate Gothic Bold", "Century Gothic")
 
 [sub_resource type="SystemFont" id="SystemFont_5ikro"]
-font_names = PackedStringArray("Chiller")
+font_names = PackedStringArray("BANGOKZ", "Bangokz", "Bangers", "Showcard Gothic", "Ravie", "Snap ITC", "Jokerman", "Impact", "Algerian", "Stencil", "Bank Gothic", "BankGothic Md BT", "Bank Gothic Medium", "BankGothic", "Copperplate Gothic Bold", "Century Gothic")
 
 [node name="StartMenu" type="Control"]
 layout_mode = 3

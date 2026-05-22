@@ -22,6 +22,8 @@ shadow_color = Color(0.635799, 0.635799, 0.635799, 0.6)
 shadow_offset = Vector2(2, 2)
 
 [sub_resource type="SystemFont" id="SystemFont_lo4tm"]
+font_names = PackedStringArray("BANGOKZ", "Bangokz", "Bangers", "Showcard Gothic", "Ravie", "Snap ITC", "Jokerman", "Impact", "Algerian", "Stencil", "Bank Gothic", "BankGothic Md BT", "Bank Gothic Medium", "BankGothic", "Copperplate Gothic Bold", "Century Gothic")
+font_weight = 700
 
 [node name="StartMenu" type="Control" unique_id=1273521672]
 material = SubResource("ShaderMaterial_0d5ky")

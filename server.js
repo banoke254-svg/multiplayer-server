@@ -23,6 +23,7 @@ const GOOGLE_API_HOST = 'oauth2.googleapis.com';
 const GOOGLE_DEVICE_CODE_PATH = '/device/code';
 const GOOGLE_TOKEN_PATH = '/token';
 const PROFILE_STORE_PATH = process.env.PROFILE_STORE_PATH || path.join(__dirname, 'player_profiles.json');
+const EVENTS_STORE_PATH = process.env.EVENTS_STORE_PATH || path.join(__dirname, 'game_events.json');
 const GOLD_PACK_TIERS = new Map([
   [100, 10],
   [175, 30],
@@ -62,6 +63,7 @@ const paymentRecordsByInvoiceId = new Map();
 const paymentRecords = [];
 const playerProfilesByLoginId = new Map();
 const authSessionsByToken = new Map();
+let gameEvents = loadGameEvents();
 
 loadPlayerProfiles();
 
@@ -507,6 +509,7 @@ class RoomManager {
     }
     room.start_at = 0;
     room.started = true;
+    room.allow_ai = true;
     room.party_state = 'running';
     room.started_at = Date.now();
     room.updated_at = room.started_at;
@@ -1034,8 +1037,8 @@ function buildOnlineDirectoryPayload() {
 }
 
 function buildAdminSnapshot() {
-  const now = Date.now();
-  const allClients = Array.from(clientsById.values());
+	const now = Date.now();
+	const allClients = Array.from(clientsById.values());
   const connectedClients = allClients.filter((client) => client.connected === true);
   const registeredClients = allClients.filter((client) => String(client.login_id || '').trim() !== '');
   const joinedClients = allClients.filter((client) => {
@@ -1070,6 +1073,7 @@ function buildAdminSnapshot() {
       .map(serializeAdminRoom)
       .sort((first, second) => second.updated_at - first.updated_at)
       ,
+    events: getPublishedGameEvents(false),
     payments: paymentRecords
       .slice(-100)
       .reverse()
@@ -1212,6 +1216,15 @@ const httpServer = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'GET' && requestUrl.pathname === '/events') {
+    writeJsonResponse(response, 200, {
+      ok: true,
+      server_time: Date.now(),
+      events: getPublishedGameEvents(true)
+    });
+    return;
+  }
+
   if (request.method === 'GET' && requestUrl.pathname === '/admin') {
     serveAdminDashboard(response);
     return;
@@ -1226,6 +1239,18 @@ const httpServer = http.createServer(async (request, response) => {
       return;
     }
     writeJsonResponse(response, 200, buildAdminSnapshot());
+    return;
+  }
+
+  if (request.method === 'POST' && requestUrl.pathname === '/admin/events') {
+    if (!isAdminRequestAuthorized(request, requestUrl)) {
+      writeJsonResponse(response, 401, {
+        ok: false,
+        error: 'Admin token is required.'
+      });
+      return;
+    }
+    await handleAdminEventsRequest(request, response);
     return;
   }
 
@@ -1329,15 +1354,23 @@ function writeJsonResponse(response, statusCode, payload) {
 async function readJsonRequest(request, maxBytes = 16 * 1024) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let tooLarge = false;
     request.setEncoding('utf8');
     request.on('data', (chunk) => {
+      if (tooLarge) {
+        return;
+      }
       body += chunk;
       if (Buffer.byteLength(body, 'utf8') > maxBytes) {
-        reject(new Error('Request body too large.'));
-        request.destroy();
+        tooLarge = true;
+        body = '';
       }
     });
     request.on('end', () => {
+      if (tooLarge) {
+        reject(new Error(`Request body too large. Keep images smaller than ${Math.max(1, Math.floor(maxBytes / (1024 * 1024)))} MB.`));
+        return;
+      }
       if (body.trim() === '') {
         resolve({});
         return;
@@ -2116,6 +2149,118 @@ function sanitizeNamesDictionary(value) {
     }
   });
   return clean;
+}
+
+function loadGameEvents() {
+  if (!EVENTS_STORE_PATH || !fs.existsSync(EVENTS_STORE_PATH)) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(EVENTS_STORE_PATH, 'utf8'));
+    const events = Array.isArray(parsed.events) ? parsed.events : (Array.isArray(parsed) ? parsed : []);
+    return sanitizeGameEvents(events, false);
+  } catch (error) {
+    console.warn(`[events] could not load ${EVENTS_STORE_PATH}: ${error.message}`);
+    return [];
+  }
+}
+
+function saveGameEvents() {
+  try {
+    const eventsStoreDirectory = path.dirname(EVENTS_STORE_PATH);
+    if (eventsStoreDirectory && eventsStoreDirectory !== '.') {
+      fs.mkdirSync(eventsStoreDirectory, { recursive: true });
+    }
+    fs.writeFileSync(EVENTS_STORE_PATH, JSON.stringify({
+      version: 1,
+      updated_at: Date.now(),
+      events: gameEvents
+    }, null, 2));
+  } catch (error) {
+    console.warn(`[events] could not save ${EVENTS_STORE_PATH}: ${error.message}`);
+  }
+}
+
+function getPublishedGameEvents(publishedOnly) {
+  return gameEvents
+    .filter((event) => !publishedOnly || event.published !== false)
+    .sort((first, second) => Number(second.updated_at || 0) - Number(first.updated_at || 0))
+    .map((event) => Object.assign({}, event));
+}
+
+function sanitizeGameEvents(rawEvents, assignIds = true) {
+  if (!Array.isArray(rawEvents)) {
+    return [];
+  }
+
+  const now = Date.now();
+  return rawEvents
+    .slice(0, 30)
+    .map((event, index) => {
+      if (!event || typeof event !== 'object' || Array.isArray(event)) {
+        return null;
+      }
+
+      const cleanEvent = {
+        id: sanitizeAdminText(event.id, 80),
+        title: sanitizeAdminText(event.title || 'Live Event', 80),
+        date: sanitizeAdminText(event.date || event.when || 'Date TBA', 80),
+        prize: sanitizeAdminText(event.prize || 'TBA', 80),
+        description: sanitizeAdminText(event.description || event.body || '', 900),
+        image_url: sanitizeEventImageUrl(event.image_url || event.poster_url || event.image || ''),
+        published: event.published !== false,
+        created_at: Number(event.created_at || now),
+        updated_at: Number(event.updated_at || now),
+        order: Number.isFinite(Number(event.order)) ? Number(event.order) : index
+      };
+
+      if (!cleanEvent.id && assignIds) {
+        cleanEvent.id = `event_${now}_${index}_${crypto.randomBytes(3).toString('hex')}`;
+      } else if (!cleanEvent.id) {
+        cleanEvent.id = `event_${now}_${index}`;
+      }
+
+      return cleanEvent;
+    })
+    .filter(Boolean)
+    .sort((first, second) => Number(first.order || 0) - Number(second.order || 0));
+}
+
+function sanitizeEventImageUrl(value) {
+  const cleanValue = String(value || '').trim();
+  if (!cleanValue) {
+    return '';
+  }
+  if (cleanValue.length > 1_800_000) {
+    return '';
+  }
+  if (/^data:image\/(png|jpeg|jpg|webp);base64,[a-z0-9+/=\s]+$/i.test(cleanValue)) {
+    return cleanValue.replace(/\s/g, '');
+  }
+  if (/^https?:\/\/[^\s]+$/i.test(cleanValue)) {
+    return cleanValue.slice(0, 1000);
+  }
+  return '';
+}
+
+async function handleAdminEventsRequest(request, response) {
+  try {
+    const payload = await readJsonRequest(request, 12 * 1024 * 1024);
+    const nextEvents = sanitizeGameEvents(Array.isArray(payload.events) ? payload.events : [], true);
+    gameEvents = nextEvents.map((event) => Object.assign({}, event, { updated_at: Date.now() }));
+    saveGameEvents();
+    writeJsonResponse(response, 200, {
+      ok: true,
+      server_time: Date.now(),
+      events: getPublishedGameEvents(false)
+    });
+  } catch (error) {
+    writeJsonResponse(response, 400, {
+      ok: false,
+      error: error.message || 'Could not save events.'
+    });
+  }
 }
 
 function loadPlayerProfiles() {

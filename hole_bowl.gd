@@ -49,15 +49,21 @@ extends StaticBody3D
 @export var trapped_linear_damp: float = 1.35
 @export var trapped_angular_damp: float = 1.1
 @export var max_trapped_upward_velocity: float = 0.8
-@export var bottom_stop_radius_scale: float = 0.86:
+@export var pocket_exit_upward_velocity_limit: float = 1.8
+@export var pocket_exit_release_upward_speed: float = 0.18
+@export var pocket_exit_release_outward_speed: float = 0.24
+@export var pocket_exit_trap_force_scale: float = 0.18
+@export var pocket_exit_linear_damp: float = 0.42
+@export var pocket_exit_angular_damp: float = 0.5
+@export var bottom_stop_radius_scale: float = 0.94:
 	set(value):
 		bottom_stop_radius_scale = value
 		_update_bottom_stop_shape()
-@export var bottom_stop_height: float = 0.18:
+@export var bottom_stop_height: float = 0.24:
 	set(value):
 		bottom_stop_height = value
 		_update_bottom_stop_shape()
-@export var bottom_stop_lift: float = 0.08:
+@export var bottom_stop_lift: float = 0.2:
 	set(value):
 		bottom_stop_lift = value
 		_update_bottom_stop_shape()
@@ -144,6 +150,10 @@ extends StaticBody3D
 	set(value):
 		field_skirt_top_offset = value
 		_update_field_skirt()
+@export var pocket_containment_enabled: bool = true
+@export var pocket_floor_padding: float = 0.035
+@export var pocket_wall_padding: float = 0.035
+@export var max_trapped_downward_velocity: float = 2.2
 
 var bowl_mesh_instance: MeshInstance3D
 var aperture_mesh_instance: MeshInstance3D
@@ -185,17 +195,32 @@ func _physics_process(delta: float) -> void:
 
 		var local_position: Vector3 = to_local(body.global_position)
 		var planar_distance: float = Vector2(local_position.x, local_position.z).length()
-		var inside_pocket: bool = planar_distance <= entry_radius and local_position.y <= 0.08 and local_position.y >= -depth - 0.25
+		var marble_radius: float = _get_body_collision_radius(body)
+		var containment_low_y: float = -depth - maxf(marble_radius * 2.5, 0.45)
+		var inside_pocket: bool = planar_distance <= entry_radius and local_position.y <= 0.08 and local_position.y >= containment_low_y
 		if not inside_pocket:
 			_restore_body_damp(body)
 			trapped_bodies.erase(body)
 			continue
 
-		body.apply_central_force(Vector3.DOWN * trap_force * body.mass)
-		if body.linear_velocity.y > max_trapped_upward_velocity and local_position.y < -depth * 0.3:
+		var exiting_pocket: bool = _is_body_trying_to_exit_pocket(body, local_position)
+		_update_trapped_body_damp(body, exiting_pocket)
+		if pocket_containment_enabled:
+			_contain_body_in_pocket(body, local_position, marble_radius, exiting_pocket)
+			local_position = to_local(body.global_position)
+
+		var trap_scale: float = pocket_exit_trap_force_scale if exiting_pocket else 1.0
+		body.apply_central_force(Vector3.DOWN * trap_force * trap_scale * body.mass)
+
+		var upward_velocity_limit: float = pocket_exit_upward_velocity_limit if exiting_pocket else max_trapped_upward_velocity
+		if body.linear_velocity.y > upward_velocity_limit and local_position.y < -depth * 0.3:
 			var limited_velocity: Vector3 = body.linear_velocity
-			limited_velocity.y = max_trapped_upward_velocity
+			limited_velocity.y = upward_velocity_limit
 			body.linear_velocity = limited_velocity
+		if body.linear_velocity.y < -max_trapped_downward_velocity:
+			var limited_downward_velocity: Vector3 = body.linear_velocity
+			limited_downward_velocity.y = -max_trapped_downward_velocity
+			body.linear_velocity = limited_downward_velocity
 
 
 func _ensure_core_nodes() -> void:
@@ -730,11 +755,44 @@ func _on_trap_body_entered(body: Node) -> void:
 
 	body_damp_restore[rigid_body.get_instance_id()] = {
 		"linear_damp": rigid_body.linear_damp,
-		"angular_damp": rigid_body.angular_damp
+		"angular_damp": rigid_body.angular_damp,
+		"continuous_cd": rigid_body.get("continuous_cd")
 	}
-	rigid_body.linear_damp = maxf(rigid_body.linear_damp, trapped_linear_damp)
-	rigid_body.angular_damp = maxf(rigid_body.angular_damp, trapped_angular_damp)
+	_update_trapped_body_damp(rigid_body, false)
+	rigid_body.set("continuous_cd", true)
 	trapped_bodies.append(rigid_body)
+
+
+func _is_body_trying_to_exit_pocket(body: RigidBody3D, local_position: Vector3) -> bool:
+	if body == null:
+		return false
+
+	var local_velocity: Vector3 = global_transform.basis.inverse() * body.linear_velocity
+	if local_velocity.y > pocket_exit_release_upward_speed:
+		return true
+
+	var planar_position := Vector2(local_position.x, local_position.z)
+	if planar_position.length_squared() <= 0.0001:
+		return false
+
+	var planar_velocity := Vector2(local_velocity.x, local_velocity.z)
+	var outward_speed: float = planar_velocity.dot(planar_position.normalized())
+	return outward_speed > pocket_exit_release_outward_speed
+
+
+func _update_trapped_body_damp(body: RigidBody3D, release_for_exit: bool) -> void:
+	if body == null:
+		return
+
+	var original: Dictionary = body_damp_restore.get(body.get_instance_id(), {})
+	var base_linear_damp: float = float(original.get("linear_damp", body.linear_damp))
+	var base_angular_damp: float = float(original.get("angular_damp", body.angular_damp))
+	if release_for_exit:
+		body.linear_damp = maxf(base_linear_damp, pocket_exit_linear_damp)
+		body.angular_damp = maxf(base_angular_damp, pocket_exit_angular_damp)
+	else:
+		body.linear_damp = maxf(base_linear_damp, trapped_linear_damp)
+		body.angular_damp = maxf(base_angular_damp, trapped_angular_damp)
 
 
 func _on_trap_body_exited(body: Node) -> void:
@@ -754,4 +812,55 @@ func _restore_body_damp(body: RigidBody3D) -> void:
 	var original: Dictionary = body_damp_restore[key]
 	body.linear_damp = original.get("linear_damp", body.linear_damp)
 	body.angular_damp = original.get("angular_damp", body.angular_damp)
+	if original.has("continuous_cd"):
+		body.set("continuous_cd", original["continuous_cd"])
 	body_damp_restore.erase(key)
+
+
+func _contain_body_in_pocket(body: RigidBody3D, local_position: Vector3, marble_radius: float, release_for_exit: bool = false) -> void:
+	if body == null:
+		return
+
+	var corrected_local: Vector3 = local_position
+	var changed: bool = false
+	var floor_y: float = -depth + bottom_stop_lift + bottom_stop_height * 0.5 + marble_radius + pocket_floor_padding
+	if corrected_local.y < floor_y:
+		corrected_local.y = floor_y
+		changed = true
+
+	var planar := Vector2(corrected_local.x, corrected_local.z)
+	var planar_distance: float = planar.length()
+	var deepest_wall_guard_y: float = -depth * 0.45
+	var safe_radius: float = maxf(pocket_radius - marble_radius * 0.5 - pocket_wall_padding, pocket_radius * 0.58)
+	if not release_for_exit and corrected_local.y <= deepest_wall_guard_y and planar_distance > safe_radius:
+		var planar_direction: Vector2 = planar / planar_distance if planar_distance > 0.0001 else Vector2.RIGHT
+		corrected_local.x = planar_direction.x * safe_radius
+		corrected_local.z = planar_direction.y * safe_radius
+		changed = true
+
+	if not changed:
+		return
+
+	body.global_transform = Transform3D(body.global_transform.basis, to_global(corrected_local))
+	var velocity: Vector3 = body.linear_velocity
+	if local_position.y < floor_y and velocity.y < 0.0:
+		velocity.y = 0.0
+	if not release_for_exit and planar_distance > safe_radius and corrected_local.y <= deepest_wall_guard_y:
+		var radial_direction_local := Vector3(planar.x, 0.0, planar.y)
+		if radial_direction_local.length_squared() > 0.0001:
+			var radial_direction_global: Vector3 = (global_transform.basis * radial_direction_local.normalized()).normalized()
+			var outward_speed: float = velocity.dot(radial_direction_global)
+			if outward_speed > 0.0:
+				velocity -= radial_direction_global * outward_speed
+	body.linear_velocity = velocity
+	body.sleeping = false
+
+
+func _get_body_collision_radius(body: RigidBody3D) -> float:
+	if body == null:
+		return 0.2
+
+	var collision: CollisionShape3D = body.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision != null and collision.shape is SphereShape3D:
+		return maxf((collision.shape as SphereShape3D).radius, 0.05)
+	return 0.2

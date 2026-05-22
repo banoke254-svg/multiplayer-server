@@ -10,7 +10,7 @@ const SHOOTING_MECHANIC_PRESS: String = "press"
 @export var max_drag_distance: float = 220.0
 @export var min_shot_impulse: float = 0.08
 @export var max_shot_impulse: float = 11.2
-@export var press_charge_seconds: float = 1.35
+@export var press_charge_seconds: float = 2.4
 @export var split_watermark_seconds: float = 4.0
 @export var split_watermark_alpha: float = 0.72
 @export var power_response_exponent: float = 2.35
@@ -70,7 +70,10 @@ var press_aim_touch_index: int = -1
 var press_aim_start: Vector2 = Vector2.ZERO
 var press_aim_horizontal_offset: float = 0.0
 var press_charge_time: float = 0.0
+var press_charge_direction: float = 1.0
 var hold_shoot_button: Button = null
+var hold_shoot_touch_index: int = -1
+var hold_shoot_mouse_active: bool = false
 var split_watermark_layer: Control = null
 var split_watermark_left_label: Label = null
 var split_watermark_right_label: Label = null
@@ -102,7 +105,14 @@ func _process(delta: float) -> void:
 	_update_hold_shoot_button_visibility()
 	_update_split_watermark(delta)
 	if press_charging and _can_receive_input():
-		press_charge_time = minf(press_charge_time + delta, press_charge_seconds)
+		var charge_limit: float = maxf(press_charge_seconds, 0.05)
+		press_charge_time += delta * press_charge_direction
+		if press_charge_time >= charge_limit:
+			press_charge_time = charge_limit
+			press_charge_direction = -1.0
+		elif press_charge_time <= 0.0:
+			press_charge_time = 0.0
+			press_charge_direction = 1.0
 		_update_press_shot_preview(true)
 	elif press_charging:
 		_cancel_press_shot()
@@ -145,10 +155,10 @@ func _ensure_hold_shoot_button() -> void:
 	hold_shoot_button.add_theme_stylebox_override("normal", _make_hold_button_style(Color(0.72, 0.36, 1.0, 1.0), Color(0.03, 0.05, 0.12, 0.84)))
 	hold_shoot_button.add_theme_stylebox_override("hover", _make_hold_button_style(Color(0.96, 0.47, 1.0, 1.0), Color(0.06, 0.08, 0.18, 0.9)))
 	hold_shoot_button.add_theme_stylebox_override("pressed", _make_hold_button_style(Color(1.0, 0.82, 0.2, 1.0), Color(0.09, 0.04, 0.14, 0.96)))
-	if not hold_shoot_button.button_down.is_connected(_begin_press_shot_from_button):
-		hold_shoot_button.button_down.connect(_begin_press_shot_from_button)
-	if not hold_shoot_button.button_up.is_connected(_finish_press_shot_from_button):
-		hold_shoot_button.button_up.connect(_finish_press_shot_from_button)
+	if hold_shoot_button.button_down.is_connected(_begin_press_shot_from_button):
+		hold_shoot_button.button_down.disconnect(_begin_press_shot_from_button)
+	if hold_shoot_button.button_up.is_connected(_finish_press_shot_from_button):
+		hold_shoot_button.button_up.disconnect(_finish_press_shot_from_button)
 	if not hold_shoot_button.gui_input.is_connected(_on_hold_shoot_button_gui_input):
 		hold_shoot_button.gui_input.connect(_on_hold_shoot_button_gui_input)
 	_update_hold_shoot_button_visibility()
@@ -158,9 +168,24 @@ func _on_hold_shoot_button_gui_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event as InputEventScreenTouch
 		if touch.pressed:
-			_begin_press_shot_from_button()
+			_begin_hold_shoot_pointer(touch.index)
 		else:
-			_finish_press_shot_from_button()
+			_finish_hold_shoot_pointer(touch.index)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag:
+		var drag: InputEventScreenDrag = event as InputEventScreenDrag
+		if drag.index == hold_shoot_touch_index:
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton:
+		var mouse_button: InputEventMouseButton = event as InputEventMouseButton
+		if mouse_button.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mouse_button.pressed:
+			_begin_hold_shoot_pointer(-1)
+		else:
+			_finish_hold_shoot_pointer(-1)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and hold_shoot_mouse_active:
 		get_viewport().set_input_as_handled()
 
 
@@ -420,17 +445,24 @@ func _handle_press_input(event: InputEvent) -> void:
 		var touch: InputEventScreenTouch = event as InputEventScreenTouch
 		if touch.pressed:
 			if _is_inside_hold_shoot_button(touch.position):
+				_begin_hold_shoot_pointer(touch.index)
+				get_viewport().set_input_as_handled()
 				return
 			if press_aiming:
 				return
 			_begin_press_aim(touch.position, touch.index)
+			get_viewport().set_input_as_handled()
+		elif touch.index == hold_shoot_touch_index:
+			_finish_hold_shoot_pointer(touch.index)
 			get_viewport().set_input_as_handled()
 		elif press_aiming and touch.index == press_aim_touch_index:
 			_end_press_aim()
 			get_viewport().set_input_as_handled()
 	elif event is InputEventScreenDrag:
 		var drag_event: InputEventScreenDrag = event as InputEventScreenDrag
-		if press_aiming and drag_event.index == press_aim_touch_index:
+		if drag_event.index == hold_shoot_touch_index:
+			get_viewport().set_input_as_handled()
+		elif press_aiming and drag_event.index == press_aim_touch_index:
 			_update_press_aim(drag_event.position)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
@@ -438,16 +470,25 @@ func _handle_press_input(event: InputEvent) -> void:
 		if mouse_button.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mouse_button.pressed:
+			if _is_inside_hold_shoot_button(mouse_button.position):
+				_begin_hold_shoot_pointer(-1)
+				get_viewport().set_input_as_handled()
+				return
 			if _pointer_over_ui():
 				return
 			_begin_press_aim(mouse_button.position, -1)
+			get_viewport().set_input_as_handled()
+		elif hold_shoot_mouse_active:
+			_finish_hold_shoot_pointer(-1)
 			get_viewport().set_input_as_handled()
 		elif press_aiming and press_aim_touch_index == -1:
 			_end_press_aim()
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
-		if press_aiming and press_aim_touch_index == -1:
+		if hold_shoot_mouse_active:
+			get_viewport().set_input_as_handled()
+		elif press_aiming and press_aim_touch_index == -1:
 			_update_press_aim(mouse_motion.position)
 			get_viewport().set_input_as_handled()
 
@@ -507,7 +548,11 @@ func _update_split_aim(pointer_position: Vector2) -> void:
 func _end_split_aim() -> void:
 	split_aiming = false
 	split_aim_touch_index = -1
-	_update_power_meter(0.0, false)
+	if split_shooting:
+		_update_split_shot_preview(true)
+	else:
+		_hide_indicator()
+		_update_power_meter(0.0, false)
 
 
 func _begin_split_shot(pointer_position: Vector2, touch_index: int) -> void:
@@ -530,6 +575,8 @@ func _finish_split_shot(pointer_position: Vector2) -> void:
 	split_shoot_touch_index = -1
 	if current_shot_ratio > 0.015:
 		_apply_current_shot()
+	elif split_aiming:
+		_update_split_shot_preview(false)
 	else:
 		_hide_indicator()
 		_update_power_meter(0.0, false)
@@ -553,7 +600,30 @@ func _end_press_aim() -> void:
 	press_aiming = false
 	press_aim_touch_index = -1
 	if not press_charging:
+		_hide_indicator()
 		_update_power_meter(0.0, false)
+
+
+func _begin_hold_shoot_pointer(pointer_index: int) -> void:
+	if pointer_index >= 0:
+		hold_shoot_touch_index = pointer_index
+	else:
+		hold_shoot_mouse_active = true
+	if press_charging:
+		return
+	_begin_press_shot_from_button()
+
+
+func _finish_hold_shoot_pointer(pointer_index: int) -> void:
+	if pointer_index >= 0:
+		if hold_shoot_touch_index != pointer_index:
+			return
+		hold_shoot_touch_index = -1
+	else:
+		if not hold_shoot_mouse_active:
+			return
+		hold_shoot_mouse_active = false
+	_finish_press_shot_from_button()
 
 
 func _begin_press_shot_from_button() -> void:
@@ -561,6 +631,7 @@ func _begin_press_shot_from_button() -> void:
 		return
 	press_charging = true
 	press_charge_time = 0.0
+	press_charge_direction = 1.0
 	_capture_drag_reference_axes()
 	_update_press_shot_preview(true)
 
@@ -572,10 +643,13 @@ func _finish_press_shot_from_button() -> void:
 	press_charging = false
 	if current_shot_ratio > 0.015:
 		_apply_current_shot()
+	elif press_aiming:
+		_update_press_shot_preview(false)
 	else:
 		_hide_indicator()
 		_update_power_meter(0.0, false)
 	press_charge_time = 0.0
+	press_charge_direction = 1.0
 	_update_hold_shoot_button_label(0.0)
 	_update_hold_shoot_button_visibility()
 
@@ -583,7 +657,14 @@ func _finish_press_shot_from_button() -> void:
 func _cancel_press_shot() -> void:
 	press_charging = false
 	press_charge_time = 0.0
-	_update_power_meter(0.0, false)
+	press_charge_direction = 1.0
+	hold_shoot_touch_index = -1
+	hold_shoot_mouse_active = false
+	if press_aiming:
+		_update_press_shot_preview(false)
+	else:
+		_hide_indicator()
+		_update_power_meter(0.0, false)
 	_update_hold_shoot_button_label(0.0)
 
 
@@ -597,9 +678,7 @@ func _begin_drag(pointer_position: Vector2) -> void:
 	current_shot_ratio = 0.0
 	current_shot_impulse = 0.0
 	current_shot_lift = 0.0
-	for segment in indicator_segments:
-		segment.visible = true
-	arrow_tip.visible = true
+	_hide_indicator()
 	_update_power_meter(0.0, true)
 
 
@@ -645,6 +724,9 @@ func _reset_alternate_input_state() -> void:
 	press_aim_touch_index = -1
 	press_aim_horizontal_offset = 0.0
 	press_charge_time = 0.0
+	press_charge_direction = 1.0
+	hold_shoot_touch_index = -1
+	hold_shoot_mouse_active = false
 	_update_hold_shoot_button_label(0.0)
 
 
@@ -717,18 +799,33 @@ func update_path_indicator(current_pos: Vector2) -> void:
 
 
 func _render_current_shot_preview(show_power_meter: bool) -> void:
+	if not _is_aim_indicator_allowed() or current_aim_direction == Vector3.ZERO or current_shot_impulse <= 0.0:
+		_hide_indicator()
+		_update_power_meter(0.0, show_power_meter)
+		return
+
+	var preview_impulse := _get_current_preview_impulse()
+	var planar_impulse := Vector3(preview_impulse.x, 0.0, preview_impulse.z)
+	if planar_impulse.length_squared() <= 0.0001:
+		_hide_indicator()
+		_update_power_meter(0.0, show_power_meter)
+		return
+
 	for segment in indicator_segments:
 		segment.visible = true
 	if arrow_tip:
 		arrow_tip.visible = true
 
 	_update_power_meter(current_shot_ratio, show_power_meter)
-	var path_length: float = lerpf(1.2, 5.8, current_shot_ratio)
+	var impulse_ratio: float = clampf(planar_impulse.length() / maxf(max_shot_impulse, 0.001), 0.0, 1.35)
+	var path_length: float = clampf(lerpf(1.05, 5.9, current_shot_ratio) * lerpf(0.85, 1.12, impulse_ratio), 0.85, 6.6)
 	var curve_ratio: float = _get_curve_ratio(current_shot_ratio)
-	var arc_height: float = lerpf(0.0, 1.05, ease(curve_ratio, 1.2))
+	var lift_ratio: float = clampf(preview_impulse.y / maxf(max_vertical_shot_impulse, 0.001), 0.0, 1.0)
+	var arc_height: float = lerpf(0.02, 0.78, lift_ratio) + lerpf(0.0, 0.18, ease(curve_ratio, 1.2))
+	var preview_direction := planar_impulse.normalized()
 
 	var start: Vector3 = global_position + Vector3.UP * 0.12
-	var end: Vector3 = start + current_aim_direction.normalized() * path_length
+	var end: Vector3 = start + preview_direction * path_length
 	var control: Vector3 = start.lerp(end, 0.5) + Vector3.UP * arc_height
 
 	var points: Array[Vector3] = []
@@ -758,7 +855,7 @@ func _render_current_shot_preview(show_power_meter: bool) -> void:
 
 	var tip_vector: Vector3 = end - points[indicator_segment_count - 1]
 	if tip_vector.length_squared() == 0.0:
-		tip_vector = current_aim_direction
+		tip_vector = preview_direction
 	if arrow_tip:
 		arrow_tip.visible = true
 		arrow_tip.mesh = _tip_mesh
@@ -838,6 +935,11 @@ func _get_shot_lift(shot_ratio: float) -> float:
 
 
 func _update_split_shot_preview(show_power_meter: bool) -> void:
+	if not split_aiming and not split_shooting:
+		_hide_indicator()
+		_update_power_meter(0.0, show_power_meter)
+		return
+
 	var power_ratio: float = 0.28
 	if split_shooting:
 		power_ratio = _get_power_ratio_from_vertical_offset(split_shoot_vertical_offset)
@@ -849,6 +951,12 @@ func _update_split_shot_preview(show_power_meter: bool) -> void:
 
 
 func _update_press_shot_preview(show_power_meter: bool) -> void:
+	if not press_aiming and not press_charging:
+		_hide_indicator()
+		_update_power_meter(0.0, show_power_meter)
+		_update_hold_shoot_button_label(0.0)
+		return
+
 	var power_ratio: float = 0.32
 	if press_charging:
 		power_ratio = clampf(press_charge_time / maxf(press_charge_seconds, 0.05), 0.0, 1.0)
@@ -891,6 +999,26 @@ func _cache_shot_from_drag_vector(drag_vector: Vector2) -> bool:
 	current_shot_impulse = _get_shot_impulse(vertical_offset)
 	current_shot_lift = _get_shot_lift(current_shot_ratio)
 	return true
+
+
+func _is_aim_indicator_allowed() -> bool:
+	match _get_shooting_mechanic():
+		SHOOTING_MECHANIC_DRAG:
+			return dragging
+		SHOOTING_MECHANIC_SPLIT:
+			return split_aiming or split_shooting
+		SHOOTING_MECHANIC_PRESS:
+			return press_aiming or press_charging
+		_:
+			return false
+
+
+func _get_current_preview_impulse() -> Vector3:
+	var shot_context := _get_hole_shot_context(current_aim_direction)
+	var shot_impulse := current_shot_impulse * float(shot_context.get("impulse_multiplier", 1.0))
+	var shot_lift := current_shot_lift * float(shot_context.get("lift_multiplier", 1.0))
+	var shot_direction: Vector3 = shot_context.get("direction", current_aim_direction)
+	return _make_realistic_shot_impulse(shot_direction, shot_impulse, shot_lift)
 
 
 func _apply_current_shot() -> void:
