@@ -457,6 +457,76 @@ class RoomManager {
     }
   }
 
+  leaveRoom(client) {
+    if (!client) {
+      return { ok: false, error: 'Invalid player.' };
+    }
+
+    const room = rooms.get(client.room_id || '');
+    if (!room) {
+      sendJson(client, {
+        type: 'room_left',
+        server_time: Date.now()
+      });
+      return { ok: true };
+    }
+
+    if (room.started) {
+      return { ok: false, error: 'This match already started.' };
+    }
+
+    const roomCode = room.code;
+    const leavingHost = room.host_id === client.id;
+
+    if (leavingHost && room.is_private && room.players.length > 1) {
+      const playerIds = room.players.slice();
+      if (room.start_timer) {
+        clearTimeout(room.start_timer);
+        room.start_timer = null;
+      }
+      rooms.delete(room.id);
+
+      playerIds.forEach((clientId) => {
+        const partyClient = clientsById.get(clientId);
+        if (!partyClient) {
+          return;
+        }
+        partyClient.room_id = '';
+        sendJson(partyClient, {
+          type: 'room_cancelled',
+          code: roomCode,
+          party_code: roomCode,
+          room_code: roomCode,
+          reason: 'host_left',
+          server_time: Date.now()
+        });
+        sendJson(partyClient, {
+          type: 'room_left',
+          code: roomCode,
+          party_code: roomCode,
+          room_code: roomCode,
+          reason: 'host_left',
+          server_time: Date.now()
+        });
+      });
+
+      console.log(`[room] cancelled private ${roomCode} after host left`);
+      broadcastOnlineDirectory();
+      return { ok: true };
+    }
+
+    this.removePlayer(client, false);
+    sendJson(client, {
+      type: 'room_left',
+      code: roomCode,
+      party_code: roomCode,
+      room_code: roomCode,
+      reason: 'player_left',
+      server_time: Date.now()
+    });
+    return { ok: true };
+  }
+
   startMatchForHost(client) {
     const room = rooms.get(client.room_id || '');
 
@@ -2798,6 +2868,12 @@ function handleMessage(client, data, socket) {
 
     case 'join_room':
       handleResult(client, roomManager.joinRoomByCode(client, message.code || message.room_code));
+      break;
+
+    case 'leave_room':
+    case 'cancel_room':
+    case 'cancel_match':
+      handleResult(client, roomManager.leaveRoom(client));
       break;
 
     case 'invite_player':

@@ -36,6 +36,8 @@ const ONLINE_REMOTE_DISCOVERY_GRACE_SECONDS: float = 0.85
 const ONLINE_REMOTE_READY_WAIT_SECONDS: float = 8.0
 const ONLINE_CLIENT_SYNC_REQUEST_INTERVAL: float = 0.7
 const ONLINE_CLIENT_SYNC_REQUEST_SECONDS: float = 12.0
+const ONLINE_TOTAL_MATCH_SLOTS: int = 5
+const ONLINE_PREDICTION_PRE_SHOT_GRACE_SECONDS: float = 0.04
 const LAN_CLIENT_STATE_SNAP_DISTANCE: float = 2.4
 const ONLINE_CLIENT_STATE_SNAP_DISTANCE: float = 8.0
 const LAN_CLIENT_STATE_POSITION_DEADZONE: float = 0.015
@@ -210,6 +212,7 @@ var lan_drag_reference_right: Vector3 = Vector3.ZERO
 var lan_last_aim_send_msec: int = 0
 var lan_client_predicted_marble_name: String = ""
 var lan_client_prediction_started_msec: int = 0
+var lan_client_prediction_started_remote_seconds: float = -1.0
 var lan_power_glass: Control = null
 var lan_power_bar: ProgressBar = null
 var lan_power_label: Label = null
@@ -438,6 +441,12 @@ func _apply_online_active_marble_roster() -> void:
 		if marble_name != "":
 			roster_names[marble_name] = true
 
+	var human_slot_count: int = _get_online_human_slot_count(online_players.size())
+	for player_index in range(human_slot_count):
+		var human_marble_name: String = _get_online_marble_name_for_player_index(player_index)
+		if human_marble_name != "":
+			roster_names[human_marble_name] = true
+
 	var online_ai_marble_names: PackedStringArray = _get_online_ai_marble_names(online_players.size())
 	for marble_name in online_ai_marble_names:
 		roster_names[marble_name] = true
@@ -561,7 +570,8 @@ func _get_online_ai_marble_names(human_count: int) -> PackedStringArray:
 	if ai_count <= 0:
 		return names
 
-	var start_index: int = clampi(human_count, 0, 4)
+	var effective_human_count: int = _get_online_human_slot_count(human_count, ai_count)
+	var start_index: int = clampi(effective_human_count, 0, ONLINE_TOTAL_MATCH_SLOTS - 1)
 	for ai_index in range(ai_count):
 		var marble_name: String = _get_online_marble_name_for_player_index(start_index + ai_index)
 		if marble_name == "":
@@ -570,6 +580,14 @@ func _get_online_ai_marble_names(human_count: int) -> PackedStringArray:
 			continue
 		names.append(marble_name)
 	return names
+
+
+func _get_online_human_slot_count(snapshot_count: int = -1, ai_count: int = -1) -> int:
+	var human_count: int = _get_online_human_players_snapshot().size() if snapshot_count < 0 else snapshot_count
+	var known_ai_count: int = _get_online_ai_count() if ai_count < 0 else ai_count
+	if known_ai_count > 0:
+		human_count = maxi(human_count, ONLINE_TOTAL_MATCH_SLOTS - known_ai_count)
+	return clampi(human_count, 0, ONLINE_TOTAL_MATCH_SLOTS)
 
 
 func _get_online_ai_count() -> int:
@@ -1208,9 +1226,9 @@ func _run_lineup_phase() -> void:
 	await _play_lineup_round(turn_order)
 
 	var first_marble: Node3D = await _resolve_lineup_starter(active_marbles)
+	first_marble = await _resolve_remaining_lineup_hole_ties(first_marble)
 	lineup_starter_decided = first_marble != null
-	if first_marble != null and _is_marble_in_hole(first_marble):
-		current_hole_owner = first_marble
+	_settle_lineup_hole_owner(first_marble)
 	pending_hole_turn_marble = null
 
 	turn_order = active_marbles.duplicate()
@@ -1270,18 +1288,39 @@ func _resolve_lineup_starter(candidates: Array) -> Node3D:
 
 		contenders = _filter_active_lineup_contenders(result.get("retry", []) as Array)
 		if contenders.size() > 1:
-			retry_count += 1
-			if retry_count > LINEUP_MAX_TIE_RETRIES:
+			var hole_tie: bool = bool(result.get("hole_tie", false))
+			if not hole_tie:
+				retry_count += 1
+			if not hole_tie and retry_count > LINEUP_MAX_TIE_RETRIES:
 				var fallback_winner: Node3D = _get_lineup_forced_winner(contenders)
 				if fallback_winner != null:
 					print("Lineup stayed tied after retries. Starting with: %s" % _display_name_for_marble(fallback_winner))
 					return fallback_winner
 
-			print("Lineup tied. Retrying starter selection for: %s" % _get_marble_names(contenders))
+			if hole_tie:
+				print("Multiple marbles entered the hole during lineup. Resetting them to shoot again: %s" % _get_marble_names(contenders))
+			else:
+				print("Lineup tied. Retrying starter selection for: %s" % _get_marble_names(contenders))
+			current_hole_owner = null
+			pending_hole_turn_marble = null
 			_place_marbles_on_lineup(contenders)
 			await _play_lineup_round(contenders)
 
 	return contenders[0] if not contenders.is_empty() else null
+
+
+func _resolve_remaining_lineup_hole_ties(first_marble: Node3D) -> Node3D:
+	var resolved_marble: Node3D = first_marble
+	var in_hole: Array[Node3D] = _collect_in_hole_marbles(active_marbles)
+	while in_hole.size() > 1:
+		print("Multiple marbles are still in the hole after lineup. Resetting them to shoot again: %s" % _get_marble_names(in_hole))
+		current_hole_owner = null
+		pending_hole_turn_marble = null
+		_place_marbles_on_lineup(in_hole)
+		await _play_lineup_round(in_hole)
+		resolved_marble = await _resolve_lineup_starter(in_hole)
+		in_hole = _collect_in_hole_marbles(in_hole)
+	return resolved_marble
 
 
 func _get_lineup_result(candidates: Array) -> Dictionary:
@@ -1293,7 +1332,7 @@ func _get_lineup_result(candidates: Array) -> Dictionary:
 	if in_hole.size() == 1:
 		return {"winner": in_hole[0], "retry": []}
 	if in_hole.size() > 1:
-		return {"winner": null, "retry": in_hole}
+		return {"winner": null, "retry": in_hole, "hole_tie": true}
 
 	var closest: Array[Node3D] = _collect_closest_lineup_marbles(contenders)
 	if closest.size() == 1:
@@ -1308,6 +1347,21 @@ func _get_lineup_forced_winner(candidates: Array) -> Node3D:
 
 	contenders.sort_custom(Callable(self, "_sort_marbles_by_lineup_distance"))
 	return contenders[0]
+
+
+func _settle_lineup_hole_owner(first_marble: Node3D) -> void:
+	current_hole_owner = null
+	if first_marble != null and _is_marble_in_hole(first_marble):
+		current_hole_owner = first_marble
+		_enforce_single_hole_occupant(first_marble)
+		return
+
+	var in_hole: Array[Node3D] = _collect_in_hole_marbles(active_marbles)
+	if in_hole.is_empty():
+		return
+
+	current_hole_owner = in_hole[0]
+	_enforce_single_hole_occupant(current_hole_owner)
 
 
 func _filter_active_lineup_contenders(candidates: Array) -> Array[Node3D]:
@@ -1557,13 +1611,14 @@ func _perform_lan_remote_player_shot(marble: Node3D, action_mode: int) -> void:
 		if marble.has_method("shoot"):
 			marble.call("shoot", aim, force)
 			_register_shot(marble)
+			_send_online_authoritative_snapshot_now()
 	else:
-		if online_enabled:
+		if timed_out:
+			push_warning("LAN player %s did not shoot before the turn timer ended. Using AI fallback." % _display_name_for_marble(marble))
+		elif online_enabled:
 			_apply_lan_remote_aim_preview(marble, Vector3.ZERO, 0.0, false)
 			push_warning("Online turn for %s ended before a shot arrived." % _display_name_for_marble(marble))
 			return
-		if timed_out:
-			push_warning("LAN player %s did not shoot before the turn timer ended." % _display_name_for_marble(marble))
 		await _perform_ai_shot(marble, action_mode)
 		return
 
@@ -2135,6 +2190,18 @@ func _send_online_marble_state_to_client(client_id: String) -> void:
 	}, client_id)
 
 
+func _send_online_authoritative_snapshot_now(target_id: String = "") -> void:
+	if not online_enabled or online == null:
+		return
+	var states: Array = _lan_collect_marble_states(true, false)
+	if states.is_empty():
+		return
+	_send_online_game_message("marble_states", {
+		"states": states,
+		"server_time": float(Time.get_ticks_msec()) * 0.001
+	}, target_id)
+
+
 func _lan_collect_marble_states(compact: bool = false, delta_only: bool = false) -> Array:
 	var states: Array = []
 	for marble in marbles:
@@ -2236,6 +2303,8 @@ func _lan_receive_marble_states(states: Array, remote_time_seconds: float = -1.0
 		var marble_name: String = str(state.get("name", state.get("n", "")))
 		if marble_name == "":
 			continue
+		if _online_client_should_ignore_prediction_sample(marble_name, sample_time):
+			continue
 		sample["_client_time"] = receive_time
 		sample["_sample_time"] = sample_time
 		lan_client_targets[marble_name] = sample
@@ -2255,6 +2324,16 @@ func _push_lan_client_state_sample(marble_name: String, sample: Dictionary, samp
 			break
 		buffer.remove_at(0)
 	lan_client_state_buffers[marble_name] = buffer
+
+
+func _online_client_should_ignore_prediction_sample(marble_name: String, sample_time: float) -> bool:
+	if not online_enabled or lan_is_host:
+		return false
+	if lan_client_predicted_marble_name == "" or marble_name != lan_client_predicted_marble_name:
+		return false
+	if lan_client_prediction_started_remote_seconds < 0.0:
+		return false
+	return sample_time < lan_client_prediction_started_remote_seconds - ONLINE_PREDICTION_PRE_SHOT_GRACE_SECONDS
 
 
 func _smooth_lan_client_marbles(delta: float) -> void:
@@ -2387,12 +2466,18 @@ func _start_online_local_prediction(marble: Node3D, aim: Vector3, force: float) 
 		return
 	if aim == Vector3.ZERO or force <= 0.0:
 		return
-	lan_client_predicted_marble_name = String(marble.name)
+	var marble_name: String = String(marble.name)
+	lan_client_predicted_marble_name = marble_name
 	lan_client_prediction_started_msec = Time.get_ticks_msec()
+	lan_client_prediction_started_remote_seconds = _lan_client_remote_now_seconds() if lan_client_remote_time_offset_ready else -1.0
+	lan_client_targets.erase(marble_name)
+	lan_client_state_buffers.erase(marble_name)
 	var body: RigidBody3D = marble as RigidBody3D
 	if body != null:
 		body.freeze = false
 		body.sleeping = false
+		body.linear_velocity = Vector3.ZERO
+		body.angular_velocity = Vector3.ZERO
 	if marble.has_method("shoot"):
 		marble.call("shoot", aim, force)
 
@@ -2400,6 +2485,7 @@ func _start_online_local_prediction(marble: Node3D, aim: Vector3, force: float) 
 func _stop_online_local_prediction() -> void:
 	lan_client_predicted_marble_name = ""
 	lan_client_prediction_started_msec = 0
+	lan_client_prediction_started_remote_seconds = -1.0
 
 
 func _online_client_is_predicting_marble(marble_name: String) -> bool:
@@ -2431,6 +2517,15 @@ func _reconcile_online_local_prediction(body: RigidBody3D, state: Dictionary, ta
 	var target_is_moving: bool = target_linear_velocity.length() > LAN_STATE_MOVING_SYNC_THRESHOLD or target_angular_velocity.length() > LAN_STATE_MOVING_SYNC_THRESHOLD
 	var snap_distance: float = ONLINE_CLIENT_STATE_SNAP_DISTANCE if online_enabled else LAN_CLIENT_STATE_SNAP_DISTANCE
 	if distance_to_target > snap_distance and not target_is_moving:
+		if online_enabled:
+			var far_reconcile_weight: float = clampf(delta * ONLINE_LOCAL_PREDICTION_RECONCILE_SPEED, 0.0, 0.2)
+			body.global_transform = Transform3D(
+				body.global_transform.basis.slerp(target_transform.basis, far_reconcile_weight).orthonormalized(),
+				body.global_position.lerp(target_transform.origin, far_reconcile_weight)
+			)
+			body.linear_velocity = body.linear_velocity.lerp(target_linear_velocity, far_reconcile_weight)
+			body.angular_velocity = body.angular_velocity.lerp(target_angular_velocity, far_reconcile_weight)
+			return
 		body.global_transform = target_transform
 		body.linear_velocity = target_linear_velocity
 		body.angular_velocity = target_angular_velocity
@@ -2634,7 +2729,7 @@ func _finish_lan_drag(pointer_position: Vector2) -> void:
 		lan_client_remote_turn_input_enabled = false
 		if online_enabled:
 			_send_online_game_message("remote_player_shot", {"aim": lan_drag_aim, "force": lan_drag_force, "marble_name": String(input_marble.name)})
-			_stop_online_local_prediction()
+			_start_online_local_prediction(input_marble, lan_drag_aim, lan_drag_force)
 		else:
 			_lan_receive_remote_player_shot.rpc_id(host_peer_id, lan_drag_aim, lan_drag_force)
 
@@ -2778,6 +2873,7 @@ func _pointer_over_ui() -> bool:
 
 @rpc("authority", "call_remote", "reliable")
 func _lan_remote_turn_started(action_mode: int) -> void:
+	_stop_online_local_prediction()
 	lan_dragging = false
 	lan_drag_touch_index = -1
 	lan_drag_aim = Vector3.ZERO
@@ -3608,10 +3704,35 @@ func _is_network_remote_player_marble(marble: Node3D) -> bool:
 	if marble == null:
 		return false
 	if online_enabled:
-		return _get_online_client_id_for_marble(marble) != ""
+		if _is_online_ai_marble(marble):
+			return false
+		if _get_online_client_id_for_marble(marble) != "":
+			return true
+		return _is_online_reserved_remote_human_marble(marble)
 	if not lan_remote_player_connected:
 		return false
 	return marble == lan_remote_player_marble
+
+
+func _is_online_ai_marble(marble: Node3D) -> bool:
+	if marble == null or not online_enabled:
+		return false
+	_build_online_player_assignments()
+	var marble_name: String = String(marble.name)
+	if online_client_id_by_marble_name.has(marble_name):
+		return false
+	for client_id_variant in online_marble_name_by_client_id.keys():
+		if str(online_marble_name_by_client_id.get(client_id_variant, "")) == marble_name:
+			return false
+	var human_count: int = _get_online_human_players_snapshot().size()
+	return _get_online_ai_marble_names(human_count).has(marble_name)
+
+
+func _is_online_reserved_remote_human_marble(marble: Node3D) -> bool:
+	if marble == null or not online_enabled or marble == player_marble:
+		return false
+	var player_index: int = _get_online_player_index_for_marble_name(String(marble.name))
+	return player_index > 0 and player_index < _get_online_human_slot_count()
 
 
 func _get_online_client_id_for_marble(marble: Node3D) -> String:
@@ -4375,7 +4496,9 @@ func _lan_receive_turn_state(display_name: String, active_index: int, active_mar
 		lan_last_aim_send_msec = 0
 		_update_lan_power_meter(0.0, false)
 		_reset_lan_drag_reference_axes()
-	if lan_client_predicted_marble_name != "" and active_marble_name != lan_client_predicted_marble_name:
+	if phase == GAME_PHASE_FINISHED:
+		_stop_online_local_prediction()
+	elif lan_client_predicted_marble_name != "" and active_marble_name != lan_client_predicted_marble_name:
 		_stop_online_local_prediction()
 	lan_client_active_display_name = display_name
 	lan_client_active_marble_name = active_marble_name

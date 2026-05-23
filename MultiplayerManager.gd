@@ -12,6 +12,7 @@ signal game_events_updated(events: Array, payload: Dictionary)
 signal room_created(room: Dictionary, code: String)
 signal room_joined(room: Dictionary)
 signal room_updated(room: Dictionary)
+signal room_left()
 signal room_state_changed(players: int, max_players: int, ai_count: int)
 signal start_match(room: Dictionary)
 signal game_started(players: Array, ai_count: int)
@@ -202,6 +203,20 @@ func decline_room_invite(inviter_client_id: String, room_code: String = "") -> E
 		"name": get_local_player_name(),
 		"login_id": get_local_player_login_id()
 	})
+
+
+func leave_room() -> Error:
+	var error: Error = OK
+	if socket != null and socket.get_ready_state() == WebSocketPeer.STATE_OPEN and not current_room.is_empty():
+		error = _send_now({
+			"type": "leave_room",
+			"name": get_local_player_name(),
+			"login_id": get_local_player_login_id()
+		})
+	_clear_room_membership_state()
+	_set_status("Left online party.")
+	room_left.emit()
+	return error
 
 
 func request_friend(target_client_id: String) -> Error:
@@ -805,6 +820,18 @@ func _handle_message(message: Dictionary) -> void:
 				int(message.get("max_players", current_room.get("max_players", 2))),
 				int(message.get("ai_count", current_ai_count))
 			)
+		"room_left":
+			var had_room: bool = not current_room.is_empty()
+			_clear_room_membership_state()
+			_set_status("Left online party.")
+			if had_room:
+				room_left.emit()
+		"room_cancelled":
+			var had_cancelled_room: bool = not current_room.is_empty()
+			_clear_room_membership_state()
+			_set_status("Online party was cancelled.")
+			if had_cancelled_room:
+				room_left.emit()
 		"start_match", "start_game":
 			_apply_start_match_message(message)
 			match_started = true
@@ -1233,17 +1260,21 @@ func _room_payload_matches_current(room_payload) -> bool:
 
 
 func _clear_room_state() -> void:
+	_clear_room_membership_state()
+	online_player_count = 0
+	open_party_count = 0
+	running_party_count = 0
+	online_players_directory.clear()
+	online_game_events.clear()
+
+
+func _clear_room_membership_state() -> void:
 	current_room.clear()
 	current_players.clear()
 	current_ai_players.clear()
 	current_ai_count = 0
 	match_started = false
 	local_waiting_client_id = ""
-	online_player_count = 0
-	open_party_count = 0
-	running_party_count = 0
-	online_players_directory.clear()
-	online_game_events.clear()
 
 
 func _array_from_message(value) -> Array:

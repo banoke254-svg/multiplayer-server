@@ -1742,11 +1742,99 @@ func _create_event_news_card(event_data: Dictionary) -> Panel:
 	meta.max_lines_visible = 2
 	stack.add_child(meta)
 
-	var description: Label = _create_online_text_label(str(event_data.get("description", "")), 14, Color(0.82, 0.9, 1.0, 0.9), ui_font)
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.max_lines_visible = 5
+	var description: RichTextLabel = _create_event_description_label(str(event_data.get("description", "")))
 	stack.add_child(description)
 	return card
+
+
+func _create_event_description_label(description_text: String) -> RichTextLabel:
+	var description: RichTextLabel = RichTextLabel.new()
+	description.bbcode_enabled = true
+	description.fit_content = true
+	description.scroll_active = false
+	description.selection_enabled = true
+	description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	description.mouse_filter = Control.MOUSE_FILTER_STOP
+	description.text = _event_text_to_bbcode(description_text)
+	description.add_theme_font_override("normal_font", ui_font)
+	description.add_theme_font_size_override("normal_font_size", 14)
+	description.add_theme_color_override("default_color", Color(0.82, 0.9, 1.0, 0.9))
+	description.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.72))
+	description.add_theme_constant_override("shadow_outline_size", 3)
+	if not description.meta_clicked.is_connected(_on_event_link_clicked):
+		description.meta_clicked.connect(_on_event_link_clicked)
+	return description
+
+
+func _event_text_to_bbcode(description_text: String) -> String:
+	if description_text.strip_edges() == "":
+		return ""
+
+	var url_regex: RegEx = RegEx.new()
+	if url_regex.compile("(https?://|www\\.)[^\\s\\[\\]\\\"'<>]+") != OK:
+		return _escape_event_bbcode_text(description_text)
+
+	var result: String = ""
+	var cursor: int = 0
+	for match_result in url_regex.search_all(description_text):
+		var start_index: int = match_result.get_start()
+		var end_index: int = match_result.get_end()
+		if start_index < cursor:
+			continue
+
+		var raw_url: String = description_text.substr(start_index, end_index - start_index)
+		var clean_url: String = _trim_event_link_url(raw_url)
+		var open_url: String = _normalize_event_link_url(clean_url)
+		var clean_end_index: int = start_index + clean_url.length()
+		result += _escape_event_bbcode_text(description_text.substr(cursor, start_index - cursor))
+		if _is_event_link_url(open_url):
+			result += "[color=#31f7d9][u][url=%s]%s[/url][/u][/color]" % [
+				_escape_event_url_parameter(open_url),
+				_escape_event_bbcode_text(clean_url)
+			]
+			cursor = clean_end_index
+		else:
+			result += _escape_event_bbcode_text(raw_url)
+			cursor = end_index
+
+	result += _escape_event_bbcode_text(description_text.substr(cursor))
+	return result
+
+
+func _trim_event_link_url(raw_url: String) -> String:
+	var clean_url: String = raw_url.strip_edges()
+	while clean_url.length() > 0:
+		var last_character: String = clean_url.substr(clean_url.length() - 1, 1)
+		if ".,;:!?)]}".find(last_character) == -1:
+			break
+		clean_url = clean_url.substr(0, clean_url.length() - 1)
+	return clean_url
+
+
+func _is_event_link_url(url: String) -> bool:
+	var clean_url: String = _normalize_event_link_url(url)
+	return clean_url.length() <= 700 and (clean_url.begins_with("https://") or clean_url.begins_with("http://"))
+
+
+func _normalize_event_link_url(url: String) -> String:
+	var clean_url: String = url.strip_edges()
+	if clean_url.begins_with("www."):
+		return "https://%s" % clean_url
+	return clean_url
+
+
+func _escape_event_bbcode_text(text_value: String) -> String:
+	return text_value.replace("[", "[lb]").replace("]", "[rb]")
+
+
+func _escape_event_url_parameter(url: String) -> String:
+	return url.replace("[", "").replace("]", "")
+
+
+func _on_event_link_clicked(meta: Variant) -> void:
+	var url: String = _normalize_event_link_url(str(meta))
+	if _is_event_link_url(url):
+		OS.shell_open(url)
 
 
 func _create_event_image_texture(image_url: String) -> Texture2D:
@@ -6972,13 +7060,15 @@ func _on_online_loading_cancel_pressed() -> void:
 		online_loading_panel.hide()
 	_set_online_rooms_content_visible(true)
 	if online_status_label != null:
-		online_status_label.text = "Matchmaking cancelled. Returning to online rooms..."
+		online_status_label.text = "Matchmaking cancelled. Leaving party..."
 
 	var online: Node = get_node_or_null("/root/MultiplayerManager")
-	if online != null and online.has_method("disconnect_from_server"):
+	if online != null and online.has_method("leave_room"):
+		online.call("leave_room")
+	elif online != null and online.has_method("disconnect_from_server"):
 		online.call("disconnect_from_server", false)
-	if online != null and online.has_method("connect_to_server"):
-		online.call_deferred("connect_to_server", "", true)
+	if online != null and online.has_method("request_rooms"):
+		online.call_deferred("request_rooms")
 
 	online_latest_rooms.clear()
 	_refresh_online_rooms_view()
