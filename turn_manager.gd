@@ -31,6 +31,7 @@ const PHYSICS_IMPACT_COOLDOWN: float = 0.05
 const PHYSICS_IMPACT_MIN_SPEED: float = 0.18
 const PHYSICS_IMPACT_MAX_SPEED: float = 16.0
 const LINEUP_DISTANCE_TIE_EPSILON: float = 0.035
+const LINEUP_MAX_TIE_RETRIES: int = 3
 const ONLINE_REMOTE_DISCOVERY_GRACE_SECONDS: float = 0.85
 const ONLINE_REMOTE_READY_WAIT_SECONDS: float = 8.0
 const ONLINE_CLIENT_SYNC_REQUEST_INTERVAL: float = 0.7
@@ -1230,7 +1231,8 @@ func _play_lineup_round(shooters: Array[Node3D]) -> void:
 			continue
 
 		_lock_non_lineup_controls(marble)
-		current_marble_index = shooter_index
+		var turn_order_index: int = turn_order.find(marble)
+		current_marble_index = turn_order_index if turn_order_index >= 0 else shooter_index
 		_reset_marble_motion(marble, _get_lineup_position(lineup_shooters, shooter_index))
 		_emit_turn_state(marble)
 		await _activate_camera_for(marble)
@@ -1259,6 +1261,7 @@ func _lock_non_lineup_controls(allowed_marble: Node3D) -> void:
 
 func _resolve_lineup_starter(candidates: Array) -> Node3D:
 	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
+	var retry_count: int = 0
 	while contenders.size() > 1:
 		var result := _get_lineup_result(contenders)
 		var winner: Node3D = result.get("winner", null) as Node3D
@@ -1267,6 +1270,13 @@ func _resolve_lineup_starter(candidates: Array) -> Node3D:
 
 		contenders = _filter_active_lineup_contenders(result.get("retry", []) as Array)
 		if contenders.size() > 1:
+			retry_count += 1
+			if retry_count > LINEUP_MAX_TIE_RETRIES:
+				var fallback_winner: Node3D = _get_lineup_forced_winner(contenders)
+				if fallback_winner != null:
+					print("Lineup stayed tied after retries. Starting with: %s" % _display_name_for_marble(fallback_winner))
+					return fallback_winner
+
 			print("Lineup tied. Retrying starter selection for: %s" % _get_marble_names(contenders))
 			_place_marbles_on_lineup(contenders)
 			await _play_lineup_round(contenders)
@@ -1289,6 +1299,15 @@ func _get_lineup_result(candidates: Array) -> Dictionary:
 	if closest.size() == 1:
 		return {"winner": closest[0], "retry": []}
 	return {"winner": null, "retry": closest}
+
+
+func _get_lineup_forced_winner(candidates: Array) -> Node3D:
+	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
+	if contenders.is_empty():
+		return null
+
+	contenders.sort_custom(Callable(self, "_sort_marbles_by_lineup_distance"))
+	return contenders[0]
 
 
 func _filter_active_lineup_contenders(candidates: Array) -> Array[Node3D]:

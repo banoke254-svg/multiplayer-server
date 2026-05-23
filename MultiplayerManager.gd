@@ -8,6 +8,7 @@ signal connection_status_changed(message: String)
 signal rooms_updated(rooms: Array)
 signal online_players_updated(players: Array)
 signal online_rankings_updated(rankings: Array)
+signal game_events_updated(events: Array, payload: Dictionary)
 signal room_created(room: Dictionary, code: String)
 signal room_joined(room: Dictionary)
 signal room_updated(room: Dictionary)
@@ -54,6 +55,7 @@ var open_party_count: int = 0
 var running_party_count: int = 0
 var online_players_directory: Array = []
 var online_rankings: Array = []
+var online_game_events: Array = []
 var online_friends: Array = []
 var incoming_friend_requests: Array = []
 var outgoing_friend_requests: Array = []
@@ -375,20 +377,22 @@ func start_game() -> void:
 func force_start_match_locally() -> void:
 	if current_room.is_empty():
 		return
-	if current_players.size() < 2:
-		_fail("At least 2 players are needed to start.")
+	_ensure_local_player_in_current_room()
+	if current_players.size() < 1:
+		_fail("At least 1 player is needed to start.")
 		return
-	current_room["host_id"] = client_id
+	var local_id: String = get_local_client_id()
+	current_room["host_id"] = local_id
 	current_room["started"] = true
+	current_room["allow_ai"] = true
 	match_started = true
-	current_ai_players.clear()
-	current_ai_count = 0
 	for index in range(current_players.size()):
 		if typeof(current_players[index]) != TYPE_DICTIONARY:
 			continue
 		var player_data: Dictionary = current_players[index] as Dictionary
-		player_data["is_host"] = str(player_data.get("id", "")) == client_id
+		player_data["is_host"] = str(player_data.get("id", "")) == local_id
 		current_players[index] = player_data
+	_ensure_ai_players_for_current_room()
 	current_room["players"] = current_players.duplicate(true)
 	current_room["ai_count"] = current_ai_count
 	current_room["ai_players"] = current_ai_players.duplicate(true)
@@ -466,6 +470,10 @@ func get_online_players() -> Array:
 
 func get_online_rankings() -> Array:
 	return online_rankings.duplicate(true)
+
+
+func get_online_game_events() -> Array:
+	return online_game_events.duplicate(true)
 
 
 func get_online_friends() -> Array:
@@ -758,6 +766,11 @@ func _handle_message(message: Dictionary) -> void:
 			online_rankings = _normalize_online_rankings(_array_from_message(message.get("rankings", message.get("ranking", message.get("leaderboard", [])))))
 			online_players_updated.emit(get_online_players())
 			online_rankings_updated.emit(get_online_rankings())
+		"game_events_update":
+			online_game_events = _array_from_message(message.get("events", []))
+			if online_game_events.is_empty() and typeof(message.get("latest_event", {})) == TYPE_DICTIONARY:
+				online_game_events.append((message.get("latest_event", {}) as Dictionary).duplicate(true))
+			game_events_updated.emit(online_game_events.duplicate(true), message.duplicate(true))
 		"room_created":
 			var created_room_payload = message.get("room", {})
 			if typeof(created_room_payload) != TYPE_DICTIONARY or (created_room_payload as Dictionary).is_empty():
@@ -1127,13 +1140,14 @@ func _sanitize_chat_text(text: String) -> String:
 
 
 func _ensure_local_player_in_current_room() -> void:
-	if client_id == "":
+	var local_id: String = get_local_client_id()
+	if local_id == "":
 		return
 	for player in current_players:
-		if typeof(player) == TYPE_DICTIONARY and str((player as Dictionary).get("id", "")) == client_id:
+		if typeof(player) == TYPE_DICTIONARY and str((player as Dictionary).get("id", "")) == local_id:
 			return
 	current_players.insert(0, {
-		"id": client_id,
+		"id": local_id,
 		"name": get_local_player_name(),
 		"login_id": get_local_player_login_id(),
 		"is_host": current_players.is_empty(),
@@ -1229,6 +1243,7 @@ func _clear_room_state() -> void:
 	open_party_count = 0
 	running_party_count = 0
 	online_players_directory.clear()
+	online_game_events.clear()
 
 
 func _array_from_message(value) -> Array:

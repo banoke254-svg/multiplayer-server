@@ -43,6 +43,7 @@ const PAYMENT_TERMS_CHECKBOX_TEXT: String = "I understand that Gold/Coins are di
 const PAYMENT_FINAL_NOTICE_TEXT: String = "Check your amount carefully before paying. Donations and digital currency purchases are final and non-refundable."
 const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment and message consent checkbox before paying."
 const EVENT_NOTIFICATION_STATE_PATH: String = "user://event_notifications.save"
+const EVENT_NEWS_POLL_INTERVAL_SECONDS: float = 60.0
 const EVENT_NEWS_ITEMS: Array = []
 const TERMS_TEXT: String = """
 Bano ke Terms and Conditions
@@ -290,6 +291,8 @@ var settings_button: Button
 var quit_button: Button
 var donate_button: Button
 var events_button: Button
+var event_badge_panel: Panel
+var event_badge_label: Label
 var payment_popup: Window
 var events_popup: Window
 var events_close_button: Button
@@ -408,6 +411,8 @@ var online_chat_button_custom_position: Vector2 = Vector2.ZERO
 var event_notification_timer: float = 0.0
 var event_notification_hash: String = ""
 var event_notification_unread: bool = false
+var event_notification_unread_count: int = 0
+var event_news_poll_timer: float = 0.0
 var online_pending_invite: Dictionary = {}
 var online_invite_room_hold_active: bool = false
 var online_invite_room_code: String = ""
@@ -654,6 +659,7 @@ func _process(delta: float) -> void:
 	_process_online_start_fallback(delta)
 	_process_online_scene_start(delta)
 	_process_online_chat_toast(delta)
+	_process_event_news_poll(delta)
 	_process_event_notification(delta)
 	_process_payment_status_poll(delta)
 	_process_google_auth_poll(delta)
@@ -935,6 +941,37 @@ func _ensure_events_button() -> void:
 	events_button.offset_bottom = 126.0
 	events_button.custom_minimum_size = Vector2(166.0, 52.0)
 	events_button.z_index = 90
+	_ensure_event_badge()
+
+
+func _ensure_event_badge() -> void:
+	if events_button == null:
+		return
+	event_badge_panel = events_button.get_node_or_null("EventNotificationBadge") as Panel
+	if event_badge_panel == null:
+		event_badge_panel = Panel.new()
+		event_badge_panel.name = "EventNotificationBadge"
+		event_badge_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		events_button.add_child(event_badge_panel)
+	event_badge_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	event_badge_panel.offset_left = -32.0
+	event_badge_panel.offset_top = -8.0
+	event_badge_panel.offset_right = 8.0
+	event_badge_panel.offset_bottom = 28.0
+	event_badge_panel.z_index = 8
+	event_badge_panel.hide()
+
+	event_badge_label = event_badge_panel.get_node_or_null("BadgeLabel") as Label
+	if event_badge_label == null:
+		event_badge_label = Label.new()
+		event_badge_label.name = "BadgeLabel"
+		event_badge_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		event_badge_panel.add_child(event_badge_label)
+	event_badge_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	event_badge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	event_badge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	event_badge_label.clip_text = true
+	_update_event_badge()
 
 
 func _ensure_header_labels() -> void:
@@ -1145,7 +1182,7 @@ func _style_events_button() -> void:
 	if events_button == null:
 		return
 	events_button.flat = false
-	events_button.text = "EVENTS\nNEW" if event_notification_unread else "EVENTS"
+	events_button.text = "EVENTS"
 	events_button.add_theme_font_override("font", ui_font)
 	events_button.add_theme_font_size_override("font_size", 16)
 	events_button.add_theme_color_override("font_color", Color(0.98, 0.98, 1.0, 1.0))
@@ -1156,6 +1193,32 @@ func _style_events_button() -> void:
 	events_button.add_theme_stylebox_override("normal", _make_settings_control_style(Color(0.02, 0.035, 0.055, 0.72), Color(0.31, 0.97, 0.85, 0.9), 12))
 	events_button.add_theme_stylebox_override("hover", _make_settings_control_style(Color(0.04, 0.07, 0.1, 0.88), Color(0.52, 1.0, 0.93, 1.0), 12))
 	events_button.add_theme_stylebox_override("pressed", _make_settings_control_style(Color(0.01, 0.02, 0.035, 0.96), Color(0.2, 0.82, 0.74, 1.0), 12))
+	_style_event_badge()
+
+
+func _style_event_badge() -> void:
+	if event_badge_panel == null:
+		_ensure_event_badge()
+	if event_badge_panel == null:
+		return
+	event_badge_panel.add_theme_stylebox_override("panel", _make_online_card_style(Color(1.0, 0.08, 0.22, 0.98), Color(1.0, 0.86, 0.28, 1.0), 18))
+	if event_badge_label != null:
+		event_badge_label.add_theme_font_override("font", ui_font)
+		event_badge_label.add_theme_font_size_override("font_size", 14)
+		event_badge_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0))
+		event_badge_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.65))
+		event_badge_label.add_theme_constant_override("shadow_outline_size", 2)
+	_update_event_badge()
+
+
+func _update_event_badge() -> void:
+	if event_badge_panel == null or event_badge_label == null:
+		return
+	if event_notification_unread_count <= 0:
+		event_badge_panel.hide()
+		return
+	event_badge_label.text = "9+" if event_notification_unread_count > 9 else str(event_notification_unread_count)
+	event_badge_panel.show()
 
 
 func _apply_standard_menu_button_style(button: Button, accent_color: Color = Color(0.31, 0.97, 0.85, 1.0)) -> void:
@@ -1516,6 +1579,15 @@ func _request_event_news() -> void:
 	var error: Error = event_news_http_request.request(_get_payment_server_url(EVENTS_ENDPOINT_PATH), PackedStringArray(), HTTPClient.METHOD_GET)
 	if error != OK:
 		push_warning("Could not request live events.")
+	event_news_poll_timer = EVENT_NEWS_POLL_INTERVAL_SECONDS
+
+
+func _process_event_news_poll(delta: float) -> void:
+	if event_news_poll_timer > 0.0:
+		event_news_poll_timer -= delta
+		return
+	event_news_poll_timer = EVENT_NEWS_POLL_INTERVAL_SECONDS
+	_request_event_news()
 
 
 func _on_event_news_http_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
@@ -1546,6 +1618,7 @@ func _normalize_event_news_items(raw_events: Array) -> Array:
 		if bool(event_data.get("published", true)) == false:
 			continue
 		normalized.append({
+			"id": str(event_data.get("id", "")).strip_edges(),
 			"title": str(event_data.get("title", "Live Event")).strip_edges(),
 			"date": str(event_data.get("date", "Date TBA")).strip_edges(),
 			"prize": str(event_data.get("prize", "TBA")).strip_edges(),
@@ -1619,7 +1692,6 @@ func _rebuild_events_popup_contents() -> void:
 
 func _create_event_news_card(event_data: Dictionary) -> Panel:
 	var card: Panel = Panel.new()
-	card.custom_minimum_size = Vector2(0, 170)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.add_theme_stylebox_override("panel", _make_online_card_style(Color(0.015, 0.03, 0.06, 0.82), Color(0.31, 0.97, 0.85, 0.88), 12))
 
@@ -1631,37 +1703,48 @@ func _create_event_news_card(event_data: Dictionary) -> Panel:
 	margin.add_theme_constant_override("margin_bottom", 14)
 	card.add_child(margin)
 
-	var row: HBoxContainer = HBoxContainer.new()
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_theme_constant_override("separation", 14)
-	margin.add_child(row)
+	var stack: VBoxContainer = VBoxContainer.new()
+	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stack.add_theme_constant_override("separation", 10)
+	margin.add_child(stack)
 
 	var image_texture: Texture2D = _create_event_image_texture(str(event_data.get("image_url", "")))
 	if image_texture != null:
-		var poster: TextureRect = TextureRect.new()
-		poster.custom_minimum_size = Vector2(190, 118)
-		poster.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		poster.texture = image_texture
-		poster.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		poster.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		poster.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(poster)
+		card.custom_minimum_size = Vector2(0, 360)
+		var poster_frame: Panel = Panel.new()
+		poster_frame.custom_minimum_size = Vector2(0, 218)
+		poster_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		poster_frame.clip_contents = true
+		poster_frame.add_theme_stylebox_override("panel", _make_online_card_style(Color(0.0, 0.0, 0.0, 0.72), Color(0.31, 0.97, 0.85, 0.72), 8))
+		stack.add_child(poster_frame)
 
-	var stack: VBoxContainer = VBoxContainer.new()
-	stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stack.add_theme_constant_override("separation", 7)
-	row.add_child(stack)
+		var poster: TextureRect = TextureRect.new()
+		poster.set_anchors_preset(Control.PRESET_FULL_RECT)
+		poster.offset_left = 8
+		poster.offset_top = 8
+		poster.offset_right = -8
+		poster.offset_bottom = -8
+		poster.texture = image_texture
+		poster.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		poster.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		poster.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		poster_frame.add_child(poster)
+	else:
+		card.custom_minimum_size = Vector2(0, 178)
 
 	var title: Label = _create_online_text_label(str(event_data.get("title", "Live Event")).to_upper(), 20, Color(0.98, 0.99, 1.0, 1.0), title_font)
-	title.clip_text = true
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.max_lines_visible = 2
 	stack.add_child(title)
 
 	var meta: Label = _create_online_text_label("%s  |  PRIZE: %s" % [str(event_data.get("date", "Date TBA")), str(event_data.get("prize", "TBA"))], 14, Color(1.0, 0.86, 0.28, 0.96), ui_font)
-	meta.clip_text = true
+	meta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	meta.max_lines_visible = 2
 	stack.add_child(meta)
 
 	var description: Label = _create_online_text_label(str(event_data.get("description", "")), 14, Color(0.82, 0.9, 1.0, 0.9), ui_font)
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.max_lines_visible = 5
 	stack.add_child(description)
 	return card
 
@@ -1757,16 +1840,19 @@ func _ensure_event_notification_panel() -> void:
 
 
 func _check_event_news_notification() -> void:
+	var previous_unread_count: int = event_notification_unread_count
+	var was_unread: bool = event_notification_unread
 	event_notification_hash = _get_event_news_hash()
 	if event_notification_hash == "":
 		event_notification_unread = false
+		event_notification_unread_count = 0
 		_style_events_button()
 		return
 
-	var saved_hash: String = _load_seen_event_news_hash()
-	event_notification_unread = saved_hash != event_notification_hash
+	event_notification_unread_count = _get_unread_event_news_count()
+	event_notification_unread = event_notification_unread_count > 0
 	_style_events_button()
-	if event_notification_unread:
+	if event_notification_unread and (not was_unread or previous_unread_count != event_notification_unread_count):
 		_show_event_notification()
 
 
@@ -1777,20 +1863,83 @@ func _get_event_news_hash() -> String:
 	return str(JSON.stringify(event_items).hash())
 
 
-func _load_seen_event_news_hash() -> String:
+func _get_event_news_signatures(event_items: Array) -> Array:
+	var signatures: Array = []
+	for index in range(event_items.size()):
+		var event_value: Variant = event_items[index]
+		if typeof(event_value) != TYPE_DICTIONARY:
+			continue
+		var signature: String = _get_event_news_signature(event_value as Dictionary, index)
+		if signature != "" and not signatures.has(signature):
+			signatures.append(signature)
+	return signatures
+
+
+func _get_event_news_signature(event_data: Dictionary, fallback_index: int) -> String:
+	var event_id: String = str(event_data.get("id", "")).strip_edges()
+	if event_id == "":
+		event_id = "%s|%s|%s|%d" % [
+			str(event_data.get("title", "Live Event")),
+			str(event_data.get("date", "Date TBA")),
+			str(event_data.get("prize", "TBA")),
+			fallback_index
+		]
+	return "%s@%s" % [event_id, str(event_data.get("updated_at", 0))]
+
+
+func _get_unread_event_news_count() -> int:
+	var event_items: Array = _get_event_news_items()
+	if event_items.is_empty():
+		return 0
+
+	var seen_state: Dictionary = _load_seen_event_news_state()
+	if str(seen_state.get("hash", "")) == event_notification_hash:
+		return 0
+
+	var seen_signatures_value: Variant = seen_state.get("signatures", [])
+	var seen_signatures: Array = []
+	if typeof(seen_signatures_value) == TYPE_ARRAY:
+		seen_signatures = (seen_signatures_value as Array).duplicate(true)
+	if seen_signatures.is_empty():
+		return event_items.size()
+
+	var unread_count: int = 0
+	for signature in _get_event_news_signatures(event_items):
+		if not seen_signatures.has(signature):
+			unread_count += 1
+	if unread_count <= 0 and event_notification_hash != "":
+		return 1
+	return unread_count
+
+
+func _load_seen_event_news_state() -> Dictionary:
 	if not FileAccess.file_exists(EVENT_NOTIFICATION_STATE_PATH):
-		return ""
+		return {}
 	var file: FileAccess = FileAccess.open(EVENT_NOTIFICATION_STATE_PATH, FileAccess.READ)
 	if file == null:
-		return ""
-	return file.get_as_text().strip_edges()
+		return {}
+	var saved_text: String = file.get_as_text().strip_edges()
+	if saved_text == "":
+		return {}
+	var parsed: Variant = JSON.parse_string(saved_text)
+	if typeof(parsed) == TYPE_DICTIONARY:
+		return parsed as Dictionary
+	return {"hash": saved_text}
+
+
+func _load_seen_event_news_hash() -> String:
+	return str(_load_seen_event_news_state().get("hash", ""))
 
 
 func _save_seen_event_news_hash(hash_value: String) -> void:
 	var file: FileAccess = FileAccess.open(EVENT_NOTIFICATION_STATE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
-	file.store_string(hash_value)
+	file.store_string(JSON.stringify({
+		"hash": hash_value,
+		"signatures": _get_event_news_signatures(_get_event_news_items()),
+		"seen_at": Time.get_unix_time_from_system()
+	}))
 
 
 func _mark_event_news_seen() -> void:
@@ -1799,6 +1948,7 @@ func _mark_event_news_seen() -> void:
 	if event_notification_hash != "":
 		_save_seen_event_news_hash(event_notification_hash)
 	event_notification_unread = false
+	event_notification_unread_count = 0
 	event_notification_timer = 0.0
 	if event_notification_panel != null:
 		event_notification_panel.hide()
@@ -1822,11 +1972,18 @@ func _show_event_notification() -> void:
 	if title_text == "":
 		title_text = "New event announcement"
 	if event_notification_title_label != null:
-		event_notification_title_label.text = "EVENT UPDATE"
+		event_notification_title_label.text = "1 NEW EVENT" if event_notification_unread_count <= 1 else "%d NEW EVENTS" % event_notification_unread_count
 	if event_notification_text_label != null:
 		event_notification_text_label.text = title_text
 	event_notification_timer = 6.0
 	event_notification_panel.show()
+	_send_event_device_notification_cue()
+
+
+func _send_event_device_notification_cue() -> void:
+	if OS.has_feature("mobile"):
+		Input.vibrate_handheld(180)
+	DisplayServer.window_request_attention()
 
 
 func _process_event_notification(delta: float) -> void:
@@ -6610,7 +6767,7 @@ func _process_online_match_loading(delta: float) -> void:
 
 	online_match_start_timer -= delta
 	if online_loading_status_label != null:
-		online_loading_status_label.text = "Finding players..."
+		online_loading_status_label.text = "Starting match with available players..."
 	if online_loading_progress_bar != null:
 		var elapsed: float = ONLINE_AUTO_START_SECONDS - maxf(online_match_start_timer, 0.0)
 		online_loading_progress_bar.value = clampf(lerpf(14.0, 52.0, elapsed / maxf(ONLINE_AUTO_START_SECONDS, 0.001)), 0.0, 100.0)
@@ -6919,7 +7076,7 @@ func _refresh_online_rooms_view() -> void:
 		var is_joined: bool = not room_data.is_empty()
 		var is_host: bool = online != null and online.has_method("is_host") and bool(online.call("is_host"))
 		online_start_button.visible = is_joined
-		online_start_button.disabled = not is_host or _get_online_room_human_count(room_data) < 2
+		online_start_button.disabled = not is_host or _get_online_room_human_count(room_data) < 1
 		online_start_button.text = "START GAME" if is_host else "WAITING FOR HOST"
 
 	_refresh_online_currency_display()
@@ -7978,11 +8135,13 @@ func _show_online_match_loading(room: Dictionary, auto_start_if_public_host: boo
 	online_match_start_timer = -1.0
 	online_start_fallback_timer = -1.0
 	if is_private:
-		_configure_online_loading_screen("PRIVATE PARTY", "Party ready. Share the code, then start when at least 2 players are in.", 24.0, is_host)
+		_configure_online_loading_screen("PRIVATE PARTY", "Party ready. Start now with AI or share the code for friends.", 24.0, is_host)
 	else:
-		_configure_online_loading_screen("PUBLIC PARTY", "Finding players. Host can start once 2 players are in.", 18.0, is_host)
+		_configure_online_loading_screen("PUBLIC PARTY", "Finding players. Host can start now with AI or wait for more players.", 18.0, is_host)
 	_update_online_loading_start_button(room)
 	_update_online_loading_panel(room)
+	if not is_private and is_host and auto_start_if_public_host and _get_online_room_human_count(room) >= 1:
+		online_match_start_timer = ONLINE_AUTO_START_SECONDS
 
 
 func _online_room_has_human_player(room: Dictionary) -> bool:
@@ -8039,8 +8198,8 @@ func _update_online_loading_start_button(room: Dictionary) -> void:
 	var is_host: bool = online != null and online.has_method("is_host") and bool(online.call("is_host"))
 	var human_count: int = _get_online_room_human_count(room)
 	online_loading_start_button.visible = is_host
-	online_loading_start_button.disabled = human_count < 2
-	online_loading_start_button.text = "START GAME" if human_count >= 2 else "WAITING FOR PLAYERS"
+	online_loading_start_button.disabled = human_count < 1
+	online_loading_start_button.text = "START GAME" if human_count >= 1 else "WAITING FOR PLAYERS"
 
 
 func _update_online_waiting_status(room: Dictionary) -> void:
@@ -8052,21 +8211,21 @@ func _update_online_waiting_status(room: Dictionary) -> void:
 	var online: Node = get_node_or_null("/root/MultiplayerManager")
 	var is_host: bool = online != null and online.has_method("is_host") and bool(online.call("is_host"))
 	if bool(room.get("is_private", false)):
-		if found_count < 2:
-			online_loading_status_label.text = "%d/%d players in party. Need 2 players to start." % [found_count, capacity]
+		if found_count < 1:
+			online_loading_status_label.text = "%d/%d players in party. Waiting for host." % [found_count, capacity]
 		else:
-			online_loading_status_label.text = "%d/%d players in party. Host can start." % [found_count, capacity]
+			online_loading_status_label.text = "%d/%d players in party. Host can start with AI." % [found_count, capacity]
 		if online_loading_progress_bar != null:
 			online_loading_progress_bar.value = clampf(lerpf(12.0, 72.0, float(found_count) / maxf(float(capacity), 1.0)), 0.0, 100.0)
 		return
 	if found_count >= capacity:
 		online_loading_status_label.text = "Party full. Preparing field..."
-	elif found_count >= 2 and is_host:
-		online_loading_status_label.text = "%d/%d players found. Start now or wait for more players." % [found_count, capacity]
-	elif found_count >= 2:
+	elif found_count >= 1 and is_host:
+		online_loading_status_label.text = "%d/%d players found. Start now with AI or wait for more players." % [found_count, capacity]
+	elif found_count >= 1:
 		online_loading_status_label.text = "%d/%d players found. Waiting for host to start." % [found_count, capacity]
 	else:
-		online_loading_status_label.text = "%d/%d players found. Need one more player." % [found_count, capacity]
+		online_loading_status_label.text = "%d/%d players found. Waiting for host." % [found_count, capacity]
 	if online_loading_progress_bar != null:
 		online_loading_progress_bar.value = clampf(lerpf(12.0, 92.0, float(found_count) / maxf(float(capacity), 1.0)), 0.0, 100.0)
 
@@ -8294,6 +8453,8 @@ func _bind_online_signals() -> void:
 		online.online_players_updated.connect(_on_online_players_updated)
 	if online.has_signal("online_rankings_updated") and not online.online_rankings_updated.is_connected(_on_online_rankings_updated):
 		online.online_rankings_updated.connect(_on_online_rankings_updated)
+	if online.has_signal("game_events_updated") and not online.game_events_updated.is_connected(_on_online_game_events_updated):
+		online.game_events_updated.connect(_on_online_game_events_updated)
 	if online.has_signal("room_created") and not online.room_created.is_connected(_on_online_room_created_new):
 		online.room_created.connect(_on_online_room_created_new)
 	if online.has_signal("room_joined") and not online.room_joined.is_connected(_on_online_room_joined):
@@ -8374,6 +8535,14 @@ func _on_online_rankings_updated(_rankings: Array) -> void:
 	_refresh_online_rankings_list()
 	if ranking_popup != null and ranking_popup.visible:
 		_rebuild_ranking_popup_contents()
+
+
+func _on_online_game_events_updated(events: Array, _payload: Dictionary) -> void:
+	live_event_news_items = _normalize_event_news_items(events)
+	_check_event_news_notification()
+	if events_popup != null and events_popup.visible:
+		_rebuild_events_popup_contents()
+	_request_event_news()
 
 
 func _on_online_room_created_new(room: Dictionary, code: String) -> void:

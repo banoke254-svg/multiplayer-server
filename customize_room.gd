@@ -1103,25 +1103,6 @@ func _build_reference_showroom_ui() -> void:
 	left_modes.add_child(store_button)
 	store_button.add_child(_make_badge("3", Vector2(86.0, -8.0)))
 
-	var right_menu: VBoxContainer = VBoxContainer.new()
-	right_menu.anchor_left = 1.0
-	right_menu.anchor_top = 0.5
-	right_menu.anchor_right = 1.0
-	right_menu.anchor_bottom = 0.5
-	right_menu.offset_left = -122.0
-	right_menu.offset_top = -180.0
-	right_menu.offset_right = -24.0
-	right_menu.offset_bottom = 180.0
-	right_menu.add_theme_constant_override("separation", 4)
-	root.add_child(right_menu)
-	right_menu.add_child(make_side_button("EVENT", "*"))
-	right_menu.add_child(make_side_button("FRIENDS", "OO"))
-	right_menu.add_child(make_side_button("RANKING", "|||"))
-	var video: Button = make_side_button("VIDEO", ">")
-	video.add_child(_make_badge("3", Vector2(70.0, -8.0)))
-	right_menu.add_child(video)
-	right_menu.add_child(make_side_button("SETTINGS", "X"))
-
 	var left_plus: Button = _make_hex_plus_button()
 	left_plus.anchor_left = 0.28
 	left_plus.anchor_top = 0.48

@@ -472,8 +472,8 @@ class RoomManager {
       return { ok: false, error: 'Only the host can start the match.' };
     }
 
-    if (room.players.length < 2) {
-      return { ok: false, error: 'At least 2 players are needed to start.' };
+    if (room.players.length < 1) {
+      return { ok: false, error: 'At least 1 player is needed to start.' };
     }
 
     this.startMatch(room, 'host_started');
@@ -1267,6 +1267,40 @@ function serializeAdminRoom(room) {
 
 function broadcastOnlineDirectory() {
   const payload = buildOnlineDirectoryPayload();
+
+  clientsById.forEach((client) => {
+    if (client.connected === true) {
+      sendJson(client, payload);
+    }
+  });
+}
+
+function buildGameEventsUpdatePayload() {
+  const publishedEvents = getPublishedGameEvents(true);
+  const eventSummaries = publishedEvents.map(serializeGameEventNotification);
+
+  return {
+    type: 'game_events_update',
+    server_time: Date.now(),
+    event_count: publishedEvents.length,
+    latest_event: eventSummaries.length > 0 ? eventSummaries[0] : null,
+    events: eventSummaries
+  };
+}
+
+function serializeGameEventNotification(event) {
+  return {
+    id: event.id || '',
+    title: event.title || 'Live Event',
+    date: event.date || 'Date TBA',
+    prize: event.prize || 'TBA',
+    published: event.published !== false,
+    updated_at: Number(event.updated_at || 0)
+  };
+}
+
+function broadcastGameEventsUpdate() {
+  const payload = buildGameEventsUpdatePayload();
 
   clientsById.forEach((client) => {
     if (client.connected === true) {
@@ -2448,6 +2482,7 @@ async function handleAdminEventsRequest(request, response) {
     const nextEvents = sanitizeGameEvents(Array.isArray(payload.events) ? payload.events : [], true);
     gameEvents = nextEvents.map((event) => Object.assign({}, event, { updated_at: Date.now() }));
     saveGameEvents();
+    broadcastGameEventsUpdate();
     writeJsonResponse(response, 200, {
       ok: true,
       server_time: Date.now(),
@@ -2607,6 +2642,7 @@ websocketServer.on('connection', (socket, request) => {
   });
   sendFriendsUpdate(client);
   broadcastOnlineDirectory();
+  sendJson(client, buildGameEventsUpdatePayload());
 
   socket.on('pong', () => {
     const activeClient = socket.client;
