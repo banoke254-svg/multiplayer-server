@@ -31,7 +31,6 @@ const PHYSICS_IMPACT_COOLDOWN: float = 0.05
 const PHYSICS_IMPACT_MIN_SPEED: float = 0.18
 const PHYSICS_IMPACT_MAX_SPEED: float = 16.0
 const LINEUP_DISTANCE_TIE_EPSILON: float = 0.035
-const LINEUP_MAX_TIE_RETRIES: int = 3
 const ONLINE_REMOTE_DISCOVERY_GRACE_SECONDS: float = 0.85
 const ONLINE_REMOTE_READY_WAIT_SECONDS: float = 8.0
 const ONLINE_CLIENT_SYNC_REQUEST_INTERVAL: float = 0.7
@@ -100,8 +99,11 @@ const ACTION_MODE_ATTACK: int = 3
 @export var marble_collision_spin_transfer: float = 0.32
 @export var marble_collision_equal_deflect_strength: float = 1.0
 @export var marble_max_upward_velocity: float = 2.2
+@export var hole_capture_assist_force: float = 2.8
+@export var hole_capture_centering_force: float = 1.35
 @export var lan_state_send_rate: float = 24.0
 @export var online_state_send_rate: float = 36.0
+@export var online_full_snapshot_interval: float = 1.25
 @export var lan_state_lerp_speed: float = 30.0
 @export var online_interpolation_delay: float = 0.14
 @export var online_extrapolation_limit: float = 0.08
@@ -163,7 +165,9 @@ var current_shot_started_in_hole: bool = false
 var current_shot_left_hole: bool = false
 var current_hole_owner: Node3D = null
 var hole_entry_order_this_shot: Array[Node3D] = []
+var lineup_hole_entrants_this_round: Array[Node3D] = []
 var pending_hole_turn_marble: Node3D = null
+var hole_attack_level_active: bool = false
 var ai_hole_attack_attempts: Dictionary = {}
 var stroke_counts: Dictionary = {}
 var elimination_counts_by_marble_name: Dictionary = {}
@@ -195,6 +199,7 @@ var lan_client_state_buffers: Dictionary = {}
 var lan_client_remote_time_offset: float = 0.0
 var lan_client_remote_time_offset_ready: bool = false
 var lan_state_send_accumulator: float = 0.0
+var online_full_snapshot_accumulator: float = 0.0
 var lan_last_sent_state_by_marble_name: Dictionary = {}
 var lan_waiting_remote_player_shot: bool = false
 var lan_remote_player_shot_ready: bool = false
@@ -252,6 +257,7 @@ func _ready() -> void:
 	_connect_hole_signals()
 	_initialize_scoreboard()
 	_cache_respawn_surfaces()
+	call_deferred("_cache_respawn_surfaces")
 	_setup_impact_audio()
 	_setup_lan_multiplayer()
 	lineup_anchor = _get_lineup_anchor()
@@ -268,6 +274,15 @@ func _ready() -> void:
 	call_deferred("_post_ready_init")
 
 
+func _get_current_scene_safe() -> Node:
+	if not is_inside_tree():
+		return null
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return null
+	return tree.current_scene
+
+
 func _physics_process(delta: float) -> void:
 	if online_waiting_for_match_start:
 		_refresh_marble_name_tags()
@@ -281,6 +296,7 @@ func _physics_process(delta: float) -> void:
 	_refresh_marble_name_tags()
 	for marble in active_marbles:
 		_clamp_marble_upward_velocity(marble)
+		_assist_marble_into_hole(marble)
 		_keep_marble_above_hole_floor(marble)
 		if _should_respawn_marble(marble):
 			_respawn_marble(marble)
@@ -923,6 +939,12 @@ func _on_online_game_message(message_type: String, payload: Dictionary, sender_i
 			)
 		"scoreboard":
 			_lan_receive_scoreboard(payload.get("entries", []))
+		"marble_eliminated":
+			_receive_online_marble_eliminated(payload)
+		"player_disqualified":
+			_receive_online_player_disqualified(payload)
+		"match_finished":
+			_receive_online_match_finished(payload)
 		"remote_turn_started":
 			if not _online_remote_turn_message_is_for_local_client(payload, target_id):
 				return
@@ -976,6 +998,110 @@ func _on_online_game_message(message_type: String, payload: Dictionary, sender_i
 			_receive_online_sync_request(sender_id, payload)
 		_:
 			pass
+
+
+func _receive_online_match_finished(payload: Dictionary) -> void:
+	if lan_is_host:
+		return
+
+	_clear_online_local_turn_input()
+	game_phase = GAME_PHASE_FINISHED
+	lan_client_game_phase = GAME_PHASE_FINISHED
+
+	var winner_name: String = str(payload.get("winner_name", "")).strip_edges()
+	var winner_marble_name: String = str(payload.get("winner_marble_name", "")).strip_edges()
+	if winner_marble_name == "":
+		for player in payload.get("players", []):
+			if typeof(player) != TYPE_DICTIONARY:
+				continue
+			var player_data: Dictionary = player as Dictionary
+			if bool(player_data.get("won", false)):
+				winner_marble_name = str(player_data.get("marble_name", "")).strip_edges()
+				break
+
+	var winner_marble: Node3D = _find_marble_by_name(winner_marble_name)
+	if winner_marble != null:
+		_activate_camera_for_client(winner_marble)
+
+	game_finished.emit(winner_name)
+
+
+func _receive_online_marble_eliminated(payload: Dictionary) -> void:
+	if lan_is_host:
+		return
+
+	var target_name: String = str(payload.get("target_name", payload.get("player_name", ""))).strip_edges()
+	var target_marble_name: String = str(payload.get("target_marble_name", "")).strip_edges()
+	var target: Node3D = _find_marble_by_name(target_marble_name)
+	if target != null:
+		_remove_online_marble_from_local_match(target)
+		_disable_marble(target)
+	if target_name != "":
+		marble_eliminated.emit(target_name)
+
+
+func _receive_online_player_disqualified(payload: Dictionary) -> void:
+	if lan_is_host:
+		return
+
+	var target_marble_name: String = str(payload.get("target_marble_name", "")).strip_edges()
+	var target: Node3D = _find_marble_by_name(target_marble_name)
+	if target == null:
+		target = _get_network_input_marble()
+	if target != null:
+		_remove_online_marble_from_local_match(target)
+		_disable_marble(target)
+		if target == online_local_player_marble:
+			online_local_player_marble = null
+
+	_clear_online_local_turn_input()
+	var watch_marble: Node3D = _get_current_turn_marble()
+	if watch_marble == null and not active_marbles.is_empty():
+		watch_marble = active_marbles[0]
+	if watch_marble != null:
+		_activate_camera_for_client(watch_marble)
+
+	var attacker_name: String = str(payload.get("attacker_name", "Another player")).strip_edges()
+	if attacker_name == "":
+		attacker_name = "Another player"
+	player_disqualified.emit(attacker_name)
+
+
+func _remove_online_marble_from_local_match(marble: Node3D) -> void:
+	if marble == null:
+		return
+
+	var removed_index: int = turn_order.find(marble)
+	if removed_index != -1:
+		turn_order.remove_at(removed_index)
+		if removed_index < current_marble_index:
+			current_marble_index -= 1
+		elif current_marble_index >= turn_order.size():
+			current_marble_index = 0
+
+	active_marbles.erase(marble)
+	marbles.erase(marble)
+	ai_hole_attack_attempts.erase(marble.name)
+	if current_hole_owner == marble:
+		current_hole_owner = null
+	if pending_hole_turn_marble == marble:
+		pending_hole_turn_marble = null
+
+
+func _clear_online_local_turn_input() -> void:
+	var input_marble: Node3D = _get_network_input_marble()
+	if input_marble != null:
+		_apply_lan_remote_aim_preview(input_marble, Vector3.ZERO, 0.0, false)
+	lan_client_remote_turn_input_enabled = false
+	lan_dragging = false
+	lan_drag_touch_index = -1
+	lan_drag_aim = Vector3.ZERO
+	lan_drag_force = 0.0
+	lan_drag_power_ratio = 0.0
+	lan_drag_smoothed_vector = Vector2.ZERO
+	lan_drag_has_smoothed_vector = false
+	_stop_online_local_prediction()
+	_update_lan_power_meter(0.0, false)
 
 
 func _update_lan_remote_player_name() -> void:
@@ -1220,6 +1346,7 @@ func _run_lineup_phase() -> void:
 	current_hole_owner = null
 	pending_hole_turn_marble = null
 	hole_entry_order_this_shot.clear()
+	lineup_hole_entrants_this_round.clear()
 	turn_order = active_marbles.duplicate()
 	current_marble_index = 0
 	_place_marbles_on_lineup(turn_order)
@@ -1243,6 +1370,7 @@ func _run_lineup_phase() -> void:
 
 func _play_lineup_round(shooters: Array[Node3D]) -> void:
 	var lineup_shooters: Array[Node3D] = _filter_active_lineup_contenders(shooters)
+	lineup_hole_entrants_this_round.clear()
 	var shooter_index: int = 0
 	for marble in lineup_shooters:
 		if not active_marbles.has(marble):
@@ -1277,11 +1405,10 @@ func _lock_non_lineup_controls(allowed_marble: Node3D) -> void:
 		lan_client_remote_turn_input_enabled = false
 
 
-func _resolve_lineup_starter(candidates: Array) -> Node3D:
+func _resolve_lineup_starter(candidates: Array, require_single_hole_entry: bool = false) -> Node3D:
 	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
-	var retry_count: int = 0
 	while contenders.size() > 1:
-		var result := _get_lineup_result(contenders)
+		var result := _get_lineup_result(contenders, require_single_hole_entry)
 		var winner: Node3D = result.get("winner", null) as Node3D
 		if winner != null:
 			return winner
@@ -1289,16 +1416,12 @@ func _resolve_lineup_starter(candidates: Array) -> Node3D:
 		contenders = _filter_active_lineup_contenders(result.get("retry", []) as Array)
 		if contenders.size() > 1:
 			var hole_tie: bool = bool(result.get("hole_tie", false))
-			if not hole_tie:
-				retry_count += 1
-			if not hole_tie and retry_count > LINEUP_MAX_TIE_RETRIES:
-				var fallback_winner: Node3D = _get_lineup_forced_winner(contenders)
-				if fallback_winner != null:
-					print("Lineup stayed tied after retries. Starting with: %s" % _display_name_for_marble(fallback_winner))
-					return fallback_winner
-
+			var no_hole_entry: bool = bool(result.get("no_hole_entry", false))
 			if hole_tie:
 				print("Multiple marbles entered the hole during lineup. Resetting them to shoot again: %s" % _get_marble_names(contenders))
+				require_single_hole_entry = true
+			elif no_hole_entry:
+				print("No tied marble entered the hole. Repeating the hole-entry playoff: %s" % _get_marble_names(contenders))
 			else:
 				print("Lineup tied. Retrying starter selection for: %s" % _get_marble_names(contenders))
 			current_hole_owner = null
@@ -1311,42 +1434,35 @@ func _resolve_lineup_starter(candidates: Array) -> Node3D:
 
 func _resolve_remaining_lineup_hole_ties(first_marble: Node3D) -> Node3D:
 	var resolved_marble: Node3D = first_marble
-	var in_hole: Array[Node3D] = _collect_in_hole_marbles(active_marbles)
-	while in_hole.size() > 1:
-		print("Multiple marbles are still in the hole after lineup. Resetting them to shoot again: %s" % _get_marble_names(in_hole))
+	var tied_entrants: Array[Node3D] = _collect_lineup_hole_entrants(active_marbles)
+	while tied_entrants.size() > 1:
+		print("Multiple marbles entered the hole during lineup. Resetting every entrant to shoot again: %s" % _get_marble_names(tied_entrants))
 		current_hole_owner = null
 		pending_hole_turn_marble = null
-		_place_marbles_on_lineup(in_hole)
-		await _play_lineup_round(in_hole)
-		resolved_marble = await _resolve_lineup_starter(in_hole)
-		in_hole = _collect_in_hole_marbles(in_hole)
+		_place_marbles_on_lineup(tied_entrants)
+		await _play_lineup_round(tied_entrants)
+		resolved_marble = await _resolve_lineup_starter(tied_entrants, true)
+		tied_entrants = _collect_lineup_hole_entrants(tied_entrants)
 	return resolved_marble
 
 
-func _get_lineup_result(candidates: Array) -> Dictionary:
+func _get_lineup_result(candidates: Array, require_single_hole_entry: bool = false) -> Dictionary:
 	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
 	if contenders.size() <= 1:
 		return {"winner": contenders[0] if not contenders.is_empty() else null, "retry": []}
 
-	var in_hole: Array[Node3D] = _collect_in_hole_marbles(contenders)
-	if in_hole.size() == 1:
-		return {"winner": in_hole[0], "retry": []}
-	if in_hole.size() > 1:
-		return {"winner": null, "retry": in_hole, "hole_tie": true}
+	var hole_entrants: Array[Node3D] = _collect_lineup_hole_entrants(contenders)
+	if hole_entrants.size() == 1:
+		return {"winner": hole_entrants[0], "retry": []}
+	if hole_entrants.size() > 1:
+		return {"winner": null, "retry": hole_entrants, "hole_tie": true}
+	if require_single_hole_entry:
+		return {"winner": null, "retry": contenders, "no_hole_entry": true}
 
 	var closest: Array[Node3D] = _collect_closest_lineup_marbles(contenders)
 	if closest.size() == 1:
 		return {"winner": closest[0], "retry": []}
 	return {"winner": null, "retry": closest}
-
-
-func _get_lineup_forced_winner(candidates: Array) -> Node3D:
-	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
-	if contenders.is_empty():
-		return null
-
-	contenders.sort_custom(Callable(self, "_sort_marbles_by_lineup_distance"))
-	return contenders[0]
 
 
 func _settle_lineup_hole_owner(first_marble: Node3D) -> void:
@@ -1448,6 +1564,9 @@ func _perform_action_shot(marble: Node3D, action_mode: int) -> Dictionary:
 	current_shot_started_in_hole = marble != null and _is_marble_in_hole(marble)
 	current_shot_left_hole = false
 	hole_entry_order_this_shot.clear()
+	var leveled_hole_for_attack: bool = action_mode == ACTION_MODE_ATTACK and current_shot_started_in_hole
+	if leveled_hole_for_attack:
+		_begin_hole_attack_level(marble)
 
 	if marble != null and marble != player_marble:
 		if action_mode == ACTION_MODE_ATTACK:
@@ -1463,6 +1582,8 @@ func _perform_action_shot(marble: Node3D, action_mode: int) -> Dictionary:
 		await _perform_ai_shot(marble, action_mode)
 
 	_track_current_actor_hole_entry()
+	if leveled_hole_for_attack:
+		_end_hole_attack_level()
 	current_actor = null
 	current_action_mode = ACTION_MODE_NONE
 
@@ -2153,9 +2274,16 @@ func _lan_broadcast_marble_state(delta: float) -> void:
 	var send_interval: float = 1.0 / maxf(state_send_rate, 1.0)
 	if lan_state_send_accumulator < send_interval:
 		return
+	var elapsed_since_last_send: float = lan_state_send_accumulator
 	lan_state_send_accumulator = 0.0
 
-	var online_delta_only: bool = online_enabled and not _lan_any_marble_moving_for_sync()
+	var force_online_full_snapshot: bool = false
+	if online_enabled:
+		online_full_snapshot_accumulator += elapsed_since_last_send
+		force_online_full_snapshot = online_full_snapshot_accumulator >= maxf(online_full_snapshot_interval, send_interval)
+		if force_online_full_snapshot:
+			online_full_snapshot_accumulator = 0.0
+	var online_delta_only: bool = online_enabled and not force_online_full_snapshot and not _lan_any_marble_moving_for_sync()
 	var states: Array = _lan_collect_marble_states(online_enabled, online_delta_only)
 	if states.is_empty():
 		return
@@ -2218,7 +2346,8 @@ func _lan_collect_marble_states(compact: bool = false, delta_only: bool = false)
 				"transform": body.global_transform,
 				"linear_velocity": body.linear_velocity,
 				"angular_velocity": body.angular_velocity,
-				"visible": body.visible
+				"visible": body.visible,
+				"active": active_marbles.has(body)
 			})
 	return states
 
@@ -2239,7 +2368,8 @@ func _lan_marble_state_changed_since_last_send(body: RigidBody3D) -> bool:
 		"position": body.global_position,
 		"linear_velocity": body.linear_velocity,
 		"angular_velocity": body.angular_velocity,
-		"visible": body.visible
+		"visible": body.visible,
+		"active": active_marbles.has(body)
 	}
 	var previous_state: Dictionary = lan_last_sent_state_by_marble_name.get(marble_name, {}) as Dictionary
 	var changed: bool = previous_state.is_empty()
@@ -2251,6 +2381,8 @@ func _lan_marble_state_changed_since_last_send(body: RigidBody3D) -> bool:
 		changed = (previous_state.get("angular_velocity", body.angular_velocity) as Vector3).distance_to(body.angular_velocity) > LAN_STATE_VELOCITY_CHANGE_EPSILON
 	if not changed:
 		changed = bool(previous_state.get("visible", body.visible)) != body.visible
+	if not changed:
+		changed = bool(previous_state.get("active", active_marbles.has(body))) != active_marbles.has(body)
 	if changed:
 		lan_last_sent_state_by_marble_name[marble_name] = current_state
 	return changed
@@ -2264,7 +2396,8 @@ func _lan_make_compact_marble_state(body: RigidBody3D) -> Dictionary:
 		"q": [_state_float(rotation.x), _state_float(rotation.y), _state_float(rotation.z), _state_float(rotation.w)],
 		"lv": _vector3_to_state_array(body.linear_velocity),
 		"av": _vector3_to_state_array(body.angular_velocity),
-		"v": body.visible
+		"v": body.visible,
+		"a": active_marbles.has(body)
 	}
 
 
@@ -2348,12 +2481,21 @@ func _smooth_lan_client_marbles(delta: float) -> void:
 		var state: Dictionary = _get_lan_client_render_state(str(marble_name), body.global_transform)
 		if state.is_empty():
 			continue
+		var state_active: bool = bool(state.get("active", state.get("a", true)))
+		var state_visible: bool = state_active and bool(state.get("visible", state.get("v", true)))
 		if _online_client_should_hold_local_aim_marble(str(marble_name)):
 			if not body.freeze:
 				body.freeze = true
 			body.linear_velocity = Vector3.ZERO
 			body.angular_velocity = Vector3.ZERO
-			body.visible = bool(state.get("visible", state.get("v", true)))
+			body.visible = state_visible
+			continue
+		if not state_active:
+			if not body.freeze:
+				body.freeze = true
+			body.linear_velocity = Vector3.ZERO
+			body.angular_velocity = Vector3.ZERO
+			body.visible = false
 			continue
 		var target_transform: Transform3D = _transform_from_marble_state(state, body.global_transform)
 		if online_enabled and _online_client_is_predicting_marble(str(marble_name)):
@@ -2376,7 +2518,7 @@ func _smooth_lan_client_marbles(delta: float) -> void:
 			body.freeze = true
 		body.linear_velocity = target_linear_velocity
 		body.angular_velocity = target_angular_velocity
-		body.visible = bool(state.get("visible", state.get("v", true)))
+		body.visible = state_visible
 
 
 func _online_client_should_hold_local_aim_marble(marble_name: String) -> bool:
@@ -2441,7 +2583,8 @@ func _interpolate_lan_client_states(previous_state: Dictionary, following_state:
 		"transform": Transform3D(basis, origin),
 		"linear_velocity": previous_linear_velocity.lerp(following_linear_velocity, blend),
 		"angular_velocity": previous_angular_velocity.lerp(following_angular_velocity, blend),
-		"visible": bool(following_state.get("visible", following_state.get("v", true)))
+		"visible": bool(following_state.get("visible", following_state.get("v", true))),
+		"active": bool(following_state.get("active", following_state.get("a", true)))
 	}
 
 
@@ -2457,7 +2600,8 @@ func _extrapolate_lan_client_state(state: Dictionary, fallback_transform: Transf
 		"transform": transform,
 		"linear_velocity": linear_velocity,
 		"angular_velocity": _vector3_from_state_value(state.get("angular_velocity", state.get("av", Vector3.ZERO)), Vector3.ZERO),
-		"visible": bool(state.get("visible", state.get("v", true)))
+		"visible": bool(state.get("visible", state.get("v", true))),
+		"active": bool(state.get("active", state.get("a", true)))
 	}
 
 
@@ -2741,7 +2885,7 @@ func _cache_lan_power_meter() -> void:
 	lan_power_bar = get_node_or_null("/root/Main/UI/PowerMeter/PowerBar") as ProgressBar
 	lan_power_label = get_node_or_null("/root/Main/UI/PowerMeter/PowerLabel") as Label
 	if lan_power_bar == null or lan_power_glass == null or lan_power_label == null:
-		var current_scene: Node = get_tree().current_scene
+		var current_scene: Node = _get_current_scene_safe()
 		if current_scene != null:
 			lan_power_glass = current_scene.get_node_or_null("UI/PowerMeter/PowerGlass") as Control
 			lan_power_bar = current_scene.get_node_or_null("UI/PowerMeter/PowerBar") as ProgressBar
@@ -2874,6 +3018,7 @@ func _pointer_over_ui() -> bool:
 @rpc("authority", "call_remote", "reliable")
 func _lan_remote_turn_started(action_mode: int) -> void:
 	_stop_online_local_prediction()
+	_end_hole_attack_level()
 	lan_dragging = false
 	lan_drag_touch_index = -1
 	lan_drag_aim = Vector3.ZERO
@@ -2895,6 +3040,8 @@ func _lan_remote_turn_started(action_mode: int) -> void:
 	if active_index < 0:
 		active_index = 0
 	if lan_remote_player_marble != null:
+		if action_mode == ACTION_MODE_ATTACK:
+			_begin_hole_attack_level(lan_remote_player_marble)
 		_activate_camera_for_client(lan_remote_player_marble)
 	turn_changed.emit(lan_client_active_display_name, active_index)
 	if action_mode == ACTION_MODE_ATTACK:
@@ -3270,7 +3417,17 @@ func _refresh_marble_name_tags() -> void:
 		var label: Label3D = _ensure_marble_name_tag(marble)
 		if label == null:
 			continue
-		label.text = _display_name_for_marble(marble)
+		var display_text: String = _display_name_for_marble(marble)
+		if online_enabled and online_local_player_marble == marble:
+			display_text += " (YOU)"
+		var is_active_turn: bool = false
+		if online_enabled and not lan_is_host:
+			is_active_turn = lan_client_active_marble_name == String(marble.name)
+		else:
+			is_active_turn = get_active_marble() == marble
+		if is_active_turn and active_marbles.has(marble):
+			display_text = "TURN: %s" % display_text
+		label.text = display_text
 		label.global_position = marble.global_position + Vector3.UP * 0.52
 		label.visible = marble.visible and active_marbles.has(marble)
 
@@ -3626,6 +3783,8 @@ func _mark_marble_hole_entry(marble: Node3D) -> void:
 
 	if not hole_entry_order_this_shot.has(marble):
 		hole_entry_order_this_shot.append(marble)
+	if game_phase == GAME_PHASE_LINEUP and current_action_mode == ACTION_MODE_LINEUP and not lineup_hole_entrants_this_round.has(marble):
+		lineup_hole_entrants_this_round.append(marble)
 
 	if current_actor == null or marble != current_actor:
 		return
@@ -3649,6 +3808,43 @@ func _track_current_actor_hole_entry() -> void:
 			current_shot_left_hole = true
 	if actor_in_hole:
 		_mark_marble_hole_entry(current_actor)
+
+
+func _begin_hole_attack_level(marble: Node3D) -> void:
+	if marble == null or hole == null:
+		return
+	if not _is_marble_in_hole(marble):
+		return
+	_set_hole_attack_level_enabled(true)
+	_lift_marble_to_hole_attack_level(marble)
+
+
+func _end_hole_attack_level() -> void:
+	_set_hole_attack_level_enabled(false)
+
+
+func _set_hole_attack_level_enabled(enabled: bool) -> void:
+	hole_attack_level_active = enabled
+	if hole != null and hole.has_method("set_attack_exit_level_enabled"):
+		hole.call("set_attack_exit_level_enabled", enabled)
+
+
+func _lift_marble_to_hole_attack_level(marble: Node3D) -> void:
+	if marble == null or hole == null:
+		return
+
+	var local_position: Vector3 = hole.to_local(marble.global_position)
+	var marble_radius: float = _get_marble_collision_radius(marble)
+	var pocket_radius_value: float = float(hole.get("pocket_radius")) if hole.get("pocket_radius") != null else 1.0
+	var max_planar_radius: float = maxf(pocket_radius_value, marble_radius * 2.5)
+	var planar := Vector2(local_position.x, local_position.z)
+	if planar.length() > max_planar_radius:
+		planar = planar.normalized() * max_planar_radius
+	local_position.x = planar.x
+	local_position.z = planar.y
+	local_position.y = marble_radius + 0.045
+
+	_reset_marble_motion(marble, hole.to_global(local_position))
 
 
 func _advance_turn_order() -> void:
@@ -3854,7 +4050,11 @@ func _eliminate_marble(target: Node3D, attacker: Node3D) -> void:
 	if target == null or not active_marbles.has(target):
 		return
 	var target_is_player: bool = _is_local_reward_marble(target)
+	var target_name: String = _display_name_for_marble(target)
+	var target_marble_name: String = String(target.name)
+	var target_client_id: String = _get_online_client_id_for_result_marble(target)
 	var attacker_name: String = _display_name_for_marble(attacker) if attacker != null else "AI"
+	var attacker_marble_name: String = String(attacker.name) if attacker != null else ""
 	if attacker != null:
 		var attacker_key: String = String(attacker.name)
 		elimination_counts_by_marble_name[attacker_key] = int(elimination_counts_by_marble_name.get(attacker_key, 0)) + 1
@@ -3879,7 +4079,18 @@ func _eliminate_marble(target: Node3D, attacker: Node3D) -> void:
 		current_hole_owner = null
 	if pending_hole_turn_marble == target:
 		pending_hole_turn_marble = null
-	marble_eliminated.emit(_display_name_for_marble(target))
+	marble_eliminated.emit(target_name)
+	if online_enabled and lan_is_host:
+		var elimination_payload: Dictionary = {
+			"target_name": target_name,
+			"target_marble_name": target_marble_name,
+			"target_client_id": target_client_id,
+			"attacker_name": attacker_name,
+			"attacker_marble_name": attacker_marble_name
+		}
+		_send_online_game_message("marble_eliminated", elimination_payload)
+		if target_client_id != "" and target_client_id != online_local_client_id:
+			_send_online_game_message("player_disqualified", elimination_payload, target_client_id)
 	if target_is_player and not _is_local_reward_marble(attacker):
 		player_disqualified.emit(attacker_name)
 	_disable_marble(target)
@@ -3984,6 +4195,19 @@ func _collect_in_hole_marbles(candidates: Array[Node3D]) -> Array[Node3D]:
 	return in_hole
 
 
+func _collect_lineup_hole_entrants(candidates: Array) -> Array[Node3D]:
+	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
+	var entrants: Array[Node3D] = []
+	for candidate in lineup_hole_entrants_this_round:
+		var marble := candidate as Node3D
+		if marble != null and contenders.has(marble) and not entrants.has(marble):
+			entrants.append(marble)
+	for marble in _collect_in_hole_marbles(contenders):
+		if not entrants.has(marble):
+			entrants.append(marble)
+	return entrants
+
+
 func _sort_marbles_by_lineup_distance(a: Node3D, b: Node3D) -> bool:
 	var a_in_hole: bool = _is_marble_in_hole(a)
 	var b_in_hole: bool = _is_marble_in_hole(b)
@@ -4083,6 +4307,43 @@ func _keep_marble_above_hole_floor(marble: Node3D) -> void:
 		var velocity: Vector3 = body.linear_velocity
 		velocity.y = 0.0
 		body.linear_velocity = velocity
+	body.sleeping = false
+
+
+func _assist_marble_into_hole(marble: Node3D) -> void:
+	if marble == null or hole == null or hole_attack_level_active:
+		return
+
+	var body: RigidBody3D = marble as RigidBody3D
+	if body == null:
+		return
+
+	if _marble_has_reached_hole_bottom(marble):
+		return
+
+	var local_position: Vector3 = hole.to_local(marble.global_position)
+	var pocket_radius: float = float(hole.get("pocket_radius")) if hole.get("pocket_radius") != null else 1.0
+	var hole_depth: float = float(hole.get("depth")) if hole.get("depth") != null else 1.0
+	var bottom_stop_lift: float = float(hole.get("bottom_stop_lift")) if hole.get("bottom_stop_lift") != null else 0.08
+	var bottom_stop_height: float = float(hole.get("bottom_stop_height")) if hole.get("bottom_stop_height") != null else 0.18
+	var marble_radius: float = _get_marble_collision_radius(marble)
+	var bottom_touch_y: float = -hole_depth + bottom_stop_lift + bottom_stop_height + marble_radius * 1.15
+	var planar := Vector2(local_position.x, local_position.z)
+	var planar_distance: float = planar.length()
+	if planar_distance > pocket_radius * 0.96 or local_position.y > 0.12 or local_position.y <= bottom_touch_y:
+		return
+
+	var planar_velocity := Vector2(body.linear_velocity.x, body.linear_velocity.z)
+	if planar_velocity.length() > 1.35 or body.linear_velocity.y > 0.7:
+		return
+
+	var depth_ratio: float = clampf(inverse_lerp(0.12, bottom_touch_y, local_position.y), 0.0, 1.0)
+	var center_force: Vector3 = Vector3.ZERO
+	if planar_distance > 0.025:
+		var center_direction_local := Vector3(-local_position.x, 0.0, -local_position.z).normalized()
+		center_force = (hole.global_transform.basis * center_direction_local).normalized() * hole_capture_centering_force
+	var down_force: Vector3 = Vector3.DOWN * lerpf(hole_capture_assist_force * 0.45, hole_capture_assist_force, depth_ratio)
+	body.apply_central_force((center_force + down_force) * body.mass)
 	body.sleeping = false
 
 
@@ -4324,7 +4585,7 @@ func _cache_respawn_surfaces() -> void:
 		return
 
 	for child in ground.get_children():
-		if child is CollisionShape3D and (child as CollisionShape3D).shape is BoxShape3D:
+		if child is CollisionShape3D and not (child as CollisionShape3D).disabled and (child as CollisionShape3D).shape is BoxShape3D:
 			respawn_surfaces.append(child as CollisionShape3D)
 
 
@@ -4511,7 +4772,13 @@ func _lan_receive_turn_state(display_name: String, active_index: int, active_mar
 	if online_enabled and active_marble_name != "":
 		var active_marble: Node3D = _find_marble_by_name(active_marble_name)
 		if active_marble != null:
+			if phase == GAME_PHASE_MATCH and _is_marble_in_hole(active_marble):
+				_begin_hole_attack_level(active_marble)
+			else:
+				_end_hole_attack_level()
 			_activate_camera_for_client(active_marble)
+	elif phase != GAME_PHASE_MATCH:
+		_end_hole_attack_level()
 	turn_changed.emit(display_name, active_index)
 
 
@@ -4673,6 +4940,7 @@ func _build_online_match_finished_payload(winner: Node3D, winner_name: String) -
 
 	return {
 		"winner_name": winner_name,
+		"winner_marble_name": String(winner.name) if winner != null else "",
 		"winner_client_id": winner_client_id,
 		"players": player_entries
 	}
@@ -4751,7 +5019,7 @@ func _ensure_trail_root(marble: Node3D) -> Node3D:
 	if existing != null and is_instance_valid(existing):
 		return existing
 
-	var current_scene: Node = get_tree().current_scene
+	var current_scene: Node = _get_current_scene_safe()
 	if current_scene == null:
 		return null
 

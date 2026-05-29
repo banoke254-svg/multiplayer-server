@@ -3,6 +3,8 @@ extends Node
 const BASE_GROUND_VISUALS: PackedStringArray = [
 	"GroundNorth",
 	"GroundSouth",
+	"GroundSouth2",
+	"GroundSouth3",
 	"GroundLeft",
 	"GroundRight"
 ]

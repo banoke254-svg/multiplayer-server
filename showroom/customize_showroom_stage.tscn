@@ -13,13 +13,14 @@ panorama = ExtResource("1_wkpbf")
 sky_material = SubResource("PanoramaSkyMaterial_rxqhj")
 
 [sub_resource type="Environment" id="Environment_showroom"]
-background_mode = 2
-background_color = Color(0.005, 0.008, 0.018, 1)
-background_energy_multiplier = 0.68
+background_mode = 1
+background_color = Color(0.64, 0.84, 1, 1)
+background_energy_multiplier = 1.8
 sky = SubResource("Sky_vvblb")
-ambient_light_source = 2
-ambient_light_color = Color(1, 1, 1, 1)
-ambient_light_energy = 1.05
+ambient_light_source = 1
+ambient_light_color = Color(0.86, 0.94, 1, 1)
+ambient_light_energy = 1.45
+reflected_light_source = 1
 tonemap_mode = 3
 glow_enabled = false
 glow_intensity = 0.0
@@ -201,62 +202,65 @@ mesh = SubResource("QuadMesh_back_wall_light_panel")
 material_override = SubResource("StandardMaterial3D_back_wall_light_panel")
 
 [node name="FillLight" type="OmniLight3D" parent="." unique_id=1029445173]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 5.8351593, 4.8)
-light_color = Color(0.64, 0.84, 1, 1)
-light_energy = 0.72
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 5.9, 4.9)
+light_color = Color(0.96, 0.98, 1, 1)
+light_energy = 1.08
 omni_range = 11.0
 
 [node name="RimLight" type="OmniLight3D" parent="." unique_id=1366088288]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.3, 6.278059, -3.2)
-light_color = Color(0.78, 0.92, 1, 1)
-light_energy = 0.32
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 6.2, -3.35)
+light_color = Color(0.92, 0.96, 1, 1)
+light_energy = 0.48
 omni_range = 10.5
 
 [node name="Spotlight" type="SpotLight3D" parent="." unique_id=713827275]
 transform = Transform3D(1, 0, 0, 0, 0.529919, 0.848048, 0, -0.848048, 0.529919, 0, 7, 2)
 light_color = Color(1, 0.96, 0.82, 1)
-light_energy = 0.95
+light_energy = 1.18
 spot_range = 13.0
 spot_angle = 28.0
 spot_angle_attenuation = 0.42
 
 [node name="MarbleFrontLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.45, 4.35)
-light_color = Color(0.98, 1, 1, 1)
-light_energy = 0.42
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.55, 4.55)
+light_color = Color(1, 1, 1, 1)
+light_energy = 0.78
 omni_range = 7.8
 
 [node name="MarbleTopLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.35, 0.5)
-light_color = Color(0.92, 0.96, 1, 1)
-light_energy = 0.24
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.9, 0.2)
+light_color = Color(0.98, 0.99, 1, 1)
+light_energy = 0.48
 omni_range = 6.4
 
 [node name="MarbleSideLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.2, 4.8, 1.4)
-light_color = Color(1, 0.78, 0.94, 1)
-light_energy = 0.18
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.6, 4.9, 1.45)
+light_color = Color(0.98, 0.98, 1, 1)
+light_energy = 0.36
 omni_range = 7.4
+
+[node name="BrightPreviewBulb" type="OmniLight3D" parent="."]
+position = Vector3(0, 5.35, 3.25)
+light_color = Color(1, 0.985, 0.94, 1)
+light_energy = 2.05
+omni_range = 8.5
 
 [node name="CeilingWashLight" type="OmniLight3D" parent="."]
 position = Vector3(0, 4.55, 1.6)
 light_color = Color(1, 0.94, 0.82, 1)
-visible = false
-light_energy = 0.0
+light_energy = 0.42
 omni_range = 10.5
 
 [node name="BackWallWashLight" type="OmniLight3D" parent="."]
 position = Vector3(0, 3.45, -4.65)
 light_color = Color(0.64, 0.84, 1, 1)
-visible = false
-light_energy = 0.0
+light_energy = 0.28
 omni_range = 8.8
 
 [node name="FloorBounceLight" type="OmniLight3D" parent="."]
 position = Vector3(0, 2.1, 2.75)
 light_color = Color(0.88, 0.94, 1, 1)
-visible = false
-light_energy = 0.0
+light_energy = 0.34
 omni_range = 8.0
 
 [node name="NeonBackdrop" type="MeshInstance3D" parent="." unique_id=1709116583]

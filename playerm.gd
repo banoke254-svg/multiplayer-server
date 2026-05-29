@@ -8,13 +8,15 @@ const SHOOTING_MECHANIC_PRESS: String = "press"
 
 @export var min_drag_length: float = 18.0
 @export var max_drag_distance: float = 220.0
-@export var min_shot_impulse: float = 0.08
+@export var min_shot_impulse: float = 0.16
 @export var max_shot_impulse: float = 11.2
 @export var press_charge_seconds: float = 2.4
 @export var split_watermark_seconds: float = 4.0
 @export var split_watermark_alpha: float = 0.72
-@export var power_response_exponent: float = 2.35
+@export var power_response_exponent: float = 1.65
 @export var drag_input_smoothing: float = 0.32
+@export var shot_velocity_carry: float = 0.12
+@export var shot_residual_velocity_cutoff: float = 0.72
 @export var min_shot_lift: float = 0.0
 @export var max_shot_lift: float = 0.22
 @export var max_vertical_shot_impulse: float = 0.34
@@ -62,18 +64,22 @@ var split_aim_touch_index: int = -1
 var split_shoot_touch_index: int = -1
 var split_aim_start: Vector2 = Vector2.ZERO
 var split_shoot_start: Vector2 = Vector2.ZERO
+var split_aim_position: Vector2 = Vector2.ZERO
+var split_shoot_position: Vector2 = Vector2.ZERO
 var split_aim_horizontal_offset: float = 0.0
 var split_shoot_vertical_offset: float = 0.0
 var press_aiming: bool = false
 var press_charging: bool = false
 var press_aim_touch_index: int = -1
 var press_aim_start: Vector2 = Vector2.ZERO
+var press_aim_position: Vector2 = Vector2.ZERO
 var press_aim_horizontal_offset: float = 0.0
 var press_charge_time: float = 0.0
 var press_charge_direction: float = 1.0
 var hold_shoot_button: Button = null
 var hold_shoot_touch_index: int = -1
 var hold_shoot_mouse_active: bool = false
+var hold_shoot_position: Vector2 = Vector2.ZERO
 var split_watermark_layer: Control = null
 var split_watermark_left_label: Label = null
 var split_watermark_right_label: Label = null
@@ -89,7 +95,7 @@ func _ready() -> void:
 	power_bar = get_node_or_null("/root/Main/UI/PowerMeter/PowerBar")
 	power_label = get_node_or_null("/root/Main/UI/PowerMeter/PowerLabel")
 	if power_glass == null or power_bar == null or power_label == null:
-		var current_scene: Node = get_tree().current_scene
+		var current_scene: Node = _get_current_scene_safe()
 		if current_scene != null:
 			power_glass = current_scene.get_node_or_null("UI/PowerMeter/PowerGlass") as Control
 			power_bar = current_scene.get_node_or_null("UI/PowerMeter/PowerBar")
@@ -122,11 +128,20 @@ func _physics_process(_delta: float) -> void:
 	_clamp_upward_velocity()
 
 
+func _get_current_scene_safe() -> Node:
+	if not is_inside_tree():
+		return null
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return null
+	return tree.current_scene
+
+
 func _ensure_hold_shoot_button() -> void:
 	if hold_shoot_button != null and is_instance_valid(hold_shoot_button):
 		return
 
-	var current_scene: Node = get_tree().current_scene
+	var current_scene: Node = _get_current_scene_safe()
 	if current_scene == null:
 		return
 	var ui_root: Node = current_scene.get_node_or_null("UI")
@@ -168,32 +183,37 @@ func _on_hold_shoot_button_gui_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event as InputEventScreenTouch
 		if touch.pressed:
-			_begin_hold_shoot_pointer(touch.index)
+			_begin_hold_shoot_pointer(touch.index, touch.position)
 		else:
 			_finish_hold_shoot_pointer(touch.index)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventScreenDrag:
 		var drag: InputEventScreenDrag = event as InputEventScreenDrag
 		if drag.index == hold_shoot_touch_index:
+			hold_shoot_position = drag.position
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		var mouse_button: InputEventMouseButton = event as InputEventMouseButton
 		if mouse_button.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mouse_button.pressed:
-			_begin_hold_shoot_pointer(-1)
+			_begin_hold_shoot_pointer(-1, mouse_button.position)
 		else:
 			_finish_hold_shoot_pointer(-1)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and hold_shoot_mouse_active:
+		var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
+		hold_shoot_position = mouse_motion.position
 		get_viewport().set_input_as_handled()
 
 
 func _ensure_split_watermark() -> void:
+	if _is_tutorial_scene_active():
+		return
 	if split_watermark_layer != null and is_instance_valid(split_watermark_layer):
 		return
 
-	var current_scene: Node = get_tree().current_scene
+	var current_scene: Node = _get_current_scene_safe()
 	if current_scene == null:
 		return
 	var ui_root: Node = current_scene.get_node_or_null("UI")
@@ -331,7 +351,6 @@ func start_turn(tm_ref: Node = null) -> void:
 	_update_power_meter(0.0, false)
 	if _get_shooting_mechanic() == SHOOTING_MECHANIC_SPLIT:
 		_show_split_watermark()
-	print(name, " turn: true")
 
 
 func set_turn(active: bool, tm_ref: Node = null) -> void:
@@ -352,7 +371,6 @@ func set_turn(active: bool, tm_ref: Node = null) -> void:
 	current_shot_lift = 0.0
 	_hide_indicator()
 	_hide_split_watermark()
-	print(name, " turn:", active)
 
 
 func end_turn() -> void:
@@ -389,6 +407,8 @@ func _handle_split_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event as InputEventScreenTouch
 		if touch.pressed:
+			if _is_pointer_over_tutorial_panel(touch.position):
+				return
 			if _is_left_screen_area(touch.position):
 				if split_aiming:
 					return
@@ -417,6 +437,8 @@ func _handle_split_input(event: InputEvent) -> void:
 		if mouse_button.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mouse_button.pressed:
+			if _is_pointer_over_tutorial_panel(mouse_button.position):
+				return
 			if _pointer_over_ui():
 				return
 			if _is_left_screen_area(mouse_button.position):
@@ -444,8 +466,10 @@ func _handle_press_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch: InputEventScreenTouch = event as InputEventScreenTouch
 		if touch.pressed:
+			if _is_pointer_over_tutorial_panel(touch.position):
+				return
 			if _is_inside_hold_shoot_button(touch.position):
-				_begin_hold_shoot_pointer(touch.index)
+				_begin_hold_shoot_pointer(touch.index, touch.position)
 				get_viewport().set_input_as_handled()
 				return
 			if press_aiming:
@@ -461,6 +485,7 @@ func _handle_press_input(event: InputEvent) -> void:
 	elif event is InputEventScreenDrag:
 		var drag_event: InputEventScreenDrag = event as InputEventScreenDrag
 		if drag_event.index == hold_shoot_touch_index:
+			hold_shoot_position = drag_event.position
 			get_viewport().set_input_as_handled()
 		elif press_aiming and drag_event.index == press_aim_touch_index:
 			_update_press_aim(drag_event.position)
@@ -470,8 +495,10 @@ func _handle_press_input(event: InputEvent) -> void:
 		if mouse_button.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mouse_button.pressed:
+			if _is_pointer_over_tutorial_panel(mouse_button.position):
+				return
 			if _is_inside_hold_shoot_button(mouse_button.position):
-				_begin_hold_shoot_pointer(-1)
+				_begin_hold_shoot_pointer(-1, mouse_button.position)
 				get_viewport().set_input_as_handled()
 				return
 			if _pointer_over_ui():
@@ -487,6 +514,7 @@ func _handle_press_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
 		if hold_shoot_mouse_active:
+			hold_shoot_position = mouse_motion.position
 			get_viewport().set_input_as_handled()
 		elif press_aiming and press_aim_touch_index == -1:
 			_update_press_aim(mouse_motion.position)
@@ -495,6 +523,8 @@ func _handle_press_input(event: InputEvent) -> void:
 
 func _handle_touch(event: InputEventScreenTouch) -> void:
 	if event.pressed:
+		if _is_pointer_over_tutorial_panel(event.position):
+			return
 		if dragging or _pointer_over_ui():
 			return
 		active_touch_index = event.index
@@ -516,6 +546,8 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		return
 
 	if event.pressed:
+		if _is_pointer_over_tutorial_panel(event.position):
+			return
 		if dragging or _pointer_over_ui():
 			return
 		_begin_drag(event.position)
@@ -535,12 +567,14 @@ func _begin_split_aim(pointer_position: Vector2, touch_index: int) -> void:
 	split_aiming = true
 	split_aim_touch_index = touch_index
 	split_aim_start = pointer_position
+	split_aim_position = pointer_position
 	split_aim_horizontal_offset = 0.0
 	_capture_drag_reference_axes()
 	_update_split_shot_preview(split_shooting)
 
 
 func _update_split_aim(pointer_position: Vector2) -> void:
+	split_aim_position = pointer_position
 	split_aim_horizontal_offset = pointer_position.x - split_aim_start.x
 	_update_split_shot_preview(split_shooting)
 
@@ -559,12 +593,14 @@ func _begin_split_shot(pointer_position: Vector2, touch_index: int) -> void:
 	split_shooting = true
 	split_shoot_touch_index = touch_index
 	split_shoot_start = pointer_position
+	split_shoot_position = pointer_position
 	split_shoot_vertical_offset = 0.0
 	_capture_drag_reference_axes()
 	_update_split_shot_preview(true)
 
 
 func _update_split_shot(pointer_position: Vector2) -> void:
+	split_shoot_position = pointer_position
 	split_shoot_vertical_offset = pointer_position.y - split_shoot_start.y
 	_update_split_shot_preview(true)
 
@@ -586,12 +622,14 @@ func _begin_press_aim(pointer_position: Vector2, touch_index: int) -> void:
 	press_aiming = true
 	press_aim_touch_index = touch_index
 	press_aim_start = pointer_position
+	press_aim_position = pointer_position
 	press_aim_horizontal_offset = 0.0
 	_capture_drag_reference_axes()
 	_update_press_shot_preview(press_charging)
 
 
 func _update_press_aim(pointer_position: Vector2) -> void:
+	press_aim_position = pointer_position
 	press_aim_horizontal_offset = pointer_position.x - press_aim_start.x
 	_update_press_shot_preview(press_charging)
 
@@ -604,7 +642,8 @@ func _end_press_aim() -> void:
 		_update_power_meter(0.0, false)
 
 
-func _begin_hold_shoot_pointer(pointer_index: int) -> void:
+func _begin_hold_shoot_pointer(pointer_index: int, pointer_position: Vector2) -> void:
+	hold_shoot_position = pointer_position
 	if pointer_index >= 0:
 		hold_shoot_touch_index = pointer_index
 	else:
@@ -694,11 +733,24 @@ func _finish_drag(pointer_position: Vector2) -> void:
 
 
 func _can_receive_input() -> bool:
-	return is_turn and not get_tree().paused and not _is_input_locked_by_motion()
+	var tree: SceneTree = get_tree()
+	return tree != null and is_turn and not tree.paused and not _is_input_locked_by_motion()
 
 
 func _pointer_over_ui() -> bool:
-	return get_viewport().gui_get_hovered_control() != null
+	var hovered_control: Control = get_viewport().gui_get_hovered_control()
+	if hovered_control == null:
+		return false
+	var current: Node = hovered_control
+	while current != null:
+		if current.name == "TutorialPanel":
+			return hovered_control is BaseButton
+		current = current.get_parent()
+	return true
+
+
+func _is_pointer_over_tutorial_panel(_pointer_position: Vector2) -> bool:
+	return false
 
 
 func _is_left_screen_area(pointer_position: Vector2) -> bool:
@@ -731,6 +783,9 @@ func _reset_alternate_input_state() -> void:
 
 
 func _show_split_watermark() -> void:
+	if _is_tutorial_scene_active():
+		_hide_split_watermark()
+		return
 	_ensure_split_watermark()
 	if split_watermark_layer == null:
 		return
@@ -745,10 +800,18 @@ func _hide_split_watermark() -> void:
 	if split_watermark_layer != null and is_instance_valid(split_watermark_layer):
 		split_watermark_layer.visible = false
 		split_watermark_layer.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	if _is_tutorial_scene_active():
+		if split_watermark_left_label != null and is_instance_valid(split_watermark_left_label):
+			split_watermark_left_label.visible = false
+			split_watermark_left_label.text = ""
+		if split_watermark_right_label != null and is_instance_valid(split_watermark_right_label):
+			split_watermark_right_label.visible = false
+			split_watermark_right_label.text = ""
 
 
 func _update_split_watermark(delta: float) -> void:
-	if _get_shooting_mechanic() != SHOOTING_MECHANIC_SPLIT or not is_turn or get_tree().paused:
+	var tree: SceneTree = get_tree()
+	if tree == null or _is_tutorial_scene_active() or _get_shooting_mechanic() != SHOOTING_MECHANIC_SPLIT or not is_turn or tree.paused:
 		_hide_split_watermark()
 		return
 
@@ -767,6 +830,14 @@ func _update_split_watermark(delta: float) -> void:
 	split_watermark_layer.modulate = Color(1.0, 1.0, 1.0, alpha)
 	if split_watermark_timer <= 0.0:
 		_hide_split_watermark()
+
+
+func _is_tutorial_scene_active() -> bool:
+	var current_scene: Node = _get_current_scene_safe()
+	if current_scene == null:
+		return false
+	var script: Script = current_scene.get_script() as Script
+	return current_scene.name == "Main" and script != null and script.resource_path.ends_with("tutorial_overlay.gd")
 
 
 func _hide_indicator() -> void:
@@ -918,7 +989,7 @@ func _get_sensitivity_ratio() -> float:
 
 func _get_aim_response_factor() -> float:
 	var sensitivity_ratio := _get_sensitivity_ratio()
-	return lerpf(0.04, 1.0, pow(sensitivity_ratio, 2.6))
+	return lerpf(0.12, 1.0, pow(sensitivity_ratio, 2.1))
 
 
 func _get_effective_power_ratio(shot_ratio: float) -> float:
@@ -942,7 +1013,7 @@ func _update_split_shot_preview(show_power_meter: bool) -> void:
 
 	var power_ratio: float = 0.28
 	if split_shooting:
-		power_ratio = _get_power_ratio_from_vertical_offset(split_shoot_vertical_offset)
+		power_ratio = _get_shot_ratio(split_shoot_vertical_offset)
 	if not _cache_shot_from_horizontal_and_power(split_aim_horizontal_offset, power_ratio):
 		_hide_indicator()
 		_update_power_meter(0.0, show_power_meter)
@@ -978,7 +1049,7 @@ func _cache_shot_from_horizontal_and_power(horizontal_offset: float, power_ratio
 	else:
 		current_aim_direction = current_aim_direction.slerp(target_direction, _get_aim_response_factor()).normalized()
 
-	current_shot_ratio = clampf(power_ratio, 0.0, 1.0)
+	current_shot_ratio = _get_effective_power_ratio(power_ratio)
 	current_shot_impulse = 0.0 if current_shot_ratio <= 0.0 else lerpf(min_shot_impulse, max_shot_impulse, current_shot_ratio)
 	current_shot_lift = _get_shot_lift(current_shot_ratio)
 	return true
@@ -1029,6 +1100,7 @@ func _apply_current_shot() -> void:
 	var shot_impulse := current_shot_impulse * float(shot_context.get("impulse_multiplier", 1.0))
 	var shot_lift := current_shot_lift * float(shot_context.get("lift_multiplier", 1.0))
 	var shot_direction: Vector3 = shot_context.get("direction", current_aim_direction)
+	_stabilize_body_for_shot()
 	sleeping = false
 	apply_central_impulse(_make_realistic_shot_impulse(shot_direction, shot_impulse, shot_lift))
 	_clamp_upward_velocity()
@@ -1055,6 +1127,18 @@ func _make_realistic_shot_impulse(shot_direction: Vector3, shot_impulse: float, 
 	var directional_lift := maxf(shot_direction.y, 0.0) * shot_impulse
 	var vertical_impulse := minf(shot_lift + directional_lift, max_vertical_shot_impulse)
 	return planar_direction * shot_impulse + Vector3.UP * vertical_impulse
+
+
+func _stabilize_body_for_shot() -> void:
+	if linear_velocity.length() <= shot_residual_velocity_cutoff:
+		linear_velocity = Vector3.ZERO
+	else:
+		linear_velocity *= clampf(shot_velocity_carry, 0.0, 1.0)
+
+	if angular_velocity.length() <= shot_residual_velocity_cutoff:
+		angular_velocity = Vector3.ZERO
+	else:
+		angular_velocity *= clampf(shot_velocity_carry, 0.0, 1.0)
 
 
 func _clamp_upward_velocity() -> void:
@@ -1097,7 +1181,7 @@ func _get_hole_shot_context(base_direction: Vector3) -> Dictionary:
 
 
 func _get_hole_node() -> Node3D:
-	var scene_root := get_tree().current_scene
+	var scene_root := _get_current_scene_safe()
 	if scene_root == null:
 		return null
 	return scene_root.get_node_or_null("Hole") as Node3D
@@ -1129,7 +1213,8 @@ func _update_hold_shoot_button_visibility() -> void:
 	if hold_shoot_button == null or not is_instance_valid(hold_shoot_button):
 		return
 
-	var should_show := _get_shooting_mechanic() == SHOOTING_MECHANIC_PRESS and is_turn and not get_tree().paused and not _is_input_locked_by_motion()
+	var tree: SceneTree = get_tree()
+	var should_show := tree != null and _get_shooting_mechanic() == SHOOTING_MECHANIC_PRESS and is_turn and not tree.paused and not _is_input_locked_by_motion()
 	hold_shoot_button.visible = should_show
 	hold_shoot_button.disabled = not should_show
 	if not should_show and press_charging:
@@ -1199,7 +1284,7 @@ func _is_online_remote_host_proxy() -> bool:
 func _setup_trail_effect_root() -> void:
 	if trail_effect_root != null:
 		return
-	var current_scene: Node = get_tree().current_scene
+	var current_scene: Node = _get_current_scene_safe()
 	if current_scene == null:
 		return
 	trail_effect_root = Node3D.new()

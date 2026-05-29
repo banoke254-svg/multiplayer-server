@@ -52,7 +52,7 @@ alignment = 1
 layout_mode = 2
 theme_override_fonts/font = SubResource("SystemFont_pbjr1")
 theme_override_font_sizes/font_size = 46
-text = "Play
+text = "Offline
 "
 flat = true
 autowrap_mode = 2

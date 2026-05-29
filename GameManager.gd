@@ -121,8 +121,17 @@ func _get_spawn_parent() -> Node:
 		if spawn_parent != null:
 			return spawn_parent
 
-	var current_scene: Node = get_tree().current_scene
+	var current_scene: Node = _get_current_scene_safe()
 	return current_scene if current_scene != null else self
+
+
+func _get_current_scene_safe() -> Node:
+	if not is_inside_tree():
+		return null
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return null
+	return tree.current_scene
 
 
 func _get_spawn_position(peer_id: int) -> Vector3:

@@ -13,6 +13,7 @@
 [ext_resource type="Script" uid="uid://hhiwunx6ap4u" path="res://field_theme_manager.gd" id="20_field_theme"]
 [ext_resource type="Script" uid="uid://bn2gi0nlmdg15" path="res://field_layout_manager.gd" id="21_field_layout"]
 [ext_resource type="Script" uid="uid://bj155rds4jmex" path="res://field_variant_manager.gd" id="22_field_variant"]
+[ext_resource type="Script" uid="uid://cifjwulfmckaf" path="res://ground_visual_colliders.gd" id="23_ground_colliders"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_ground"]
 friction = 0.7
@@ -59,6 +60,13 @@ size = Vector2(22.2, 22.2)
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_grass"]
 render_priority = 0
 shader = ExtResource("14_8n3ap")
+shader_parameter/grass_bottom = Color(0.12, 0.34, 0.1, 1)
+shader_parameter/grass_mid = Color(0.19, 0.52, 0.16, 1)
+shader_parameter/grass_tip = Color(0.42, 0.72, 0.26, 1)
+shader_parameter/sway_strength = 0.07
+shader_parameter/sway_speed = 1.05
+shader_parameter/wind_direction = Vector3(0.92, 0, 0.28)
+shader_parameter/gust_strength = 0.03
 
 [sub_resource type="QuadMesh" id="QuadMesh_grass"]
 material = SubResource("ShaderMaterial_grass")
@@ -138,6 +146,9 @@ thickness = 17
 
 [node name="Ground" type="StaticBody3D" parent="." unique_id=1777680290]
 physics_material_override = SubResource("PhysicsMaterial_ground")
+script = ExtResource("23_ground_colliders")
+sync_ground_surface_colliders = true
+disable_existing_ground_surface_colliders = false
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=1552174829]
 visible = false
@@ -149,6 +160,14 @@ mesh = SubResource("BoxMesh_ground_north")
 
 [node name="GroundSouth" type="MeshInstance3D" parent="Ground" unique_id=124301973]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 18.2818)
+mesh = SubResource("BoxMesh_ground_south")
+
+[node name="GroundSouth2" type="MeshInstance3D" parent="Ground" unique_id=504256320]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 21.708305)
+mesh = SubResource("BoxMesh_ground_south")
+
+[node name="GroundSouth3" type="MeshInstance3D" parent="Ground" unique_id=1792095185]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 25.045914)
 mesh = SubResource("BoxMesh_ground_south")
 
 [node name="GroundLeft" type="MeshInstance3D" parent="Ground" unique_id=602117695]
@@ -226,6 +245,14 @@ shape = SubResource("BoxShape3D_ground_north")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0585818, 18.2818)
 shape = SubResource("BoxShape3D_ground_south")
 
+[node name="CollisionShape3D5" type="CollisionShape3D" parent="Ground" unique_id=1048424691]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0585818, 21.708305)
+shape = SubResource("BoxShape3D_ground_south")
+
+[node name="CollisionShape3D6" type="CollisionShape3D" parent="Ground" unique_id=2137890644]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0585818, 25.045914)
+shape = SubResource("BoxShape3D_ground_south")
+
 [node name="CollisionShape3D3" type="CollisionShape3D" parent="Ground" unique_id=1875560429]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.975, 0.0585818, 14.6135)
 shape = SubResource("BoxShape3D_ground_side")
@@ -261,12 +288,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.02, 0.9, 0)
 shape = SubResource("BoxShape3D_0xm2m")
 
 [node name="walls2" type="StaticBody3D" parent="." unique_id=602369822 groups=["Walls"]]
-transform = Transform3D(-9.999985, 0, -0.017453104, 0, 10, 0, 0.017453104, 0, -9.999985, -0.0325832, 15.997101, 35.64614)
+transform = Transform3D(-9.999985, 0, -0.017453104, 0, 10, 0, 0.017453104, 0, -9.999985, -0.0325832, 15.997101, 41.690193)
 visible = false
 physics_material_override = SubResource("PhysicsMaterial_wall")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="walls2" unique_id=570039314]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.121068, 0, -0.041832)
+transform = Transform3D(1.0000001, 0, 0, 0, 1, 0, 0, 0, 1.0000001, -0.120902434, 0, -0.13670349)
 mesh = SubResource("BoxMesh_ig7tw")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="walls2" unique_id=1266044138]

@@ -33,6 +33,7 @@ var currency_bar: HBoxContainer = null
 var coins_value_label: Label = null
 var gold_value_label: Label = null
 var lan_status_label: Label = null
+var online_status_label: Label = null
 var online_chat_panel: Panel = null
 var online_chat_bubble_button: Button = null
 var online_chat_log_stack: VBoxContainer = null
@@ -72,6 +73,7 @@ func _ready() -> void:
 	_build_result_overlay()
 	_build_currency_bar()
 	_build_lan_status()
+	_build_online_status()
 	_build_online_chat()
 	_style_hud()
 
@@ -148,7 +150,13 @@ func _style_hud() -> void:
 		currency_bar.position = Vector2(18.0, 74.0)
 	if lan_status_label != null:
 		lan_status_label.position = Vector2(18.0, 124.0)
-	var chat_button_y: float = 124.0 if lan_status_label == null else 164.0
+	if online_status_label != null:
+		online_status_label.position = Vector2(18.0, 124.0 if lan_status_label == null else 164.0)
+	var chat_button_y: float = 124.0
+	if lan_status_label != null:
+		chat_button_y += 40.0
+	if online_status_label != null:
+		chat_button_y += 40.0
 	if online_chat_panel != null:
 		online_chat_panel.position = Vector2(18.0, chat_button_y + 52.0)
 	if online_chat_bubble_button != null:
@@ -418,8 +426,38 @@ func _build_lan_status() -> void:
 	add_child(lan_status_label)
 
 
-func _build_online_chat() -> void:
+func _build_online_status() -> void:
 	online_manager = get_node_or_null("/root/MultiplayerManager")
+	if online_manager == null or not online_manager.has_method("is_online_game") or not bool(online_manager.call("is_online_game")):
+		return
+
+	online_status_label = Label.new()
+	online_status_label.name = "OnlineStatus"
+	online_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	online_status_label.custom_minimum_size = Vector2(360.0, 34.0)
+	online_status_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	online_status_label.add_theme_font_size_override("font_size", 13)
+	online_status_label.add_theme_color_override("font_color", Color(0.44, 1.0, 0.72, 0.96))
+	online_status_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.75))
+	online_status_label.add_theme_constant_override("shadow_outline_size", 2)
+	online_status_label.text = "ONLINE: CONNECTED"
+	add_child(online_status_label)
+
+	if online_manager.has_signal("connection_status_changed") and not online_manager.connection_status_changed.is_connected(_on_online_status_changed):
+		online_manager.connection_status_changed.connect(_on_online_status_changed)
+	if online_manager.has_signal("reconnecting") and not online_manager.reconnecting.is_connected(_on_online_reconnecting):
+		online_manager.reconnecting.connect(_on_online_reconnecting)
+	if online_manager.has_signal("connected_to_server") and not online_manager.connected_to_server.is_connected(_on_online_connected):
+		online_manager.connected_to_server.connect(_on_online_connected)
+	if online_manager.has_signal("disconnected_from_server") and not online_manager.disconnected_from_server.is_connected(_on_online_disconnected):
+		online_manager.disconnected_from_server.connect(_on_online_disconnected)
+	if online_manager.has_signal("connection_failed") and not online_manager.connection_failed.is_connected(_on_online_connection_failed):
+		online_manager.connection_failed.connect(_on_online_connection_failed)
+
+
+func _build_online_chat() -> void:
+	if online_manager == null:
+		online_manager = get_node_or_null("/root/MultiplayerManager")
 	if online_manager == null or not online_manager.has_method("is_online_game") or not bool(online_manager.call("is_online_game")):
 		return
 
@@ -625,6 +663,39 @@ func _finish_online_chat_button_drag() -> void:
 		_toggle_online_chat()
 
 
+func _set_online_status(text_value: String, color: Color) -> void:
+	if online_status_label == null:
+		return
+	online_status_label.text = text_value
+	online_status_label.add_theme_color_override("font_color", color)
+
+
+func _on_online_connected(_client_id: String) -> void:
+	_set_online_status("ONLINE: CONNECTED", Color(0.44, 1.0, 0.72, 0.96))
+
+
+func _on_online_status_changed(message: String) -> void:
+	var clean_message: String = message.strip_edges()
+	if clean_message == "":
+		clean_message = "Online match active"
+	_set_online_status("ONLINE: %s" % clean_message.to_upper(), Color(0.72, 0.94, 1.0, 0.96))
+
+
+func _on_online_reconnecting(attempt: int, delay_seconds: float) -> void:
+	_set_online_status("ONLINE: RECONNECTING %d (%.1fs)" % [attempt, delay_seconds], Color(1.0, 0.86, 0.42, 0.98))
+
+
+func _on_online_disconnected() -> void:
+	_set_online_status("ONLINE: DISCONNECTED - RECONNECTING", Color(1.0, 0.55, 0.48, 0.98))
+
+
+func _on_online_connection_failed(message: String) -> void:
+	var clean_message: String = message.strip_edges()
+	if clean_message == "":
+		clean_message = "Connection failed"
+	_set_online_status("ONLINE: %s" % clean_message.to_upper(), Color(1.0, 0.55, 0.48, 0.98))
+
+
 func _build_online_chat_toast() -> void:
 	online_chat_toast_panel = Panel.new()
 	online_chat_toast_panel.name = "OnlineChatToast"
@@ -758,9 +829,9 @@ func _on_player_disqualified(attacker_name: String) -> void:
 	_update_turn_prompt()
 	_show_decision_overlay(
 		"DISQUALIFIED",
-		"%s knocked you out. You can quit now or continue watching the match." % attacker_name,
-		"MAIN MENU",
-		"CONTINUE WATCHING",
+		"%s knocked you out. You are out of the field now, but you can keep watching or return to the lobby/menu." % attacker_name,
+		"LOBBY / MENU",
+		"WATCH",
 		_go_to_main_menu,
 		_continue_watching
 	)
@@ -769,13 +840,15 @@ func _on_player_disqualified(attacker_name: String) -> void:
 func _on_player_won(coin_reward: int) -> void:
 	game_is_finished = true
 	_update_turn_prompt()
+	var secondary_text: String = "" if _is_online_match() else "RESTART"
+	var secondary_action: Callable = Callable() if _is_online_match() else _restart_match
 	_show_decision_overlay(
 		"WINNER",
-		"You have been awarded %d S coins." % coin_reward,
-		"MAIN MENU",
-		"RESTART",
+		"You won the match and earned %d S coins." % coin_reward,
+		"LOBBY / MENU" if _is_online_match() else "MAIN MENU",
+		secondary_text,
 		_go_to_main_menu,
-		_restart_match
+		secondary_action
 	)
 
 
@@ -790,8 +863,8 @@ func _on_game_finished(winner_name: String) -> void:
 	if not local_player_won:
 		_show_decision_overlay(
 			"%s WON" % winner_name.to_upper(),
-			"The other player won the game. You can return to the main menu.",
-			"MAIN MENU",
+			"%s won this match. Your result has been recorded." % winner_name,
+			"LOBBY / MENU" if _is_online_match() else "MAIN MENU",
 			"",
 			_go_to_main_menu,
 			Callable()
@@ -799,11 +872,11 @@ func _on_game_finished(winner_name: String) -> void:
 		return
 	_show_decision_overlay(
 		"%s WINS" % winner_name.to_upper(),
-		"The match is over.",
-		"MAIN MENU",
-		"RESTART",
+		"You won the match. Your result has been recorded.",
+		"LOBBY / MENU" if _is_online_match() else "MAIN MENU",
+		"" if _is_online_match() else "RESTART",
 		_go_to_main_menu,
-		_restart_match
+		Callable() if _is_online_match() else _restart_match
 	)
 
 
@@ -1036,6 +1109,10 @@ func _configure_modal_button(button: Button, text_value: String, action: Callabl
 		button.pressed.connect(action)
 
 
+func _is_online_match() -> bool:
+	return online_manager != null and online_manager.has_method("is_online_game") and bool(online_manager.call("is_online_game"))
+
+
 func _continue_watching() -> void:
 	if result_overlay != null:
 		result_overlay.visible = false
@@ -1044,6 +1121,10 @@ func _continue_watching() -> void:
 
 func _go_to_main_menu() -> void:
 	get_tree().paused = false
+	if online_manager != null and online_manager.has_method("leave_room"):
+		online_manager.call("leave_room")
+	elif online_manager != null and online_manager.has_method("disconnect_from_server"):
+		online_manager.call("disconnect_from_server", false)
 	var target_scene: String = main_menu_scene_path
 	if target_scene == "" or not ResourceLoader.exists(target_scene):
 		target_scene = "res://Start_Menu.tscn"

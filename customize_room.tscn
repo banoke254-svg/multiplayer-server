@@ -4,8 +4,13 @@
 [ext_resource type="PackedScene" uid="uid://bxx46jgao5sit" path="res://showroom/customize_showroom_stage.tscn" id="2_stage"]
 
 [sub_resource type="Environment" id="Environment_g1bw8"]
-ambient_light_color = Color(0.8672607, 0.86726063, 0.8672606, 1)
-ambient_light_energy = 1.05
+background_mode = 1
+background_color = Color(0.64, 0.84, 1, 1)
+background_energy_multiplier = 1.8
+ambient_light_source = 1
+ambient_light_color = Color(0.86, 0.94, 1, 1)
+ambient_light_energy = 1.45
+reflected_light_source = 1
 glow_intensity = 0.0
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_pliod"]
@@ -25,6 +30,6 @@ compositor = SubResource("Compositor_lnket")
 [node name="CustomizationDirectionalLight" type="DirectionalLight3D" parent="." unique_id=339238979]
 transform = Transform3D(0.8480481, 0.32625088, -0.4175821, 0, 0.7880108, 0.6156615, 0.52991927, -0.5221106, 0.668271, -2.7, 8.1, 4.35)
 light_color = Color(1, 0.96, 0.84, 1)
-light_energy = 0.85
+light_energy = 4.723
 light_indirect_energy = 0.6
 light_volumetric_fog_energy = 0.0

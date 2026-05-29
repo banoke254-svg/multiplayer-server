@@ -94,6 +94,7 @@ var showroom_spotlight: SpotLight3D
 var showroom_marble_front_light: OmniLight3D
 var showroom_marble_top_light: OmniLight3D
 var showroom_side_light: OmniLight3D
+var showroom_preview_bulb: OmniLight3D
 var status_message_timer: float = 0.0
 var marble_belt_target_scroll: float = 0.0
 var trail_belt_target_scroll: float = 0.0
@@ -124,16 +125,17 @@ const SHOWROOM_POSITION_SMOOTH: float = 9.5
 const SHOWROOM_ROTATION_SMOOTH: float = 8.5
 const SHOWROOM_SCALE_SMOOTH: float = 10.0
 const SHOWROOM_CAMERA_SMOOTH: float = 7.5
-const SHOWROOM_AMBIENT_LIGHT_ENERGY: float = 1.22
-const SHOWROOM_FILL_LIGHT_ENERGY: float = 0.86
-const SHOWROOM_RIM_LIGHT_ENERGY: float = 0.32
-const SHOWROOM_SPOTLIGHT_ENERGY: float = 0.95
-const SHOWROOM_MARBLE_FRONT_LIGHT_ENERGY: float = 0.58
-const SHOWROOM_MARBLE_TOP_LIGHT_ENERGY: float = 0.32
-const SHOWROOM_SIDE_LIGHT_ENERGY: float = 0.22
-const SHOWROOM_CEILING_WASH_LIGHT_ENERGY: float = 0.0
-const SHOWROOM_BACK_WALL_LIGHT_ENERGY: float = 0.0
-const SHOWROOM_FLOOR_BOUNCE_LIGHT_ENERGY: float = 0.0
+const SHOWROOM_AMBIENT_LIGHT_ENERGY: float = 1.55
+const SHOWROOM_FILL_LIGHT_ENERGY: float = 1.08
+const SHOWROOM_RIM_LIGHT_ENERGY: float = 0.48
+const SHOWROOM_SPOTLIGHT_ENERGY: float = 1.18
+const SHOWROOM_MARBLE_FRONT_LIGHT_ENERGY: float = 0.78
+const SHOWROOM_MARBLE_TOP_LIGHT_ENERGY: float = 0.48
+const SHOWROOM_SIDE_LIGHT_ENERGY: float = 0.36
+const SHOWROOM_PREVIEW_BULB_LIGHT_ENERGY: float = 2.05
+const SHOWROOM_CEILING_WASH_LIGHT_ENERGY: float = 0.42
+const SHOWROOM_BACK_WALL_LIGHT_ENERGY: float = 0.28
+const SHOWROOM_FLOOR_BOUNCE_LIGHT_ENERGY: float = 0.34
 const CUSTOMIZATION_DIRECTIONAL_LIGHT_ENERGY: float = 0.85
 const CUSTOMIZATION_DIRECTIONAL_LIGHT_POSITION := Vector3(-2.7, 8.1, 4.35)
 const CUSTOMIZATION_DIRECTIONAL_LIGHT_TARGET := Vector3(0.0, 4.05, 0.0)
@@ -259,6 +261,7 @@ func _bind_showroom_stage() -> void:
 	showroom_marble_front_light = showroom_stage.get_node_or_null("MarbleFrontLight") as OmniLight3D
 	showroom_marble_top_light = showroom_stage.get_node_or_null("MarbleTopLight") as OmniLight3D
 	showroom_side_light = showroom_stage.get_node_or_null("MarbleSideLight") as OmniLight3D
+	showroom_preview_bulb = showroom_stage.get_node_or_null("BrightPreviewBulb") as OmniLight3D
 	preview_camera = showroom_stage.get_node_or_null("PreviewCamera") as Camera3D
 	look_target = showroom_stage.get_node_or_null("LookTarget") as Node3D
 	camera_anchor = showroom_stage.get_node_or_null("CameraAnchor") as Node3D
@@ -351,6 +354,13 @@ func _brighten_showroom_lighting() -> void:
 		SHOWROOM_SIDE_LIGHT_ENERGY,
 		7.4
 	)
+	showroom_preview_bulb = _ensure_showroom_omni_light(
+		"BrightPreviewBulb",
+		Vector3(0.0, 5.35, 3.25),
+		Color(1.0, 0.985, 0.94, 1.0),
+		SHOWROOM_PREVIEW_BULB_LIGHT_ENERGY,
+		8.5
+	)
 
 	_ensure_showroom_spotlight(
 		"LeftMarbleSpotlight",
@@ -374,14 +384,16 @@ func _brighten_showroom_lighting() -> void:
 	)
 
 
-func _configure_showroom_environment(environment: Environment, ambient_color: Color = Color(1.0, 1.0, 1.0, 1.0), background_color: Color = Color(0.005, 0.008, 0.018, 1.0)) -> void:
+func _configure_showroom_environment(environment: Environment, ambient_color: Color = Color(0.86, 0.94, 1.0, 1.0), background_color: Color = Color(0.64, 0.84, 1.0, 1.0)) -> void:
 	if environment == null:
 		return
+	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = background_color
-	environment.background_energy_multiplier = maxf(environment.background_energy_multiplier, 0.68)
+	environment.background_energy_multiplier = maxf(environment.background_energy_multiplier, 1.8)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = ambient_color
 	environment.ambient_light_energy = SHOWROOM_AMBIENT_LIGHT_ENERGY
+	environment.reflected_light_source = 1
 	environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	environment.glow_enabled = false
 	environment.glow_intensity = 0.0
@@ -1103,7 +1115,7 @@ func _build_reference_showroom_ui() -> void:
 	left_modes.add_child(store_button)
 	store_button.add_child(_make_badge("3", Vector2(86.0, -8.0)))
 
-	var left_plus: Button = _make_hex_plus_button()
+	var left_plus: Button = _make_hex_plus_button("<")
 	left_plus.anchor_left = 0.28
 	left_plus.anchor_top = 0.48
 	left_plus.anchor_right = 0.28
@@ -1115,7 +1127,7 @@ func _build_reference_showroom_ui() -> void:
 	left_plus.pressed.connect(_on_prev_marble_pressed)
 	root.add_child(left_plus)
 
-	var right_plus: Button = _make_hex_plus_button()
+	var right_plus: Button = _make_hex_plus_button(">")
 	right_plus.anchor_left = 0.74
 	right_plus.anchor_top = 0.48
 	right_plus.anchor_right = 0.74
@@ -1926,8 +1938,8 @@ func _style_mode_button(button: Button, selected: bool) -> void:
 	button.modulate = Color(1.0, 1.0, 1.0, 1.0) if selected else Color(0.76, 0.78, 0.92, 0.9)
 
 
-func _make_hex_plus_button() -> Button:
-	var button: Button = _make_reference_button("+", Vector2(72, 72), Color(0.16, 0.2, 0.5, 0.28), Color(0.68, 0.78, 1.0, 0.95), 18)
+func _make_hex_plus_button(label_text: String = "+") -> Button:
+	var button: Button = _make_reference_button(label_text, Vector2(72, 72), Color(0.16, 0.2, 0.5, 0.28), Color(0.68, 0.78, 1.0, 0.95), 18)
 	button.add_theme_font_size_override("font_size", 42)
 	button.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 1.0))
 	return button
@@ -3142,7 +3154,7 @@ func _apply_showroom_field_theme(field_preset: Dictionary) -> void:
 	if theme.is_empty():
 		return
 
-	var themed_background: Color = theme.get("showroom_bg", Color(0.005, 0.008, 0.018, 1.0))
+	var themed_background: Color = theme.get("showroom_bg", theme.get("sky_horizon", Color(0.64, 0.84, 1.0, 1.0))).lightened(0.12)
 	var use_field_lighting: bool = showroom_mode == SHOWROOM_MODE_FIELDS
 	var themed_ambient: Color = theme.get("showroom_ambient", Color(0.74, 0.84, 1.0, 1.0)).lightened(0.12) if use_field_lighting else Color(1.0, 1.0, 1.0, 1.0)
 	if room_environment != null:

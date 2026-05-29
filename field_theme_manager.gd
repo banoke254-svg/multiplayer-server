@@ -34,7 +34,7 @@ func _apply_ground_theme(theme: Dictionary) -> void:
 	var fairway_dark: Color = theme.get("fairway_dark", Color(0.24, 0.46, 0.25, 1.0))
 	var dry_patch: Color = theme.get("dry_patch", Color(0.47, 0.58, 0.39, 1.0))
 
-	for mesh_name in ["GroundNorth", "GroundSouth", "GroundLeft", "GroundRight"]:
+	for mesh_name in ["GroundNorth", "GroundSouth", "GroundSouth2", "GroundSouth3", "GroundLeft", "GroundRight"]:
 		var mesh_instance: MeshInstance3D = ground.get_node_or_null(mesh_name) as MeshInstance3D
 		if mesh_instance == null:
 			continue

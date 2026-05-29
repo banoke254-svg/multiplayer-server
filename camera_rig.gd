@@ -53,7 +53,7 @@ func _ready() -> void:
 	top_level = true
 	slider = get_node_or_null("/root/Main/UI/CameraControlUI/CameraSlider") as HSlider
 	if slider == null:
-		var current_scene: Node = get_tree().current_scene
+		var current_scene: Node = _get_current_scene_safe()
 		if current_scene != null:
 			slider = current_scene.get_node_or_null("UI/CameraControlUI/CameraSlider") as HSlider
 	follow_camera = get_node_or_null("FollowCamera") as Camera3D
@@ -68,6 +68,15 @@ func _ready() -> void:
 
 	if follow_camera:
 		follow_camera.fov = default_fov
+
+
+func _get_current_scene_safe() -> Node:
+	if not is_inside_tree():
+		return null
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return null
+	return tree.current_scene
 
 
 func begin_turn_transition(from_camera: Camera3D = null) -> void:

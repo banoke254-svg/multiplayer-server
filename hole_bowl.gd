@@ -46,6 +46,7 @@ extends StaticBody3D
 		blend_ring_outer_padding = max(value, 0.2)
 		_rebuild_hole()
 @export var trap_force: float = 3.5
+@export var trap_center_pull_force: float = 1.15
 @export var trapped_linear_damp: float = 1.35
 @export var trapped_angular_damp: float = 1.1
 @export var max_trapped_upward_velocity: float = 0.8
@@ -159,9 +160,11 @@ var bowl_mesh_instance: MeshInstance3D
 var aperture_mesh_instance: MeshInstance3D
 var side_shell_mesh_instance: MeshInstance3D
 var field_skirt_mesh_instance: MeshInstance3D
+var attack_level_mesh_instance: MeshInstance3D
 var bowl_collision: CollisionShape3D
 var bottom_stop_collision: CollisionShape3D
 var field_skirt_collision: CollisionShape3D
+var attack_level_collision: CollisionShape3D
 var seam_guard_root: Node3D
 var floor_support_root: Node3D
 var side_shell_collision_root: Node3D
@@ -169,6 +172,7 @@ var trap_area: Area3D
 var trap_collision: CollisionShape3D
 var trapped_bodies: Array[RigidBody3D] = []
 var body_damp_restore := {}
+var attack_exit_level_active: bool = false
 
 
 func _enter_tree() -> void:
@@ -185,6 +189,10 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if attack_exit_level_active:
+		_release_trapped_bodies_for_attack_exit()
+		return
+
 	if trapped_bodies.is_empty():
 		return
 
@@ -210,7 +218,11 @@ func _physics_process(delta: float) -> void:
 			local_position = to_local(body.global_position)
 
 		var trap_scale: float = pocket_exit_trap_force_scale if exiting_pocket else 1.0
-		body.apply_central_force(Vector3.DOWN * trap_force * trap_scale * body.mass)
+		var center_pull: Vector3 = Vector3.ZERO
+		if not exiting_pocket and planar_distance > 0.02:
+			var center_direction_local := Vector3(-local_position.x, 0.0, -local_position.z).normalized()
+			center_pull = (global_transform.basis * center_direction_local).normalized() * trap_center_pull_force
+		body.apply_central_force((Vector3.DOWN * trap_force * trap_scale + center_pull) * body.mass)
 
 		var upward_velocity_limit: float = pocket_exit_upward_velocity_limit if exiting_pocket else max_trapped_upward_velocity
 		if body.linear_velocity.y > upward_velocity_limit and local_position.y < -depth * 0.3:
@@ -248,6 +260,13 @@ func _ensure_core_nodes() -> void:
 		field_skirt_mesh_instance.name = "FieldSkirt"
 		add_child(field_skirt_mesh_instance)
 
+	attack_level_mesh_instance = get_node_or_null("AttackLevelFill") as MeshInstance3D
+	if attack_level_mesh_instance == null:
+		attack_level_mesh_instance = MeshInstance3D.new()
+		attack_level_mesh_instance.name = "AttackLevelFill"
+		attack_level_mesh_instance.visible = false
+		add_child(attack_level_mesh_instance)
+
 	bowl_collision = get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if bowl_collision == null:
 		bowl_collision = CollisionShape3D.new()
@@ -265,6 +284,13 @@ func _ensure_core_nodes() -> void:
 		field_skirt_collision = CollisionShape3D.new()
 		field_skirt_collision.name = "FieldSkirtCollision"
 		add_child(field_skirt_collision)
+
+	attack_level_collision = get_node_or_null("AttackLevelCollision") as CollisionShape3D
+	if attack_level_collision == null:
+		attack_level_collision = CollisionShape3D.new()
+		attack_level_collision.name = "AttackLevelCollision"
+		attack_level_collision.disabled = true
+		add_child(attack_level_collision)
 
 	seam_guard_root = get_node_or_null("SeamGuards") as Node3D
 	if seam_guard_root == null:
@@ -331,6 +357,51 @@ func _rebuild_hole() -> void:
 	if not Engine.is_editor_hint():
 		_ensure_trap_area()
 		_update_trap_shape()
+	_update_attack_level_shape()
+
+
+func set_attack_exit_level_enabled(enabled: bool) -> void:
+	_ensure_core_nodes()
+	attack_exit_level_active = enabled
+	_update_attack_level_shape()
+	if attack_level_mesh_instance != null:
+		attack_level_mesh_instance.visible = enabled
+	if attack_level_collision != null:
+		attack_level_collision.disabled = not enabled
+	if trap_area != null:
+		trap_area.monitoring = not enabled
+	if enabled:
+		_release_trapped_bodies_for_attack_exit()
+
+
+func _update_attack_level_shape() -> void:
+	if attack_level_mesh_instance == null or attack_level_collision == null:
+		return
+
+	var fill_radius: float = maxf(outer_radius * 0.98, entry_radius + 0.12)
+	var fill_height: float = 0.08
+
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = fill_radius
+	mesh.bottom_radius = fill_radius
+	mesh.height = 0.035
+	mesh.radial_segments = max(radial_segments, 24)
+	attack_level_mesh_instance.mesh = mesh
+	attack_level_mesh_instance.material_override = _create_field_skirt_material()
+	attack_level_mesh_instance.position = Vector3(0.0, 0.0, 0.0)
+
+	var shape := CylinderShape3D.new()
+	shape.radius = fill_radius
+	shape.height = fill_height
+	attack_level_collision.shape = shape
+	attack_level_collision.position = Vector3(0.0, -fill_height * 0.5, 0.0)
+
+
+func _release_trapped_bodies_for_attack_exit() -> void:
+	for body in trapped_bodies.duplicate():
+		if is_instance_valid(body):
+			_restore_body_damp(body)
+	trapped_bodies.clear()
 
 
 func _update_trap_shape() -> void:
@@ -746,6 +817,8 @@ func _create_bowl_physics_material() -> PhysicsMaterial:
 
 
 func _on_trap_body_entered(body: Node) -> void:
+	if attack_exit_level_active:
+		return
 	if not (body is RigidBody3D):
 		return
 

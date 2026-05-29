@@ -25,15 +25,9 @@ const DEFAULT_UNLOCKED_FIELD_IDS := [
 ]
 const HIDDEN_MARBLE_IDS := []
 const PREMIUM_IMPORTED_MARBLE_IDS := [
-	"aura_ball",
 	"environment_sphere",
-	"dragon_sphere",
 	"roblox_magic_sphere",
-	"glass_ball_ii",
-	"marble_ball",
 	"poke_ball",
-	"anatomical_eye_ball",
-	"plain_ball",
 	"rocket_league_ball",
 	"cannonbolt_ball",
 	"little_robot_ball",
@@ -299,35 +293,9 @@ var marble_presets: Dictionary = {
 			"emission_energy": 0.0
 		}
 	},
-	"aura_ball": {
-		"name": "Aura Ball",
-		"description": "Imported aura marble model with its original sci-fi textures.",
-		"type": "premium",
-		"pattern": "aura",
-		"colors": [Color(0.42, 0.96, 1.0, 1.0), Color(0.76, 0.88, 1.0, 1.0), Color(0.16, 0.28, 0.62, 1.0)],
-		"effects": {
-			"emission_enabled": false,
-			"emission_color": Color(0.38, 0.86, 1.0, 1.0),
-			"emission_energy": 0.0
-		},
-		"palette": {
-			"marble_type": "premium",
-			"pattern_name": "aura",
-			"marble_scene_path": "res://marbles/aura_ball_model.tscn",
-			"finish": "standard",
-			"shell_is_solid": true,
-			"shell_base_color": Color(0.18, 0.28, 0.52, 0.96),
-			"shell_swirl_orange": Color(0.42, 0.96, 1.0, 1.0),
-			"shell_swirl_green": Color(0.76, 0.88, 1.0, 1.0),
-			"shell_swirl_blue": Color(0.16, 0.28, 0.62, 1.0),
-			"emission_enabled": false,
-			"emission_color": Color(0.38, 0.86, 1.0, 1.0),
-			"emission_energy": 0.0
-		}
-	},
 	"environment_sphere": {
-		"name": "Environment Sphere",
-		"description": "Imported environment sphere marble model added to the collection.",
+		"name": "Magic World Marble",
+		"description": "Magic world marble.",
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.50, 0.84, 1.0, 1.0), Color(0.88, 0.96, 1.0, 1.0), Color(0.18, 0.26, 0.44, 1.0)],
@@ -351,35 +319,9 @@ var marble_presets: Dictionary = {
 			"emission_energy": 0.0
 		}
 	},
-	"dragon_sphere": {
-		"name": "Dragon Sphere",
-		"description": "Imported dragon sphere marble model added to the collection.",
-		"type": "premium",
-		"pattern": "glass",
-		"colors": [Color(1.0, 0.62, 0.20, 1.0), Color(0.96, 0.88, 0.46, 1.0), Color(0.34, 0.10, 0.06, 1.0)],
-		"effects": {
-			"emission_enabled": false,
-			"emission_color": Color(1.0, 0.62, 0.20, 1.0),
-			"emission_energy": 0.0
-		},
-		"palette": {
-			"marble_type": "premium",
-			"pattern_name": "glass",
-			"marble_scene_path": "res://marbles/dragon_sphere_model.tscn",
-			"finish": "standard",
-			"shell_is_solid": true,
-			"shell_base_color": Color(0.34, 0.10, 0.06, 0.96),
-			"shell_swirl_orange": Color(1.0, 0.62, 0.20, 1.0),
-			"shell_swirl_green": Color(0.96, 0.88, 0.46, 1.0),
-			"shell_swirl_blue": Color(0.34, 0.10, 0.06, 1.0),
-			"emission_enabled": false,
-			"emission_color": Color(1.0, 0.62, 0.20, 1.0),
-			"emission_energy": 0.0
-		}
-	},
 	"roblox_magic_sphere": {
-		"name": "Roblox Magic Sphere",
-		"description": "Imported magic sphere marble model added to the collection.",
+		"name": "Aura Marble",
+		"description": "Aura marble.",
 		"type": "premium",
 		"pattern": "aura",
 		"colors": [Color(0.58, 0.42, 1.0, 1.0), Color(0.86, 0.96, 1.0, 1.0), Color(0.16, 0.12, 0.38, 1.0)],
@@ -403,61 +345,9 @@ var marble_presets: Dictionary = {
 			"emission_energy": 0.0
 		}
 	},
-	"glass_ball_ii": {
-		"name": "Glass Ball II",
-		"description": "Imported clear glass marble added to the collection.",
-		"type": "premium",
-		"pattern": "glass",
-		"colors": [Color(0.88, 0.96, 1.0, 1.0), Color(0.62, 0.82, 0.98, 1.0), Color(0.30, 0.48, 0.72, 1.0)],
-		"effects": {
-			"emission_enabled": false,
-			"emission_color": Color(0.72, 0.9, 1.0, 1.0),
-			"emission_energy": 0.0
-		},
-		"palette": {
-			"marble_type": "premium",
-			"pattern_name": "glass",
-			"marble_scene_path": "res://marbles/marble_glass_ball_ii.tscn",
-			"finish": "standard",
-			"shell_is_solid": true,
-			"shell_base_color": Color(0.80, 0.90, 1.0, 0.92),
-			"shell_swirl_orange": Color(0.88, 0.96, 1.0, 1.0),
-			"shell_swirl_green": Color(0.62, 0.82, 0.98, 1.0),
-			"shell_swirl_blue": Color(0.30, 0.48, 0.72, 1.0),
-			"emission_enabled": false,
-			"emission_color": Color(0.72, 0.9, 1.0, 1.0),
-			"emission_energy": 0.0
-		}
-	},
-	"marble_ball": {
-		"name": "Marble Ball",
-		"description": "Imported classic marble ball model added to the collection.",
-		"type": "premium",
-		"pattern": "glass",
-		"colors": [Color(0.90, 0.96, 1.0, 1.0), Color(0.58, 0.76, 0.98, 1.0), Color(0.24, 0.36, 0.62, 1.0)],
-		"effects": {
-			"emission_enabled": false,
-			"emission_color": Color(0.66, 0.86, 1.0, 1.0),
-			"emission_energy": 0.0
-		},
-		"palette": {
-			"marble_type": "premium",
-			"pattern_name": "glass",
-			"marble_scene_path": "res://marbles/marble_ball_model.tscn",
-			"finish": "standard",
-			"shell_is_solid": true,
-			"shell_base_color": Color(0.86, 0.93, 1.0, 0.92),
-			"shell_swirl_orange": Color(0.90, 0.96, 1.0, 1.0),
-			"shell_swirl_green": Color(0.58, 0.76, 0.98, 1.0),
-			"shell_swirl_blue": Color(0.24, 0.36, 0.62, 1.0),
-			"emission_enabled": false,
-			"emission_color": Color(0.66, 0.86, 1.0, 1.0),
-			"emission_energy": 0.0
-		}
-	},
 	"poke_ball": {
-		"name": "Poke Ball",
-		"description": "Imported poke-ball style marble model added to the collection.",
+		"name": "Poki Ball Marble",
+		"description": "Poki ball marble.",
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.96, 0.22, 0.20, 1.0), Color(0.98, 0.98, 0.98, 1.0), Color(0.18, 0.18, 0.20, 1.0)],
@@ -481,57 +371,9 @@ var marble_presets: Dictionary = {
 			"emission_energy": 0.0
 		}
 	},
-	"anatomical_eye_ball": {
-		"name": "Eye Ball",
-		"description": "Imported anatomical eye-ball marble with its original textures.",
-		"type": "premium",
-		"pattern": "glass",
-		"colors": [Color(0.92, 0.92, 0.88, 1.0), Color(0.50, 0.18, 0.12, 1.0), Color(0.10, 0.08, 0.06, 1.0)],
-		"effects": {
-			"emission_enabled": false,
-			"emission_color": Color(1.0, 1.0, 1.0, 1.0),
-			"emission_energy": 0.0
-		},
-		"palette": {
-			"marble_type": "premium",
-			"pattern_name": "glass",
-			"marble_scene_path": "res://marbles/anatomical_eye_ball_model.tscn",
-			"finish": "standard",
-			"shell_is_solid": true,
-			"shell_base_color": Color(0.92, 0.92, 0.88, 0.96),
-			"shell_swirl_orange": Color(0.92, 0.92, 0.88, 1.0),
-			"shell_swirl_green": Color(0.50, 0.18, 0.12, 1.0),
-			"shell_swirl_blue": Color(0.10, 0.08, 0.06, 1.0),
-			"emission_enabled": false,
-			"emission_color": Color(1.0, 1.0, 1.0, 1.0),
-			"emission_energy": 0.0
-		}
-	},
-	"plain_ball": {
-		"name": "Plain Ball",
-		"description": "Imported simple ball model added to the collection.",
-		"type": "premium",
-		"pattern": "glass",
-		"colors": [Color(0.9, 0.9, 0.9, 1.0), Color(0.6, 0.6, 0.6, 1.0), Color(0.2, 0.2, 0.2, 1.0)],
-		"effects": {"emission_enabled": false, "emission_color": Color(1, 1, 1, 1), "emission_energy": 0.0},
-		"palette": {
-			"marble_type": "premium",
-			"pattern_name": "glass",
-			"marble_scene_path": "res://marbles/plain_ball_model.tscn",
-			"finish": "standard",
-			"shell_is_solid": true,
-			"shell_base_color": Color(0.9, 0.9, 0.9, 0.96),
-			"shell_swirl_orange": Color(0.9, 0.9, 0.9, 1.0),
-			"shell_swirl_green": Color(0.6, 0.6, 0.6, 1.0),
-			"shell_swirl_blue": Color(0.2, 0.2, 0.2, 1.0),
-			"emission_enabled": false,
-			"emission_color": Color(1, 1, 1, 1),
-			"emission_energy": 0.0
-		}
-	},
 	"rocket_league_ball": {
-		"name": "Rocket League Ball",
-		"description": "Imported Rocket League-style ball with its original textures.",
+		"name": "Rocket Ball Marble",
+		"description": "Rocket ball marble.",
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.86, 0.86, 0.86, 1.0), Color(0.22, 0.22, 0.22, 1.0), Color(0.06, 0.06, 0.06, 1.0)],
@@ -552,8 +394,8 @@ var marble_presets: Dictionary = {
 		}
 	},
 	"cannonbolt_ball": {
-		"name": "Cannonbolt Ball",
-		"description": "Imported Ben 10 Cannonbolt ball model added to the collection.",
+		"name": "Cannonbolt Marble",
+		"description": "Cannonbolt marble.",
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.96, 0.96, 0.84, 1.0), Color(0.42, 0.26, 0.16, 1.0), Color(0.12, 0.10, 0.08, 1.0)],
@@ -574,8 +416,8 @@ var marble_presets: Dictionary = {
 		}
 	},
 	"little_robot_ball": {
-		"name": "Little Robot Ball",
-		"description": "Imported robot ball with its original detailed textures.",
+		"name": "Robot Marble",
+		"description": "Robot marble.",
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.86, 0.9, 0.94, 1.0), Color(0.42, 0.52, 0.64, 1.0), Color(0.12, 0.14, 0.18, 1.0)],
@@ -596,8 +438,8 @@ var marble_presets: Dictionary = {
 		}
 	},
 	"pool_ball": {
-		"name": "Pool Ball",
-		"description": "Imported pool ball model added to the collection.",
+		"name": "8 Ball Marble",
+		"description": "8 ball marble.",
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.98, 0.94, 0.82, 1.0), Color(0.18, 0.18, 0.22, 1.0), Color(0.04, 0.04, 0.06, 1.0)],
@@ -618,8 +460,8 @@ var marble_presets: Dictionary = {
 		}
 	},
 	"rainbow_galaxy_ball": {
-		"name": "Rainbow Galaxy Ball",
-		"description": "Imported nebula marble with galaxy textures.",
+		"name": "Aurora Marble",
+		"description": "Aurora marble.",
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.94, 0.86, 1.0, 1.0), Color(0.36, 0.62, 1.0, 1.0), Color(0.14, 0.08, 0.24, 1.0)],
@@ -789,10 +631,10 @@ var field_presets: Dictionary = {
 			"lake_shallow": Color(0.08, 0.34, 0.42, 1.0),
 			"lake_deep": Color(0.03, 0.12, 0.18, 1.0),
 			"lake_foam": Color(0.78, 0.94, 1.0, 1.0),
-			"showroom_bg": Color(0.005, 0.008, 0.018, 1.0),
-			"showroom_ambient": Color(0.68, 0.76, 0.94, 1.0),
-			"showroom_light": Color(0.56, 0.78, 1.0, 1.0),
-			"showroom_rim": Color(0.76, 0.90, 1.0, 1.0),
+			"showroom_bg": Color(0.64, 0.84, 1.0, 1.0),
+			"showroom_ambient": Color(0.82, 0.92, 1.0, 1.0),
+			"showroom_light": Color(0.72, 0.9, 1.0, 1.0),
+			"showroom_rim": Color(0.86, 0.96, 1.0, 1.0),
 			"showroom_platform": Color(0.05, 0.12, 0.16, 1.0)
 		}
 	}

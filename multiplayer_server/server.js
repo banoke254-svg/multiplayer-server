@@ -55,6 +55,8 @@ const AUTHORITY_STATE_MESSAGES = new Set([
   'scoreboard',
   'remote_turn_started',
   'broadcast_remote_player_aim',
+  'marble_eliminated',
+  'player_disqualified',
   'match_finished'
 ]);
 

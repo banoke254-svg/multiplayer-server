@@ -2,6 +2,7 @@ extends Control
 
 @export_file("*.tscn") var main_scene_path: String = "res://main.tscn"
 @export_file("*.tscn") var customize_scene_path: String = "res://customize_room.tscn"
+@export_file("*.tscn") var gameplay_video_scene_path: String = "res://gameplay_video.tscn"
 @export var donate_url: String = ""
 const BACKGROUND_PATH: String = "res://ui/bano_start_background.png"
 const MENU_LOGO_PATH: String = "res://ui/bano_header_wordmark.png"
@@ -290,6 +291,7 @@ var credits_button: Button
 var settings_button: Button
 var quit_button: Button
 var donate_button: Button
+var gameplay_video_button: Button
 var events_button: Button
 var event_badge_panel: Panel
 var event_badge_label: Label
@@ -864,7 +866,7 @@ func _setup_ui() -> void:
 
 
 	if play_button == null:
-		play_button = _create_menu_button("PlayButton", "PLAY")
+		play_button = _create_menu_button("PlayButton", "OFFLINE")
 		content_box.add_child(play_button)
 
 	if host_lan_button == null:
@@ -899,9 +901,29 @@ func _setup_ui() -> void:
 		quit_button = _create_menu_button("QuitButton", "QUIT")
 		content_box.add_child(quit_button)
 
+	_ensure_gameplay_video_button()
 	_ensure_donate_button()
 	_ensure_header_labels()
 	_normalize_menu_layout()
+
+
+func _ensure_gameplay_video_button() -> void:
+	gameplay_video_button = get_node_or_null("GameplayVideoButton") as Button
+	if gameplay_video_button == null:
+		gameplay_video_button = Button.new()
+		gameplay_video_button.name = "GameplayVideoButton"
+		add_child(gameplay_video_button)
+
+	gameplay_video_button.text = "VIDEO"
+	gameplay_video_button.tooltip_text = "Watch the gameplay guide"
+	gameplay_video_button.focus_mode = Control.FOCUS_NONE
+	gameplay_video_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	gameplay_video_button.offset_left = 18.0
+	gameplay_video_button.offset_top = 14.0
+	gameplay_video_button.offset_right = 184.0
+	gameplay_video_button.offset_bottom = 66.0
+	gameplay_video_button.custom_minimum_size = Vector2(166.0, 52.0)
+	gameplay_video_button.z_index = 90
 
 
 func _ensure_donate_button() -> void:
@@ -1055,7 +1077,7 @@ func _normalize_menu_layout() -> void:
 	content_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	content_box.add_theme_constant_override("separation", 7)
 
-	play_button.text = "PLAY"
+	play_button.text = "OFFLINE"
 	host_lan_button.text = "ONLINE"
 	host_lan_button.show()
 	join_lan_button.text = "JOIN ONLINE"
@@ -1144,6 +1166,7 @@ func _style_buttons() -> void:
 	_apply_standard_menu_button_style(settings_button, Color(0.72, 0.8, 0.92, 1.0))
 	_apply_standard_menu_button_style(quit_button, Color(1.0, 0.35, 0.32, 1.0))
 	_apply_standard_menu_button_style(tutorial_button, Color(0.72, 0.36, 1.0, 1.0))
+	_style_gameplay_video_button()
 	_style_donate_button()
 	_style_events_button()
 
@@ -1176,6 +1199,22 @@ func _style_donate_button() -> void:
 	donate_button.add_theme_stylebox_override("normal", _make_settings_control_style(Color(0.035, 0.02, 0.055, 0.72), Color(1.0, 0.74, 0.24, 0.9), 12))
 	donate_button.add_theme_stylebox_override("hover", _make_settings_control_style(Color(0.07, 0.04, 0.1, 0.88), Color(1.0, 0.9, 0.48, 1.0), 12))
 	donate_button.add_theme_stylebox_override("pressed", _make_settings_control_style(Color(0.02, 0.01, 0.035, 0.96), Color(0.9, 0.58, 0.14, 1.0), 12))
+
+
+func _style_gameplay_video_button() -> void:
+	if gameplay_video_button == null:
+		return
+	gameplay_video_button.flat = false
+	gameplay_video_button.add_theme_font_override("font", ui_font)
+	gameplay_video_button.add_theme_font_size_override("font_size", 16)
+	gameplay_video_button.add_theme_color_override("font_color", Color(0.98, 0.98, 1.0, 1.0))
+	gameplay_video_button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+	gameplay_video_button.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.65))
+	gameplay_video_button.add_theme_constant_override("shadow_offset_y", 1)
+	gameplay_video_button.add_theme_constant_override("shadow_outline_size", 2)
+	gameplay_video_button.add_theme_stylebox_override("normal", _make_settings_control_style(Color(0.02, 0.035, 0.055, 0.72), Color(0.31, 0.97, 0.85, 0.9), 12))
+	gameplay_video_button.add_theme_stylebox_override("hover", _make_settings_control_style(Color(0.04, 0.07, 0.1, 0.88), Color(0.52, 1.0, 0.93, 1.0), 12))
+	gameplay_video_button.add_theme_stylebox_override("pressed", _make_settings_control_style(Color(0.01, 0.02, 0.035, 0.96), Color(0.2, 0.82, 0.74, 1.0), 12))
 
 
 func _style_events_button() -> void:
@@ -1365,6 +1404,9 @@ func _bind_buttons():
 	if donate_button and not donate_button.pressed.is_connected(_on_donate_pressed):
 		donate_button.pressed.connect(_on_donate_pressed)
 
+	if gameplay_video_button and not gameplay_video_button.pressed.is_connected(_on_gameplay_video_pressed):
+		gameplay_video_button.pressed.connect(_on_gameplay_video_pressed)
+
 	if events_button and not events_button.pressed.is_connected(_on_events_pressed):
 		events_button.pressed.connect(_on_events_pressed)
 
@@ -1377,6 +1419,14 @@ func _bind_buttons():
 
 func _on_donate_pressed() -> void:
 	_show_payment_popup()
+
+
+func _on_gameplay_video_pressed() -> void:
+	if gameplay_video_scene_path != "" and ResourceLoader.exists(gameplay_video_scene_path):
+		_stop_menu_music_for_gameplay()
+		get_tree().change_scene_to_file(gameplay_video_scene_path)
+	else:
+		push_error("Gameplay video scene not found at: %s" % gameplay_video_scene_path)
 
 
 func _on_events_pressed() -> void:
@@ -5756,8 +5806,8 @@ func _rebuild_settings_popup_contents() -> void:
 
 	var panel: Panel = Panel.new()
 	panel.name = "SettingsPanel"
-	panel.custom_minimum_size = Vector2(960, 500)
-	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	panel.custom_minimum_size = Vector2(0, 0)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", _make_settings_outer_panel_style())
 	page.add_child(panel)
@@ -5770,9 +5820,17 @@ func _rebuild_settings_popup_contents() -> void:
 	panel_margin.add_theme_constant_override("margin_bottom", 22)
 	panel.add_child(panel_margin)
 
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel_margin.add_child(scroll)
+
 	var rows: VBoxContainer = VBoxContainer.new()
 	rows.add_theme_constant_override("separation", 14)
-	panel_margin.add_child(rows)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(rows)
 
 	master_slider = _create_volume_slider("MasterSlider")
 	rows.add_child(_create_settings_slider_row("MASTER VOLUME", "🔊", master_slider))
@@ -6759,6 +6817,8 @@ func _show_online_rooms_page() -> void:
 		return
 	if glass_panel:
 		glass_panel.hide()
+	if gameplay_video_button:
+		gameplay_video_button.hide()
 	if donate_button:
 		donate_button.hide()
 	if events_button:
@@ -8535,6 +8595,8 @@ func _bind_online_signals() -> void:
 		online.connected_to_server.connect(_on_online_connected)
 	if online.has_signal("connection_status_changed") and not online.connection_status_changed.is_connected(_on_online_status_changed):
 		online.connection_status_changed.connect(_on_online_status_changed)
+	if online.has_signal("reconnecting") and not online.reconnecting.is_connected(_on_online_reconnecting):
+		online.reconnecting.connect(_on_online_reconnecting)
 	if online.has_signal("connection_failed") and not online.connection_failed.is_connected(_on_online_connection_failed):
 		online.connection_failed.connect(_on_online_connection_failed)
 	if online.has_signal("rooms_updated") and not online.rooms_updated.is_connected(_on_online_rooms_updated):
@@ -8581,6 +8643,13 @@ func _on_online_connected(_client_id: String) -> void:
 func _on_online_status_changed(message: String) -> void:
 	if online_status_label != null and online_rooms_page != null and online_rooms_page.visible:
 		online_status_label.text = message
+
+
+func _on_online_reconnecting(attempt: int, delay_seconds: float) -> void:
+	if online_status_label != null:
+		online_status_label.text = "Connection dropped. Reconnecting %d in %.1f seconds..." % [attempt, delay_seconds]
+	if online_rooms_page != null and not online_rooms_page.visible:
+		_show_online_rooms_page()
 
 
 func _on_online_connection_failed(message: String) -> void:
@@ -8944,6 +9013,8 @@ func _on_online_game_started(_players: Array, _ai_count: int) -> void:
 
 
 func _on_online_disconnected() -> void:
+	if online_status_label != null:
+		online_status_label.text = "Disconnected. Reconnecting if the room is still available..."
 	online_latest_rooms.clear()
 	online_latest_players.clear()
 	online_chat_history.clear()
@@ -9163,10 +9234,12 @@ func _on_customize_pressed() -> void:
 
 	_init_customize_controls()
 	if customize_popup:
-		if glass_panel:
-			glass_panel.hide()
-		if donate_button:
-			donate_button.hide()
+	if glass_panel:
+		glass_panel.hide()
+	if gameplay_video_button:
+		gameplay_video_button.hide()
+	if donate_button:
+		donate_button.hide()
 		if events_button:
 			events_button.hide()
 		if background:
@@ -9239,6 +9312,8 @@ func _hide_online_rooms_page() -> void:
 	online_latest_rooms.clear()
 	if glass_panel:
 		glass_panel.show()
+	if gameplay_video_button:
+		gameplay_video_button.show()
 	if donate_button:
 		donate_button.show()
 	if events_button:
@@ -9259,6 +9334,8 @@ func _hide_customize_popup() -> void:
 		customize_popup.hide()
 	if glass_panel:
 		glass_panel.show()
+	if gameplay_video_button:
+		gameplay_video_button.show()
 	if donate_button:
 		donate_button.show()
 	if events_button:
@@ -9295,6 +9372,8 @@ func _hide_menu_popups() -> void:
 		customize_popup.hide()
 	if glass_panel:
 		glass_panel.show()
+	if gameplay_video_button:
+		gameplay_video_button.show()
 	if donate_button:
 		donate_button.show()
 	if events_button:

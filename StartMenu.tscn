@@ -89,7 +89,7 @@ vertical_alignment = 1
 
 [node name="PlayButton" type="Button" parent="Background2/Center/GlassPanel/Content/VBox" unique_id=1223516932]
 layout_mode = 2
-text = "PLAY"
+text = "OFFLINE"
 
 [node name="RulesButton" type="Button" parent="Background2/Center/GlassPanel/Content/VBox" unique_id=1110335658]
 layout_mode = 2
