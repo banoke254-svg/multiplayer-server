@@ -8,20 +8,24 @@ const GALAXY_MODEL_PATH: String = "res://extracted_minecraft_java_editions_stars
 const MENU_SCENE_FALLBACKS: PackedStringArray = ["res://Start_Menu.tscn", "res://StartMenu.tscn"]
 const GLASS_BUTTON_EFFECTS = preload("res://glass_button_effects.gd")
 const SHOWROOM_HALO_SHADER: Shader = preload("res://shaders/showroom_halo.gdshader")
+const GPU_TRAIL_SCRIPT: Script = preload("res://addons/GPUTrail/GPUTrail3D.gd")
 const SHOWROOM_MENU_LOGO_PATH: String = "res://ui/bano_header_wordmark.png"
 const SHOWROOM_BACKGROUND_TEXTURE_PATH: String = "res://showroom/showroom_neon_background.png"
 const SHOWROOM_MODE_MARBLES: String = "marbles"
 const SHOWROOM_MODE_TRAILS: String = "trails"
+const SHOWROOM_MODE_BANNERS: String = "banners"
 const SHOWROOM_MODE_FIELDS: String = "fields"
 const SHOWROOM_FIXED_DECOR_MARBLES_ENABLED: bool = false
 
 var customization: Node
 var marble_ids: PackedStringArray = PackedStringArray()
 var trail_ids: PackedStringArray = PackedStringArray()
+var banner_ids: PackedStringArray = PackedStringArray()
 var field_ids: PackedStringArray = PackedStringArray()
 var root: Control
 var selected_marble_id: String = ""
 var selected_trail_id: String = ""
+var selected_banner_id: String = ""
 var selected_field_id: String = ""
 var displayed_marble_id: String = ""
 
@@ -51,6 +55,7 @@ var gold_payment_status_label: Label
 var gold_payment_buy_button: Button
 var gold_payment_cancel_button: Button
 var gold_payment_http_request: HTTPRequest
+var ui_sound_player: AudioStreamPlayer
 var gold_payment_pending_invoice_id: String = ""
 var gold_payment_selected_amount: int = 10
 var gold_payment_selected_price: int = 100
@@ -60,19 +65,25 @@ var gold_payment_request_kind: String = ""
 var mode_buttons: Dictionary = {}
 var marble_frame_panel: Panel
 var trail_frame_panel: Panel
+var banner_frame_panel: Panel
 var field_frame_panel: Panel
 var marble_belt_scroll: ScrollContainer
 var trail_belt_scroll: ScrollContainer
+var banner_belt_scroll: ScrollContainer
 var field_belt_scroll: ScrollContainer
 var belt_row: HBoxContainer
 var trail_belt_row: HBoxContainer
+var banner_belt_row: HBoxContainer
 var field_belt_row: HBoxContainer
 var marble_buttons: Dictionary = {}
 var trail_buttons: Dictionary = {}
+var banner_buttons: Dictionary = {}
 var field_buttons: Dictionary = {}
 var preview_cache: Dictionary = {}
 var marble_pool: Dictionary = {}
 var trail_preview_cache: Dictionary = {}
+var gpu_trail_preview_resource_cache: Dictionary = {}
+var banner_preview_cache: Dictionary = {}
 var field_preview_cache: Dictionary = {}
 var galaxy_backdrop: Node3D
 var trail_preview_root: Node3D
@@ -98,6 +109,7 @@ var showroom_preview_bulb: OmniLight3D
 var status_message_timer: float = 0.0
 var marble_belt_target_scroll: float = 0.0
 var trail_belt_target_scroll: float = 0.0
+var banner_belt_target_scroll: float = 0.0
 var field_belt_target_scroll: float = 0.0
 var belt_drag_active: bool = false
 var belt_drag_last_position: Vector2 = Vector2.ZERO
@@ -113,7 +125,11 @@ const SHOWROOM_MARBLE_BASE_POSITION := Vector3(0, 0, 0)
 const SHOWROOM_MARBLE_SCALE: float = 2.0
 const SHOWROOM_FLOAT_AMPLITUDE: float = 0.11
 const SHOWROOM_ROTATION_SPEED: float = 0.18
-const SHOWROOM_TRAIL_OFFSET: Vector3 = Vector3(-1.2, -0.1, 0.0)
+const SHOWROOM_TRAIL_RADIUS: float = 0.48
+const SHOWROOM_TRAIL_VERTICAL_OFFSET: float = 0.06
+const SHOWROOM_TRAIL_SIM_SPEED: float = 1.35
+const SHOWROOM_TRAIL_SIM_SIDE_AMPLITUDE: float = 1.06
+const SHOWROOM_TRAIL_SIM_DEPTH_AMPLITUDE: float = 0.34
 const SHOWROOM_CAMERA_BASE_POSITION := Vector3(0.0, 3.8, 6.2)
 const SHOWROOM_FIELD_CAMERA_POSITION := Vector3(0.0, 7.1, 15.4)
 const SHOWROOM_FIELD_LOOK_TARGET := Vector3(0.0, 2.65, 0.9)
@@ -157,6 +173,7 @@ const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment and message cons
 const STORE_GOLD_POUCH_TEXTURE_PATH: String = "res://ui/store/gold_pouch.png"
 const STORE_GOLD_BOX_TEXTURE_PATH: String = "res://ui/store/gold_box.png"
 const STORE_GOLD_CHEST_TEXTURE_PATH: String = "res://ui/store/gold_chest.png"
+const PREMIUM_UI_SOUND_PATH: String = "res://audiomass-output.mp3"
 const GOLD_PACK_AMOUNT: int = 10
 const GOLD_PACK_PRICE_KES: int = 100
 const GOLD_PACK_MID_AMOUNT: int = 30
@@ -171,12 +188,14 @@ var showroom_target_rotation: Vector3 = Vector3.ZERO
 var showroom_target_scale: Vector3 = Vector3.ONE * SHOWROOM_MARBLE_SCALE
 var showroom_camera_target_position: Vector3 = SHOWROOM_CAMERA_BASE_POSITION
 var showroom_look_target_position: Vector3 = SHOWROOM_MARBLE_BASE_POSITION
+var showroom_trail_sim_time: float = 0.0
 
 
 func _ready() -> void:
 	customization = get_node_or_null("/root/CustomizationState")
 
 	_setup_3d()
+	_setup_ui_sounds()
 	_build_ui()
 	_load_marble_collection()
 	_refresh_display()
@@ -185,28 +204,59 @@ func _ready() -> void:
 	# GLASS_BUTTON_EFFECTS.apply_to_tree(self)
 
 
+func _setup_ui_sounds() -> void:
+	ui_sound_player = AudioStreamPlayer.new()
+	ui_sound_player.name = "PremiumUISound"
+	ui_sound_player.bus = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
+	ui_sound_player.stream = load(PREMIUM_UI_SOUND_PATH) as AudioStream
+	ui_sound_player.volume_db = -15.0
+	ui_sound_player.pitch_scale = 1.45
+	add_child(ui_sound_player)
+
+
+func _play_ui_sound(pitch: float = 1.45) -> void:
+	if ui_sound_player == null or ui_sound_player.stream == null:
+		return
+	ui_sound_player.stop()
+	ui_sound_player.pitch_scale = pitch
+	ui_sound_player.play()
+
+
 func _process(delta: float) -> void:
 	marble_float_time += delta
 	marble_spin_time += delta
 	status_message_timer = maxf(status_message_timer - delta, 0.0)
 	if display_marble != null and not showroom_transition_active:
-		showroom_target_position = _get_selected_slot_position()
+		if showroom_mode == SHOWROOM_MODE_TRAILS and trail_preview_root != null:
+			showroom_trail_sim_time += delta * SHOWROOM_TRAIL_SIM_SPEED
+			showroom_target_position = _get_showroom_trail_sim_position(showroom_trail_sim_time)
+		else:
+			showroom_target_position = _get_selected_slot_position()
 		showroom_target_rotation = _get_selected_slot_rotation()
 		showroom_target_scale = _get_selected_slot_scale()
 	_display_marble_smoothly(delta)
 	_update_decor_showroom_marbles()
 	_update_belt_scroll(delta, marble_belt_scroll, marble_belt_target_scroll)
 	_update_belt_scroll(delta, trail_belt_scroll, trail_belt_target_scroll)
+	_update_belt_scroll(delta, banner_belt_scroll, banner_belt_target_scroll)
 	_update_belt_scroll(delta, field_belt_scroll, field_belt_target_scroll)
 	_process_gold_payment_status_poll(delta)
 	if display_marble != null and trail_preview_root != null:
-		trail_preview_root.position = display_marble.position
+		_update_showroom_trail_preview(delta)
 	if preview_camera != null:
 		var camera_weight: float = clampf(delta * SHOWROOM_CAMERA_SMOOTH, 0.0, 1.0)
 		preview_camera.position = preview_camera.position.lerp(showroom_camera_target_position, camera_weight)
 		preview_camera.look_at_from_position(preview_camera.position, showroom_look_target_position, Vector3.UP)
 	if display_marble != null and not showroom_transition_active and not dragging:
-		display_marble.rotate_y(delta * SHOWROOM_ROTATION_SPEED)
+		if showroom_mode == SHOWROOM_MODE_TRAILS and trail_preview_root != null:
+			var roll_direction: Vector3 = _get_showroom_trail_sim_direction(showroom_trail_sim_time)
+			var roll_axis: Vector3 = roll_direction.cross(Vector3.UP).normalized()
+			if roll_axis.length_squared() <= 0.0001:
+				roll_axis = Vector3.RIGHT
+			display_marble.rotate(roll_axis, delta * 4.9)
+			display_marble.rotate_y(delta * SHOWROOM_ROTATION_SPEED * 0.45)
+		else:
+			display_marble.rotate_y(delta * SHOWROOM_ROTATION_SPEED)
 
 
 func _setup_3d() -> void:
@@ -490,6 +540,46 @@ func _get_selected_slot_rotation() -> Vector3:
 
 func _get_selected_slot_scale() -> Vector3:
 	return _get_default_marble_scale()
+
+
+func _get_showroom_trail_sim_position(time: float) -> Vector3:
+	var base: Vector3 = _get_selected_slot_position()
+	var side_axis: Vector3 = _get_showroom_trail_side_axis()
+	var depth_axis: Vector3 = _get_showroom_trail_depth_axis()
+	var side_offset: float = sin(time) * SHOWROOM_TRAIL_SIM_SIDE_AMPLITUDE
+	var depth_offset: float = sin(time * 2.0) * SHOWROOM_TRAIL_SIM_DEPTH_AMPLITUDE
+	var lift_offset: float = sin(time * 3.0) * 0.035
+	return base + side_axis * side_offset + depth_axis * depth_offset + Vector3.UP * lift_offset
+
+
+func _get_showroom_trail_sim_direction(time: float) -> Vector3:
+	var side_axis: Vector3 = _get_showroom_trail_side_axis()
+	var depth_axis: Vector3 = _get_showroom_trail_depth_axis()
+	var side_velocity: float = cos(time) * SHOWROOM_TRAIL_SIM_SIDE_AMPLITUDE
+	var depth_velocity: float = cos(time * 2.0) * SHOWROOM_TRAIL_SIM_DEPTH_AMPLITUDE * 2.0
+	var direction: Vector3 = side_axis * side_velocity + depth_axis * depth_velocity
+	direction.y = 0.0
+	if direction.length_squared() <= 0.0001:
+		return _get_showroom_trail_direction()
+	return direction.normalized()
+
+
+func _get_showroom_trail_side_axis() -> Vector3:
+	if preview_camera != null:
+		var axis: Vector3 = preview_camera.global_transform.basis.x
+		axis.y = 0.0
+		if axis.length_squared() > 0.0001:
+			return axis.normalized()
+	return Vector3.RIGHT
+
+
+func _get_showroom_trail_depth_axis() -> Vector3:
+	if preview_camera != null:
+		var axis: Vector3 = -preview_camera.global_transform.basis.z
+		axis.y = 0.0
+		if axis.length_squared() > 0.0001:
+			return axis.normalized()
+	return Vector3.FORWARD
 
 
 func _style_room_shell() -> void:
@@ -1107,11 +1197,19 @@ func _build_reference_showroom_ui() -> void:
 	root.add_child(left_modes)
 
 	var marbles_button: Button = _make_mode_rail_button("MARBLES", "O")
+	var trails_button: Button = _make_mode_rail_button("TRAILS", "T")
+	var banners_button: Button = _make_mode_rail_button("BANNERS", "B")
 	var store_button: Button = _make_mode_rail_button("STORE", "S")
 	mode_buttons[SHOWROOM_MODE_MARBLES] = marbles_button
+	mode_buttons[SHOWROOM_MODE_TRAILS] = trails_button
+	mode_buttons[SHOWROOM_MODE_BANNERS] = banners_button
 	marbles_button.pressed.connect(_on_showroom_mode_pressed.bind(SHOWROOM_MODE_MARBLES))
+	trails_button.pressed.connect(_on_showroom_mode_pressed.bind(SHOWROOM_MODE_TRAILS))
+	banners_button.pressed.connect(_on_showroom_mode_pressed.bind(SHOWROOM_MODE_BANNERS))
 	store_button.pressed.connect(_on_store_pressed)
 	left_modes.add_child(marbles_button)
+	left_modes.add_child(trails_button)
+	left_modes.add_child(banners_button)
 	left_modes.add_child(store_button)
 	store_button.add_child(_make_badge("3", Vector2(86.0, -8.0)))
 
@@ -1160,9 +1258,18 @@ func _build_reference_showroom_ui() -> void:
 	marble_belt_scroll = marble_shelf["scroll"] as ScrollContainer
 	belt_row = marble_shelf["row"] as HBoxContainer
 
-	trail_frame_panel = null
-	trail_belt_scroll = null
-	trail_belt_row = null
+	var trail_shelf: Dictionary = _create_showroom_shelf("Trails")
+	trail_frame_panel = trail_shelf["panel"] as Panel
+	trail_belt_scroll = trail_shelf["scroll"] as ScrollContainer
+	trail_belt_row = trail_shelf["row"] as HBoxContainer
+	trail_frame_panel.visible = false
+
+	var banner_shelf: Dictionary = _create_showroom_shelf("Name Tag Banners")
+	banner_frame_panel = banner_shelf["panel"] as Panel
+	banner_belt_scroll = banner_shelf["scroll"] as ScrollContainer
+	banner_belt_row = banner_shelf["row"] as HBoxContainer
+	banner_frame_panel.visible = false
+
 	field_frame_panel = null
 	field_belt_scroll = null
 	field_belt_row = null
@@ -2024,6 +2131,8 @@ func _load_marble_collection() -> void:
 	marble_ids = customization.call("get_marble_ids")
 	if customization.has_method("get_trail_ids"):
 		trail_ids = customization.call("get_trail_ids")
+	if customization.has_method("get_banner_ids"):
+		banner_ids = customization.call("get_banner_ids")
 	if customization.has_method("get_field_ids"):
 		field_ids = customization.call("get_field_ids")
 	var selected_property: Variant = customization.get("selected_marble_id")
@@ -2036,6 +2145,11 @@ func _load_marble_collection() -> void:
 		selected_trail_id = str(selected_trail_property)
 	else:
 		selected_trail_id = ""
+	var selected_banner_property: Variant = customization.get("selected_banner_id")
+	if selected_banner_property != null:
+		selected_banner_id = str(selected_banner_property)
+	else:
+		selected_banner_id = ""
 	var selected_field_property: Variant = customization.get("selected_field_id")
 	if selected_field_property != null:
 		selected_field_id = str(selected_field_property)
@@ -2045,6 +2159,8 @@ func _load_marble_collection() -> void:
 		selected_marble_id = marble_ids[0]
 	if selected_trail_id == "" and trail_ids.size() > 0:
 		selected_trail_id = trail_ids[0]
+	if selected_banner_id == "" and banner_ids.size() > 0:
+		selected_banner_id = banner_ids[0]
 	if selected_field_id == "" and field_ids.size() > 0:
 		selected_field_id = field_ids[0]
 
@@ -2064,6 +2180,15 @@ func _load_marble_collection() -> void:
 		trail_belt_row.add_child(trail_button)
 		trail_buttons[trail_id] = trail_button
 
+	for banner_id_variant in banner_ids:
+		if banner_belt_row == null:
+			break
+		var banner_id: String = str(banner_id_variant)
+		var banner_preset: Dictionary = customization.call("get_banner_preset", banner_id)
+		var banner_button: Button = _create_banner_belt_button(banner_id, banner_preset)
+		banner_belt_row.add_child(banner_button)
+		banner_buttons[banner_id] = banner_button
+
 	for field_id_variant in field_ids:
 		if field_belt_row == null:
 			break
@@ -2077,10 +2202,11 @@ func _load_marble_collection() -> void:
 func _refresh_display() -> void:
 	if customization == null or selected_marble_id == "":
 		return
-	showroom_mode = SHOWROOM_MODE_MARBLES
 
 	var preset: Dictionary = customization.call("get_marble_preset", selected_marble_id)
+	var banner_preset: Dictionary = customization.call("get_banner_preset", selected_banner_id) if customization.has_method("get_banner_preset") and selected_banner_id != "" else {}
 	var field_preset: Dictionary = customization.call("get_field_preset", selected_field_id) if customization.has_method("get_field_preset") and selected_field_id != "" else {}
+	var selected_trail_preset: Dictionary = customization.call("get_trail_preset", selected_trail_id) if customization.has_method("get_trail_preset") and selected_trail_id != "" else {}
 	_apply_showroom_field_theme(field_preset)
 	if showroom_decor_slots_dirty:
 		_rebuild_showroom_decor_slots()
@@ -2089,22 +2215,44 @@ func _refresh_display() -> void:
 		_clear_showroom_marble_preview()
 	else:
 		_transition_showroom_gallery_smooth(preset)
+		if showroom_mode == SHOWROOM_MODE_TRAILS:
+			_show_selected_trail_preview(selected_trail_preset)
+		elif trail_preview_root != null:
+			trail_preview_root.queue_free()
+			trail_preview_root = null
 		
 	_showroom_sync_panels()
 
 	var marble_name: String = str(preset.get("name", selected_marble_id))
 	var trail_name: String = selected_trail_id
 	var field_name: String = selected_field_id
-	if customization.has_method("get_trail_preset") and selected_trail_id != "":
-		var selected_trail_preset: Dictionary = customization.call("get_trail_preset", selected_trail_id)
+	var banner_name: String = str(banner_preset.get("name", selected_banner_id)) if not banner_preset.is_empty() else selected_banner_id
+	if not selected_trail_preset.is_empty():
 		trail_name = str(selected_trail_preset.get("name", selected_trail_id))
 	if not field_preset.is_empty():
 		field_name = str(field_preset.get("name", selected_field_id))
 	if title_label != null:
-		title_label.text = marble_name
+		match showroom_mode:
+			SHOWROOM_MODE_TRAILS:
+				title_label.text = trail_name
+			SHOWROOM_MODE_BANNERS:
+				title_label.text = banner_name
+			SHOWROOM_MODE_FIELDS:
+				title_label.text = field_name
+			_:
+				title_label.text = marble_name
 	var marble_description: String = str(preset.get("description", "Choose a marble from the belt below."))
 	var field_description: String = str(field_preset.get("description", "")) if not field_preset.is_empty() else ""
-	description_label.text = marble_description
+	var banner_description: String = str(banner_preset.get("description", "")) if not banner_preset.is_empty() else ""
+	match showroom_mode:
+		SHOWROOM_MODE_TRAILS:
+			description_label.text = "Choose the trail that follows your marble: %s." % trail_name
+		SHOWROOM_MODE_BANNERS:
+			description_label.text = banner_description
+		SHOWROOM_MODE_FIELDS:
+			description_label.text = field_description
+		_:
+			description_label.text = marble_description
 
 	var is_unlocked: bool = true
 	if customization.has_method("is_marble_unlocked"):
@@ -2112,6 +2260,9 @@ func _refresh_display() -> void:
 	var field_unlocked: bool = true
 	if customization.has_method("is_field_unlocked") and selected_field_id != "":
 		field_unlocked = bool(customization.call("is_field_unlocked", selected_field_id))
+	var banner_unlocked: bool = true
+	if customization.has_method("is_banner_unlocked") and selected_banner_id != "":
+		banner_unlocked = bool(customization.call("is_banner_unlocked", selected_banner_id))
 
 	var coin_balance: int = int(customization.call("get_coin_balance")) if customization.has_method("get_coin_balance") else 0
 	var gold_balance: int = int(customization.call("get_gold_balance")) if customization.has_method("get_gold_balance") else 0
@@ -2122,7 +2273,15 @@ func _refresh_display() -> void:
 	if gold_button != null:
 		gold_button.text = "G %s" % _format_showroom_amount(gold_balance)
 
-	if showroom_mode == SHOWROOM_MODE_FIELDS and not field_unlocked:
+	if showroom_mode == SHOWROOM_MODE_BANNERS and not banner_unlocked:
+		var banner_unlock_cost: int = int(customization.call("get_banner_unlock_cost", selected_banner_id)) if customization.has_method("get_banner_unlock_cost") else 0
+		var banner_unlock_currency: String = str(customization.call("get_banner_unlock_currency", selected_banner_id)) if customization.has_method("get_banner_unlock_currency") else "coins"
+		var banner_currency_name: String = str(customization.call("get_currency_display_name", banner_unlock_currency)) if customization.has_method("get_currency_display_name") else banner_unlock_currency.capitalize()
+		var can_unlock_banner: bool = customization.has_method("can_unlock_banner") and bool(customization.call("can_unlock_banner", selected_banner_id))
+		apply_button.text = "UNLOCK"
+		status_label.text = "Unlock banner for %d %s. Balance: %d S coins | %d Gold" % [banner_unlock_cost, banner_currency_name.to_lower(), coin_balance, gold_balance]
+		apply_button.disabled = not can_unlock_banner
+	elif showroom_mode == SHOWROOM_MODE_FIELDS and not field_unlocked:
 		var field_unlock_cost: int = int(customization.call("get_field_unlock_cost", selected_field_id)) if customization.has_method("get_field_unlock_cost") else 0
 		var field_unlock_currency: String = str(customization.call("get_field_unlock_currency", selected_field_id)) if customization.has_method("get_field_unlock_currency") else "coins"
 		var field_currency_name: String = str(customization.call("get_currency_display_name", field_unlock_currency)) if customization.has_method("get_currency_display_name") else field_unlock_currency.capitalize()
@@ -2130,7 +2289,7 @@ func _refresh_display() -> void:
 		apply_button.text = "UNLOCK"
 		status_label.text = "Unlock field for %d %s. Balance: %d S coins | %d Gold" % [field_unlock_cost, field_currency_name.to_lower(), coin_balance, gold_balance]
 		apply_button.disabled = not can_unlock_field
-	elif showroom_mode != SHOWROOM_MODE_FIELDS and not is_unlocked:
+	elif showroom_mode == SHOWROOM_MODE_MARBLES and not is_unlocked:
 		var unlock_cost: int = int(customization.call("get_marble_unlock_cost", selected_marble_id)) if customization.has_method("get_marble_unlock_cost") else 0
 		var unlock_currency: String = str(customization.call("get_marble_unlock_currency", selected_marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
 		var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
@@ -2139,7 +2298,15 @@ func _refresh_display() -> void:
 		status_label.text = "Unlock marble for %d %s. Balance: %d S coins | %d Gold" % [unlock_cost, currency_name.to_lower(), coin_balance, gold_balance]
 		apply_button.disabled = not can_unlock
 	else:
-		apply_button.text = "APPLY FIELD" if showroom_mode == SHOWROOM_MODE_FIELDS else "APPLY"
+		match showroom_mode:
+			SHOWROOM_MODE_FIELDS:
+				apply_button.text = "APPLY FIELD"
+			SHOWROOM_MODE_BANNERS:
+				apply_button.text = "APPLY BANNER"
+			SHOWROOM_MODE_TRAILS:
+				apply_button.text = "APPLY TRAIL"
+			_:
+				apply_button.text = "APPLY"
 		status_label.text = "Ready to equip. S coins: %d | Gold: %d" % [coin_balance, gold_balance]
 		apply_button.disabled = false
 
@@ -2163,6 +2330,16 @@ func _refresh_display() -> void:
 			continue
 		_style_belt_item_button(trail_button, str(trail_id) == selected_trail_id, false)
 
+	for banner_id in banner_buttons.keys():
+		var banner_button: Button = banner_buttons[banner_id] as Button
+		if banner_button == null:
+			continue
+		var banner_selected: bool = str(banner_id) == selected_banner_id
+		var banner_affordable: bool = true
+		if customization != null and customization.has_method("is_banner_unlocked") and not bool(customization.call("is_banner_unlocked", str(banner_id))):
+			banner_affordable = customization.has_method("can_unlock_banner") and bool(customization.call("can_unlock_banner", str(banner_id)))
+		_style_belt_item_button(banner_button, banner_selected, not banner_affordable)
+		_update_banner_belt_price_label(banner_button, str(banner_id))
 
 	for field_id in field_buttons.keys():
 		var field_button: Button = field_buttons[field_id] as Button
@@ -2263,7 +2440,7 @@ func _create_trail_belt_button(trail_id: String, preset: Dictionary) -> Button:
 	icon.texture = _get_trail_preview_texture(trail_id, preset)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(104, 26)
+	icon.custom_minimum_size = Vector2(104, 42)
 	box.add_child(icon)
 
 	var label: Label = Label.new()
@@ -2277,6 +2454,55 @@ func _create_trail_belt_button(trail_id: String, preset: Dictionary) -> Button:
 	button.pressed.connect(_on_trail_button_pressed.bind(trail_id))
 	return button
 
+
+
+func _create_banner_belt_button(banner_id: String, preset: Dictionary) -> Button:
+	var button: Button = Button.new()
+	button.custom_minimum_size = Vector2(154, 92)
+	button.clip_contents = true
+	button.focus_mode = Control.FOCUS_NONE
+	_style_belt_item_button(button, false, false)
+
+	var margin: MarginContainer = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	button.add_child(margin)
+
+	var box: VBoxContainer = VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 6)
+	margin.add_child(box)
+
+	var preview: Panel = Panel.new()
+	preview.custom_minimum_size = Vector2(116, 28)
+	preview.add_theme_stylebox_override("panel", _make_banner_preview_style(preset))
+	box.add_child(preview)
+
+	var label: Label = Label.new()
+	label.text = str(preset.get("name", banner_id))
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0, 1.0))
+	box.add_child(label)
+
+	if customization != null and customization.has_method("is_banner_unlocked") and not bool(customization.call("is_banner_unlocked", banner_id)):
+		var lock_label: Label = Label.new()
+		var unlock_cost: int = int(customization.call("get_banner_unlock_cost", banner_id)) if customization.has_method("get_banner_unlock_cost") else 0
+		var unlock_currency: String = str(customization.call("get_banner_unlock_currency", banner_id)) if customization.has_method("get_banner_unlock_currency") else "coins"
+		var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
+		lock_label.text = "%d %s" % [unlock_cost, currency_name.to_upper()]
+		lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lock_label.add_theme_font_size_override("font_size", 10)
+		lock_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.48, 0.98))
+		box.add_child(lock_label)
+		button.set_meta("price_label", lock_label)
+
+	button.pressed.connect(_on_banner_button_pressed.bind(banner_id))
+	return button
 
 
 func _create_field_belt_button(field_id: String, preset: Dictionary) -> Button:
@@ -2345,6 +2571,46 @@ func _update_marble_belt_price_label(button: Button, marble_id: String) -> void:
 	var unlock_currency: String = str(customization.call("get_marble_unlock_currency", marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
 	var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
 	price_label.text = "%d %s" % [unlock_cost, currency_name.to_upper()]
+
+
+func _update_banner_belt_price_label(button: Button, banner_id: String) -> void:
+	if button == null:
+		return
+	var price_label := button.get_meta("price_label", null) as Label
+	if price_label == null:
+		return
+	if customization == null or not customization.has_method("is_banner_unlocked"):
+		price_label.visible = false
+		return
+	var banner_locked: bool = not bool(customization.call("is_banner_unlocked", banner_id))
+	price_label.visible = banner_locked
+	if not banner_locked:
+		return
+	var unlock_cost: int = int(customization.call("get_banner_unlock_cost", banner_id)) if customization.has_method("get_banner_unlock_cost") else 0
+	var unlock_currency: String = str(customization.call("get_banner_unlock_currency", banner_id)) if customization.has_method("get_banner_unlock_currency") else "coins"
+	var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
+	price_label.text = "%d %s" % [unlock_cost, currency_name.to_upper()]
+
+
+func _make_banner_preview_style(preset: Dictionary) -> StyleBoxFlat:
+	var fill: Color = preset.get("fill", Color(0.02, 0.07, 0.10, 0.58))
+	var accent: Color = preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = accent
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	var shape := str(preset.get("shape", "banner"))
+	var radius := 6 if shape != "bubble" else 16
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	style.shadow_size = 10
+	style.shadow_color = Color(accent.r, accent.g, accent.b, 0.22)
+	return style
 
 
 func _style_belt_item_button(button: Button, selected: bool, locked: bool) -> void:
@@ -2437,14 +2703,23 @@ func _end_belt_drag() -> bool:
 func _on_belt_button_pressed(marble_id: String) -> void:
 	if Time.get_ticks_msec() < belt_drag_ignore_click_until_msec:
 		return
+	_play_ui_sound(1.42)
 	showroom_mode = SHOWROOM_MODE_MARBLES
 	selected_marble_id = marble_id
 	_refresh_display()
 
 
 func _on_trail_button_pressed(trail_id: String) -> void:
+	_play_ui_sound(1.5)
 	showroom_mode = SHOWROOM_MODE_TRAILS
 	selected_trail_id = trail_id
+	_refresh_display()
+
+
+func _on_banner_button_pressed(banner_id: String) -> void:
+	_play_ui_sound(1.58)
+	showroom_mode = SHOWROOM_MODE_BANNERS
+	selected_banner_id = banner_id
 	_refresh_display()
 
 
@@ -2455,6 +2730,7 @@ func _on_field_button_pressed(field_id: String) -> void:
 
 
 func _on_showroom_mode_pressed(mode_name: String) -> void:
+	_play_ui_sound(1.36)
 	showroom_mode = mode_name
 	_refresh_display()
 
@@ -2472,6 +2748,11 @@ func _on_prev_marble_pressed() -> void:
 				return
 			var trail_index: int = maxi(trail_ids.find(selected_trail_id), 0)
 			selected_trail_id = trail_ids[(trail_index - 1 + trail_ids.size()) % trail_ids.size()]
+		SHOWROOM_MODE_BANNERS:
+			if banner_ids.is_empty():
+				return
+			var banner_index: int = maxi(banner_ids.find(selected_banner_id), 0)
+			selected_banner_id = banner_ids[(banner_index - 1 + banner_ids.size()) % banner_ids.size()]
 		_:
 			if marble_ids.is_empty():
 				return
@@ -2493,6 +2774,11 @@ func _on_next_marble_pressed() -> void:
 				return
 			var trail_index: int = maxi(trail_ids.find(selected_trail_id), 0)
 			selected_trail_id = trail_ids[(trail_index + 1) % trail_ids.size()]
+		SHOWROOM_MODE_BANNERS:
+			if banner_ids.is_empty():
+				return
+			var banner_index: int = maxi(banner_ids.find(selected_banner_id), 0)
+			selected_banner_id = banner_ids[(banner_index + 1) % banner_ids.size()]
 		_:
 			if marble_ids.is_empty():
 				return
@@ -2503,6 +2789,32 @@ func _on_next_marble_pressed() -> void:
 
 func _on_apply_pressed() -> void:
 	if customization == null or selected_marble_id == "":
+		return
+	_play_ui_sound(1.72)
+
+	if showroom_mode == SHOWROOM_MODE_BANNERS:
+		if selected_banner_id != "" and customization.has_method("is_banner_unlocked") and not bool(customization.call("is_banner_unlocked", selected_banner_id)):
+			if customization.has_method("can_unlock_banner") and bool(customization.call("can_unlock_banner", selected_banner_id)):
+				customization.call("unlock_banner", selected_banner_id)
+			else:
+				var banner_unlock_cost: int = int(customization.call("get_banner_unlock_cost", selected_banner_id)) if customization.has_method("get_banner_unlock_cost") else 0
+				var banner_unlock_currency: String = str(customization.call("get_banner_unlock_currency", selected_banner_id)) if customization.has_method("get_banner_unlock_currency") else "coins"
+				var banner_currency_name: String = str(customization.call("get_currency_display_name", banner_unlock_currency)) if customization.has_method("get_currency_display_name") else banner_unlock_currency.capitalize()
+				status_label.text = "Banner locked. Need %d %s." % [banner_unlock_cost, banner_currency_name.to_lower()]
+				return
+		if customization.has_method("set_selected_banner") and selected_banner_id != "":
+			customization.call("set_selected_banner", selected_banner_id)
+		_refresh_display()
+		_show_status_message("Banner Applied Successfully")
+		_show_applied_popup()
+		return
+
+	if showroom_mode == SHOWROOM_MODE_TRAILS:
+		if customization.has_method("set_selected_trail") and selected_trail_id != "":
+			customization.call("set_selected_trail", selected_trail_id)
+		_refresh_display()
+		_show_status_message("Trail Applied Successfully")
+		_show_applied_popup()
 		return
 
 	if showroom_mode == SHOWROOM_MODE_FIELDS:
@@ -2627,6 +2939,8 @@ func _showroom_sync_panels() -> void:
 		marble_frame_panel.visible = showroom_mode == SHOWROOM_MODE_MARBLES
 	if trail_frame_panel != null:
 		trail_frame_panel.visible = showroom_mode == SHOWROOM_MODE_TRAILS
+	if banner_frame_panel != null:
+		banner_frame_panel.visible = showroom_mode == SHOWROOM_MODE_BANNERS
 	if field_frame_panel != null:
 		field_frame_panel.visible = showroom_mode == SHOWROOM_MODE_FIELDS
 	if showroom_field_root != null:
@@ -2654,7 +2968,15 @@ func _schedule_belt_centering() -> void:
 
 
 func _sync_belt_centering() -> void:
-	_center_belt_on_button(marble_belt_scroll, marble_buttons.get(selected_marble_id, null) as Control, false)
+	match showroom_mode:
+		SHOWROOM_MODE_TRAILS:
+			_center_belt_on_button(trail_belt_scroll, trail_buttons.get(selected_trail_id, null) as Control, false)
+		SHOWROOM_MODE_BANNERS:
+			_center_belt_on_button(banner_belt_scroll, banner_buttons.get(selected_banner_id, null) as Control, false)
+		SHOWROOM_MODE_FIELDS:
+			_center_belt_on_button(field_belt_scroll, field_buttons.get(selected_field_id, null) as Control, true)
+		_:
+			_center_belt_on_button(marble_belt_scroll, marble_buttons.get(selected_marble_id, null) as Control, false)
 
 
 func _center_belt_on_button(scroll: ScrollContainer, button: Control, is_field: bool) -> void:
@@ -2672,6 +2994,8 @@ func _center_belt_on_button(scroll: ScrollContainer, button: Control, is_field: 
 			field_belt_target_scroll = 0.0
 		elif scroll == trail_belt_scroll:
 			trail_belt_target_scroll = 0.0
+		elif scroll == banner_belt_scroll:
+			banner_belt_target_scroll = 0.0
 		else:
 			marble_belt_target_scroll = 0.0
 		return
@@ -2682,6 +3006,8 @@ func _center_belt_on_button(scroll: ScrollContainer, button: Control, is_field: 
 		field_belt_target_scroll = target_scroll
 	elif scroll == trail_belt_scroll:
 		trail_belt_target_scroll = target_scroll
+	elif scroll == banner_belt_scroll:
+		banner_belt_target_scroll = target_scroll
 	else:
 		marble_belt_target_scroll = target_scroll
 
@@ -3320,6 +3646,549 @@ func _get_marble_preview_texture(marble_id: String, preset: Dictionary) -> Textu
 	return texture
 
 
+func _update_showroom_trail_preview(delta: float) -> void:
+	if display_marble == null or trail_preview_root == null:
+		return
+	if not is_instance_valid(display_marble) or not is_instance_valid(trail_preview_root):
+		return
+
+	var direction: Vector3 = _get_showroom_trail_sim_direction(showroom_trail_sim_time)
+	var scale_vector: Vector3 = display_marble.global_transform.basis.get_scale()
+	var scale_size: float = maxf(maxf(absf(scale_vector.x), absf(scale_vector.y)), absf(scale_vector.z))
+	var marble_radius: float = maxf(SHOWROOM_TRAIL_RADIUS, 0.24 * scale_size)
+	var anchor: Vector3 = display_marble.global_position + Vector3.UP * SHOWROOM_TRAIL_VERTICAL_OFFSET - direction * marble_radius
+	var weight: float = clampf(delta * 28.0, 0.0, 1.0)
+	trail_preview_root.global_position = trail_preview_root.global_position.lerp(anchor, weight)
+	if direction.length_squared() > 0.0001:
+		trail_preview_root.look_at(trail_preview_root.global_position - direction, Vector3.UP)
+
+
+func _get_showroom_trail_direction() -> Vector3:
+	if preview_camera != null:
+		var camera_right: Vector3 = preview_camera.global_transform.basis.x
+		camera_right.y = 0.0
+		if camera_right.length_squared() > 0.0001:
+			return camera_right.normalized()
+	return Vector3.RIGHT
+
+
+func _show_selected_trail_preview(preset: Dictionary) -> void:
+	if showroom_runtime_root == null:
+		return
+	if trail_preview_root != null:
+		trail_preview_root.queue_free()
+		trail_preview_root = null
+	if preset.is_empty() or not bool(preset.get("enabled", false)):
+		return
+
+	trail_preview_root = Node3D.new()
+	trail_preview_root.name = "SelectedTrailPreview"
+	showroom_trail_sim_time = 0.0
+	if display_marble != null and is_instance_valid(display_marble):
+		display_marble.position = _get_showroom_trail_sim_position(showroom_trail_sim_time)
+		showroom_target_position = display_marble.position
+	trail_preview_root.position = display_marble.position if display_marble != null and is_instance_valid(display_marble) else _get_default_marble_position()
+	showroom_runtime_root.add_child(trail_preview_root)
+	_update_showroom_trail_preview(1.0)
+
+	_add_showroom_gpu_trail(trail_preview_root, preset)
+
+
+func _add_showroom_gpu_trail(parent: Node3D, preset: Dictionary) -> void:
+	var trail: GPUParticles3D = GPU_TRAIL_SCRIPT.new() as GPUParticles3D
+	if trail == null:
+		_add_showroom_trail_geometry(parent, preset)
+		return
+
+	trail.name = "ShowroomGPUTrail3D"
+	trail.emitting = true
+	parent.add_child(trail)
+	if trail.draw_pass_1 == null:
+		call_deferred("_configure_showroom_gpu_trail", trail, preset)
+	else:
+		_configure_showroom_gpu_trail(trail, preset)
+
+
+func _configure_showroom_gpu_trail(trail: GPUParticles3D, preset: Dictionary) -> void:
+	if trail == null or not is_instance_valid(trail):
+		return
+	if trail.draw_pass_1 == null:
+		call_deferred("_configure_showroom_gpu_trail", trail, preset)
+		return
+	var lifetime: float = clampf(float(preset.get("lifetime", 0.48)) * 2.15, 0.75, 1.85)
+	var scale_factor: float = maxf(float(preset.get("scale", 0.14)) / 0.14, 0.75)
+	trail.scale = Vector3.ONE * (0.34 * scale_factor)
+	trail.set("length_seconds", lifetime)
+	trail.set("billboard", true)
+	trail.set("snap_to_transform", true)
+	trail.set("dewiggle", true)
+	trail.set("clip_overlaps", true)
+	trail.set("scroll", _get_gpu_trail_scroll(preset, true))
+	trail.set("mask", _get_cached_gpu_trail_mask(preset, true))
+	trail.set("mask_strength", 1.0)
+
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	if texture_path != "":
+		var texture: Texture2D = _load_showroom_ui_texture(texture_path)
+		if texture != null:
+			trail.set("texture", texture)
+
+	trail.set("color_ramp", _get_cached_gpu_trail_color_ramp(preset))
+	trail.set("curve", _get_cached_gpu_trail_width_curve(preset))
+
+
+func _make_showroom_gpu_trail_color_ramp(preset: Dictionary) -> GradientTexture1D:
+	var primary: Color = preset.get("color", Color(0.42, 0.92, 1.0, 0.46))
+	var secondary: Color = preset.get("secondary_color", primary.lightened(0.22))
+	var emission: Color = preset.get("emission", primary)
+	var style: String = _get_gpu_trail_style(preset)
+	var gradient: Gradient = Gradient.new()
+	var tail: Color = secondary
+	tail.a = 0.0
+	var middle: Color = primary.lerp(secondary, 0.35)
+	middle.a = maxf(primary.a, 0.34)
+	var head: Color = emission
+	head.a = maxf(primary.a, 0.76)
+	gradient.set_color(0, tail)
+	gradient.set_color(1, head)
+	match style:
+		"kenya":
+			var red: Color = primary
+			red.a = maxf(primary.a, 0.56)
+			var green: Color = secondary
+			green.a = maxf(secondary.a, 0.48)
+			gradient.add_point(0.28, green)
+			gradient.add_point(0.58, red)
+			gradient.add_point(0.82, Color(1.0, 1.0, 1.0, 0.78))
+		"aurora":
+			gradient.add_point(0.2, Color(primary.r, primary.g, primary.b, 0.42))
+			gradient.add_point(0.48, Color(secondary.r, secondary.g, secondary.b, 0.68))
+			gradient.add_point(0.76, Color(0.62, 1.0, 0.92, 0.58))
+		"dust":
+			gradient.add_point(0.32, Color(secondary.r, secondary.g, secondary.b, 0.18))
+			gradient.add_point(0.62, Color(primary.r, primary.g, primary.b, 0.5))
+		"spark":
+			gradient.add_point(0.18, Color(secondary.r, secondary.g, secondary.b, 0.08))
+			gradient.add_point(0.42, Color(emission.r, emission.g, emission.b, 0.82))
+			gradient.add_point(0.66, Color(primary.r, primary.g, primary.b, 0.18))
+		_:
+			gradient.add_point(0.45, middle)
+	var texture: GradientTexture1D = GradientTexture1D.new()
+	texture.gradient = gradient
+	return texture
+
+
+func _get_cached_gpu_trail_color_ramp(preset: Dictionary) -> GradientTexture1D:
+	var key: String = "ramp|%s" % _get_gpu_trail_resource_signature(preset)
+	var cached: GradientTexture1D = gpu_trail_preview_resource_cache.get(key, null) as GradientTexture1D
+	if cached != null:
+		return cached
+	var texture: GradientTexture1D = _make_showroom_gpu_trail_color_ramp(preset)
+	gpu_trail_preview_resource_cache[key] = texture
+	return texture
+
+
+func _make_gpu_trail_width_curve(preset: Dictionary) -> CurveTexture:
+	var style: String = _get_gpu_trail_style(preset)
+	var curve: Curve = Curve.new()
+	match style:
+		"ribbon", "kenya", "aurora":
+			curve.add_point(Vector2(0.0, 0.0))
+			curve.add_point(Vector2(0.12, 0.72))
+			curve.add_point(Vector2(0.42, 1.0))
+			curve.add_point(Vector2(0.78, 0.82))
+			curve.add_point(Vector2(1.0, 0.18))
+		"dust":
+			curve.add_point(Vector2(0.0, 0.0))
+			curve.add_point(Vector2(0.18, 0.28))
+			curve.add_point(Vector2(0.38, 0.52))
+			curve.add_point(Vector2(0.62, 0.28))
+			curve.add_point(Vector2(0.82, 0.44))
+			curve.add_point(Vector2(1.0, 0.05))
+		"spark":
+			curve.add_point(Vector2(0.0, 0.0))
+			curve.add_point(Vector2(0.12, 0.18))
+			curve.add_point(Vector2(0.24, 1.0))
+			curve.add_point(Vector2(0.38, 0.26))
+			curve.add_point(Vector2(0.54, 0.82))
+			curve.add_point(Vector2(0.72, 0.18))
+			curve.add_point(Vector2(0.9, 0.66))
+			curve.add_point(Vector2(1.0, 0.04))
+		_:
+			curve.add_point(Vector2(0.0, 0.0))
+			curve.add_point(Vector2(0.22, 0.34))
+			curve.add_point(Vector2(0.72, 0.88))
+			curve.add_point(Vector2(0.94, 1.0))
+			curve.add_point(Vector2(1.0, 0.08))
+	var texture: CurveTexture = CurveTexture.new()
+	texture.curve = curve
+	return texture
+
+
+func _get_cached_gpu_trail_width_curve(preset: Dictionary) -> CurveTexture:
+	var key: String = "curve|%s" % _get_gpu_trail_resource_signature(preset)
+	var cached: CurveTexture = gpu_trail_preview_resource_cache.get(key, null) as CurveTexture
+	if cached != null:
+		return cached
+	var texture: CurveTexture = _make_gpu_trail_width_curve(preset)
+	gpu_trail_preview_resource_cache[key] = texture
+	return texture
+
+
+func _get_gpu_trail_style(preset: Dictionary) -> String:
+	var id: String = str(preset.get("id", "")).to_lower()
+	var name: String = str(preset.get("name", "")).to_lower()
+	var shape: String = str(preset.get("shape", "comet")).to_lower()
+	if id.find("kenya") != -1 or name.find("kenya") != -1:
+		return "kenya"
+	if id.find("aurora") != -1 or name.find("aurora") != -1:
+		return "aurora"
+	if shape == "dust" or id.find("dust") != -1 or name.find("dust") != -1:
+		return "dust"
+	if shape == "spark" or id.find("static") != -1 or name.find("static") != -1:
+		return "spark"
+	if shape == "ribbon":
+		return "ribbon"
+	return "comet"
+
+
+func _get_gpu_trail_scroll(preset: Dictionary, showroom_preview: bool = false) -> Vector2:
+	var speed_scale: float = 1.35 if showroom_preview else 1.0
+	match _get_gpu_trail_style(preset):
+		"ribbon", "aurora":
+			return Vector2(-0.24, 0.1) * speed_scale
+		"kenya":
+			return Vector2(-0.55, 0.0) * speed_scale
+		"dust":
+			return Vector2(-0.18, 0.22) * speed_scale
+		"spark":
+			return Vector2(-0.72, -0.08) * speed_scale
+		_:
+			return Vector2(-0.36, 0.0) * speed_scale
+
+
+func _make_gpu_trail_pattern_mask(preset: Dictionary, showroom_preview: bool = false) -> Texture2D:
+	var style: String = _get_gpu_trail_style(preset)
+	var image: Image = Image.create(128, 16, false, Image.FORMAT_RGBA8)
+	for x in range(128):
+		var u: float = float(x) / 127.0
+		for y in range(16):
+			var v: float = float(y) / 15.0
+			var value: float = 1.0
+			match style:
+				"kenya":
+					value = 1.0 if sin(u * TAU * 10.0) >= 0.5 else 0.42
+					if absf(v - 0.5) < 0.12:
+						value = 1.0
+				"aurora":
+					value = 0.62 + 0.38 * sin(u * TAU * 2.0 + v * TAU * 2.6)
+				"dust":
+					var raw_grain: float = sin(float(x * 37 + y * 91)) * 43758.5453
+					var grain: float = raw_grain - floor(raw_grain)
+					var cluster: float = 1.0 if grain >= 0.44 else 0.34
+					value = cluster * (0.45 + 0.55 * smoothstep(0.08, 0.72, u))
+				"spark":
+					var slash: float = 1.0 if sin((u * 15.0 + v * 4.0) * TAU) >= 0.58 else 0.0
+					value = 0.16 + 0.84 * slash
+				"ribbon":
+					value = 0.68 + 0.32 * sin((v * 3.0 + u * 1.5) * TAU)
+				_:
+					value = 0.82 + 0.18 * sin(u * TAU * 3.0)
+			if showroom_preview:
+				value = clampf(value * 1.12, 0.0, 1.0)
+			image.set_pixel(x, y, Color(value, value, value, 1.0))
+	return ImageTexture.create_from_image(image)
+
+
+func _get_cached_gpu_trail_mask(preset: Dictionary, showroom_preview: bool = false) -> Texture2D:
+	var key: String = "mask|%s|%s" % [_get_gpu_trail_resource_signature(preset), str(showroom_preview)]
+	var cached: Texture2D = gpu_trail_preview_resource_cache.get(key, null) as Texture2D
+	if cached != null:
+		return cached
+	var texture: Texture2D = _make_gpu_trail_pattern_mask(preset, showroom_preview)
+	gpu_trail_preview_resource_cache[key] = texture
+	return texture
+
+
+func _get_gpu_trail_resource_signature(preset: Dictionary) -> String:
+	return PackedStringArray([
+		str(preset.get("id", "")),
+		str(preset.get("name", "")),
+		str(preset.get("shape", "")),
+		str(preset.get("color", Color.WHITE)),
+		str(preset.get("secondary_color", Color.WHITE)),
+		str(preset.get("emission", Color.WHITE)),
+		str(preset.get("scale", 0.14))
+	]).join("|")
+
+
+func _add_showroom_textured_trail(parent: Node3D, texture_path: String) -> bool:
+	var texture: Texture2D = _load_showroom_ui_texture(texture_path)
+	if texture == null:
+		return false
+
+	var trail: MeshInstance3D = MeshInstance3D.new()
+	trail.name = "ShowroomSkillTextureTrail"
+	var quad: QuadMesh = QuadMesh.new()
+	quad.size = Vector2(2.2, 1.1)
+	trail.mesh = quad
+	trail.position = Vector3(-0.58, 0.12, 0.04)
+	trail.rotation_degrees = Vector3(0.0, 0.0, -10.0)
+	trail.material_override = _make_showroom_textured_trail_material(texture, 1.0)
+	parent.add_child(trail)
+
+	var echo: MeshInstance3D = MeshInstance3D.new()
+	echo.name = "ShowroomSkillTextureTrailEcho"
+	var echo_quad: QuadMesh = QuadMesh.new()
+	echo_quad.size = Vector2(1.9, 0.95)
+	echo.mesh = echo_quad
+	echo.position = trail.position + Vector3(-0.08, -0.06, 0.04)
+	echo.rotation_degrees = trail.rotation_degrees
+	echo.material_override = _make_showroom_textured_trail_material(texture, 0.34)
+	parent.add_child(echo)
+	return true
+
+
+func _make_showroom_textured_trail_material(texture: Texture2D, alpha: float) -> ShaderMaterial:
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = _get_showroom_skill_trail_shader()
+	material.set_shader_parameter("trail_texture", texture)
+	material.set_shader_parameter("alpha_scale", alpha)
+	material.set_shader_parameter("emission_energy", 2.8)
+	return material
+
+
+func _get_showroom_skill_trail_shader() -> Shader:
+	var shader: Shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled;
+
+uniform sampler2D trail_texture : source_color;
+uniform float alpha_scale = 1.0;
+uniform float emission_energy = 2.8;
+
+void fragment() {
+	vec4 tex = texture(trail_texture, UV);
+	float key_distance = distance(tex.rgb, vec3(1.0, 0.0, 1.0));
+	float key_alpha = smoothstep(0.08, 0.28, key_distance);
+	ALBEDO = tex.rgb * COLOR.rgb;
+	ALPHA = tex.a * key_alpha * alpha_scale * COLOR.a;
+	EMISSION = tex.rgb * emission_energy;
+}
+"""
+	return shader
+
+
+func _instantiate_showroom_trail_scene(scene_path: String) -> Node3D:
+	if not ResourceLoader.exists(scene_path):
+		return null
+	var loaded: Resource = load(scene_path)
+	var packed: PackedScene = loaded as PackedScene
+	if packed == null:
+		return null
+	var instance: Node = packed.instantiate()
+	var trail_node: Node3D = instance as Node3D
+	if trail_node == null:
+		if instance != null:
+			instance.queue_free()
+		return null
+	_showroom_set_visible_recursive(trail_node, true)
+	_showroom_play_first_animation_recursive(trail_node)
+	return trail_node
+
+
+func _add_showroom_trail_geometry(parent: Node3D, preset: Dictionary) -> void:
+	var primary: Color = preset.get("color", Color(0.42, 0.92, 1.0, 0.34))
+	var secondary: Color = preset.get("secondary_color", primary)
+	var emission: Color = preset.get("emission", primary)
+	var scale_factor: float = maxf(float(preset.get("scale", 0.14)) * 3.0, 0.75)
+	var trail_length: float = 1.55 * scale_factor
+	var glow_width: float = 0.24 * scale_factor
+
+	var aura: MeshInstance3D = MeshInstance3D.new()
+	aura.name = "ShowroomTrailAuraShell"
+	var aura_mesh: SphereMesh = SphereMesh.new()
+	aura_mesh.radius = 1.0
+	aura_mesh.height = 2.0
+	aura_mesh.radial_segments = 32
+	aura_mesh.rings = 16
+	aura.mesh = aura_mesh
+	aura.position = Vector3(0.0, -SHOWROOM_TRAIL_VERTICAL_OFFSET, SHOWROOM_TRAIL_RADIUS)
+	aura.scale = Vector3.ONE * SHOWROOM_TRAIL_RADIUS * 1.18
+	aura.material_override = _make_showroom_trail_aura_material(Color(primary.r, primary.g, primary.b, 0.075), emission, 2.2)
+	parent.add_child(aura)
+
+	var glow: MeshInstance3D = MeshInstance3D.new()
+	glow.name = "ShowroomSpeedTrailGlow"
+	glow.mesh = _make_showroom_flame_mesh(0.0, 1.0)
+	glow.position = Vector3(0.0, 0.08, 0.0)
+	glow.scale = Vector3(glow_width, maxf(glow_width * 0.26, 0.04), trail_length)
+	glow.material_override = _make_showroom_trail_material(primary, emission, 1.6)
+	parent.add_child(glow)
+
+	var core: MeshInstance3D = MeshInstance3D.new()
+	core.name = "ShowroomSpeedTrailCore"
+	core.mesh = _make_showroom_flame_mesh(0.35, 0.58)
+	core.position = glow.position + Vector3(0.0, 0.025, -0.03)
+	core.scale = Vector3(maxf(glow_width * 0.56, 0.05), maxf(glow_width * 0.18, 0.025), trail_length * 0.9)
+	core.material_override = _make_showroom_trail_material(Color(emission.r, emission.g, emission.b, 0.82), emission, 3.1)
+	parent.add_child(core)
+
+	var head: MeshInstance3D = MeshInstance3D.new()
+	head.name = "ShowroomSpeedTrailHead"
+	var head_mesh: SphereMesh = SphereMesh.new()
+	head_mesh.radius = 0.16 * scale_factor
+	head_mesh.height = head_mesh.radius * 2.0
+	head_mesh.radial_segments = 16
+	head_mesh.rings = 8
+	head.mesh = head_mesh
+	head.position = Vector3(0.0, 0.11, 0.0)
+	head.material_override = _make_showroom_trail_material(secondary.lerp(emission, 0.5), emission, 2.7)
+	parent.add_child(head)
+
+	for index in range(5):
+		var t: float = float(index) / 4.0
+		var spark: MeshInstance3D = MeshInstance3D.new()
+		spark.name = "ShowroomTrailSpark%d" % index
+		var spark_mesh: SphereMesh = SphereMesh.new()
+		var spark_radius: float = lerpf(0.05, 0.018, t) * scale_factor
+		spark_mesh.radius = spark_radius
+		spark_mesh.height = spark_radius * 2.0
+		spark_mesh.radial_segments = 8
+		spark_mesh.rings = 4
+		spark.mesh = spark_mesh
+		spark.position = Vector3(
+			sin(t * PI * 2.0) * glow_width * 0.42,
+			0.1 + cos(t * PI) * 0.035,
+			-lerpf(0.18, trail_length * 0.92, t)
+		)
+		spark.material_override = _make_showroom_trail_material(primary.lerp(secondary, t), emission, lerpf(2.4, 0.9, t))
+		parent.add_child(spark)
+
+
+func _make_showroom_flame_mesh(phase: float, width_scale: float) -> ArrayMesh:
+	var segments: int = 10
+	var vertices: PackedVector3Array = PackedVector3Array()
+	var uvs: PackedVector2Array = PackedVector2Array()
+	var colors: PackedColorArray = PackedColorArray()
+	var indices: PackedInt32Array = PackedInt32Array()
+
+	for index in range(segments + 1):
+		var t: float = float(index) / float(segments)
+		var taper: float = pow(1.0 - t, 0.72)
+		var width: float = lerpf(0.06, 0.5, taper) * width_scale
+		var lateral_pull: float = sin(t * PI * 2.6 + phase * PI * 2.0) * 0.1 * taper
+		var lift_pull: float = sin(t * PI * 1.8 + phase * PI) * 0.08 * taper
+		var z: float = -t
+		var alpha: float = clampf(1.0 - pow(t, 1.2), 0.0, 1.0)
+		vertices.append(Vector3(lateral_pull - width, lift_pull, z))
+		vertices.append(Vector3(lateral_pull + width, lift_pull, z))
+		uvs.append(Vector2(t, 0.0))
+		uvs.append(Vector2(t, 1.0))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+
+	for index in range(segments):
+		var base: int = index * 2
+		indices.append(base)
+		indices.append(base + 1)
+		indices.append(base + 2)
+		indices.append(base + 1)
+		indices.append(base + 3)
+		indices.append(base + 2)
+
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+
+	var mesh: ArrayMesh = ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _make_showroom_trail_material(albedo: Color, emission: Color, energy: float) -> StandardMaterial3D:
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color(albedo.r, albedo.g, albedo.b, maxf(albedo.a, 0.16))
+	material.emission_enabled = true
+	material.emission = emission
+	material.emission_energy_multiplier = energy
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	material.no_depth_test = true
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return material
+
+
+func _make_showroom_trail_aura_material(albedo: Color, emission: Color, energy: float) -> StandardMaterial3D:
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color(albedo.r, albedo.g, albedo.b, maxf(albedo.a, 0.04))
+	material.emission_enabled = true
+	material.emission = emission
+	material.emission_energy_multiplier = energy
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	material.no_depth_test = true
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return material
+
+
+func _make_showroom_trail_particle_mesh(shape: String) -> Mesh:
+	var mesh: SphereMesh = SphereMesh.new()
+	mesh.radius = 0.026 if shape == "spark" else 0.034
+	mesh.height = mesh.radius * 2.0
+	mesh.radial_segments = 8
+	mesh.rings = 4
+	return mesh
+
+
+func _make_showroom_trail_particle_material(primary: Color, secondary: Color, emission: Color, shape: String) -> ParticleProcessMaterial:
+	var material: ParticleProcessMaterial = ParticleProcessMaterial.new()
+	material.direction = Vector3(-1.0, 0.0, 0.0)
+	material.spread = 36.0 if shape != "ribbon" else 18.0
+	material.initial_velocity_min = 0.06
+	material.initial_velocity_max = 0.34
+	material.gravity = Vector3(0.0, -0.08, 0.0) if shape == "dust" else Vector3.ZERO
+	material.damping_min = 0.35
+	material.damping_max = 1.2
+	material.scale_min = 0.55
+	material.scale_max = 1.7
+	var gradient: Gradient = Gradient.new()
+	gradient.set_color(0, primary.lerp(emission, 0.3))
+	var faded: Color = secondary
+	faded.a = 0.0
+	gradient.set_color(1, faded)
+	var middle: Color = secondary.lerp(emission, 0.18)
+	middle.a = maxf(secondary.a, 0.38)
+	gradient.add_point(0.42, middle)
+	var gradient_texture: GradientTexture1D = GradientTexture1D.new()
+	gradient_texture.gradient = gradient
+	material.color_ramp = gradient_texture
+	return material
+
+
+func _showroom_set_visible_recursive(node: Node, visible_state: bool) -> void:
+	if node is VisualInstance3D:
+		(node as VisualInstance3D).visible = visible_state
+	for child in node.get_children():
+		_showroom_set_visible_recursive(child, visible_state)
+
+
+func _showroom_play_first_animation_recursive(node: Node) -> void:
+	if node is AnimationPlayer:
+		var player: AnimationPlayer = node as AnimationPlayer
+		var animations: PackedStringArray = player.get_animation_list()
+		if not animations.is_empty():
+			player.play(animations[0])
+	for child in node.get_children():
+		_showroom_play_first_animation_recursive(child)
+
+
 func _get_trail_preview_texture(trail_id: String, preset: Dictionary) -> Texture2D:
 	if trail_preview_cache.has(trail_id):
 		return trail_preview_cache[trail_id] as Texture2D
@@ -3386,26 +4255,48 @@ func _make_marble_preview_texture(preset: Dictionary) -> Texture2D:
 
 func _make_trail_preview_texture(preset: Dictionary) -> Texture2D:
 	var width: int = 120
-	var height: int = 28
+	var height: int = 44
 	var image: Image = Image.create(width, height, false, Image.FORMAT_RGBA8)
 	var enabled: bool = bool(preset.get("enabled", false))
 	var primary: Color = preset.get("color", Color(0.42, 0.92, 1.0, 0.34))
 	var secondary: Color = preset.get("secondary_color", primary)
 	var emission: Color = preset.get("emission", primary)
+	var marble_center: Vector2 = Vector2(92.0, 22.0)
+	var marble_radius: float = 13.0
 
 	for y in range(height):
 		for x in range(width):
+			var pixel: Vector2 = Vector2(float(x), float(y))
 			var uv: Vector2 = Vector2(float(x) / float(width - 1), float(y) / float(height - 1))
 			var color: Color = Color(0.0, 0.0, 0.0, 0.0)
 			if enabled:
-				var wave_center: float = 0.5 + sin(uv.x * TAU * 1.2) * 0.1
-				var mask: float = _band_mask(abs(uv.y - wave_center), 0.12, 0.18)
-				color = primary.lerp(secondary, uv.x)
-				color = color.lerp(emission, 0.35)
-				color.a = mask
+				var line_start: Vector2 = Vector2(8.0, 34.0)
+				var line_end: Vector2 = marble_center - Vector2(9.0, 5.0)
+				var line_vector: Vector2 = line_end - line_start
+				var projection: float = clampf((pixel - line_start).dot(line_vector) / maxf(line_vector.length_squared(), 0.001), 0.0, 1.0)
+				var closest: Vector2 = line_start + line_vector * projection
+				var distance_to_line: float = pixel.distance_to(closest)
+				var tail_fade: float = smoothstep(0.02, 0.22, projection)
+				var head_fade: float = 1.0 - smoothstep(0.86, 1.0, projection)
+				var glow_mask: float = (1.0 - smoothstep(5.6, 15.0, distance_to_line)) * tail_fade * maxf(head_fade, 0.35)
+				var core_mask: float = (1.0 - smoothstep(1.2, 3.0, distance_to_line)) * tail_fade
+				color = primary.lerp(secondary, projection * 0.55)
+				color = color.lerp(emission, core_mask * 0.72)
+				color.a = clampf(glow_mask * 0.38 + core_mask * 0.9, 0.0, 1.0)
 			else:
 				var muted: float = _band_mask(abs(uv.y - 0.5), 0.1, 0.16)
 				color = Color(0.45, 0.48, 0.54, muted * 0.8)
+
+			var marble_distance: float = pixel.distance_to(marble_center)
+			if marble_distance <= marble_radius:
+				var sphere_shade: float = clampf(1.0 - marble_distance / marble_radius, 0.0, 1.0)
+				var marble_color: Color = Color(0.84, 0.94, 1.0, 1.0).lerp(emission, 0.28)
+				marble_color = marble_color.lerp(Color.WHITE, sphere_shade * 0.42)
+				color = color.blend(marble_color)
+			elif marble_distance <= marble_radius + 4.0 and enabled:
+				var halo: Color = emission
+				halo.a = (1.0 - (marble_distance - marble_radius) / 4.0) * 0.34
+				color = color.blend(halo)
 			image.set_pixel(x, y, color)
 
 	return ImageTexture.create_from_image(image)

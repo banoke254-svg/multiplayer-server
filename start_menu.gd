@@ -460,6 +460,7 @@ var shooting_mechanics_button: Button
 var aim_inversion_button: Button
 var shooting_mechanics_prompt_required: bool = false
 var shooting_mechanics_prompt_pending_after_name: bool = false
+var pending_post_setup_action: String = ""
 var master_slider: HSlider
 var music_slider: HSlider
 var sfx_slider: HSlider
@@ -573,6 +574,10 @@ func _ensure_menu_music() -> void:
 	if menu_music_player.stream == null:
 		menu_music_player.stream = _load_menu_music_stream()
 
+	if not menu_music_player.is_inside_tree():
+		call_deferred("_start_menu_music_player")
+		return
+
 	var game_manager: Node = get_node_or_null("/root/GameManager")
 	if game_manager != null and game_manager.has_method("allow_menu_music"):
 		game_manager.call("allow_menu_music")
@@ -601,7 +606,7 @@ func _get_or_create_menu_music_player(root: Window) -> AudioStreamPlayer:
 		primary_player = AudioStreamPlayer.new()
 		primary_player.name = "MenuMusicPlayer"
 		primary_player.process_mode = Node.PROCESS_MODE_ALWAYS
-		root.add_child(primary_player)
+		root.add_child.call_deferred(primary_player)
 	return primary_player
 
 
@@ -1422,6 +1427,15 @@ func _on_donate_pressed() -> void:
 
 
 func _on_gameplay_video_pressed() -> void:
+	if startup_loading_panel != null:
+		startup_loading_panel.hide()
+		startup_loading_timer = -1.0
+	if online_loading_panel != null:
+		online_loading_panel.hide()
+	call_deferred("_open_gameplay_video_scene")
+
+
+func _open_gameplay_video_scene() -> void:
 	if gameplay_video_scene_path != "" and ResourceLoader.exists(gameplay_video_scene_path):
 		_stop_menu_music_for_gameplay()
 		get_tree().change_scene_to_file(gameplay_video_scene_path)
@@ -6653,7 +6667,7 @@ func _on_shooting_mechanic_option_pressed(mechanic_id: String) -> void:
 		shooting_mechanics_prompt_pending_after_name = false
 		if shooting_mechanics_popup != null:
 			shooting_mechanics_popup.hide()
-		_show_startup_loading_once()
+		_continue_pending_post_setup_action()
 		return
 	_rebuild_shooting_mechanics_popup_contents()
 
@@ -6684,6 +6698,18 @@ func _show_shooting_mechanics_prompt_if_needed() -> bool:
 		shooting_mechanics_popup.popup_centered()
 		shooting_mechanics_popup.show()
 	return true
+
+
+func _continue_pending_post_setup_action() -> void:
+	var action: String = pending_post_setup_action
+	pending_post_setup_action = ""
+	if action == "offline":
+		call_deferred("_start_main_scene")
+		return
+	if action == "online":
+		call_deferred("_on_online_pressed")
+		return
+	_show_startup_loading_once()
 
 
 func _refresh_aim_inversion_button() -> void:
@@ -6784,9 +6810,11 @@ func _on_play_pressed() -> void:
 
 	var customization: Node = get_node_or_null("/root/CustomizationState")
 	if customization != null and customization.has_method("has_player_name") and not customization.call("has_player_name"):
+		pending_post_setup_action = "offline"
 		_show_player_name_popup()
 		return
 	if _show_shooting_mechanics_prompt_if_needed():
+		pending_post_setup_action = "offline"
 		return
 
 	_start_main_scene()
@@ -6795,9 +6823,11 @@ func _on_play_pressed() -> void:
 func _on_online_pressed() -> void:
 	var customization: Node = get_node_or_null("/root/CustomizationState")
 	if customization != null and customization.has_method("has_player_name") and not customization.call("has_player_name"):
+		pending_post_setup_action = "online"
 		_show_player_name_popup()
 		return
 	if _show_shooting_mechanics_prompt_if_needed():
+		pending_post_setup_action = "online"
 		return
 
 	_show_online_rooms_page()
@@ -9234,12 +9264,12 @@ func _on_customize_pressed() -> void:
 
 	_init_customize_controls()
 	if customize_popup:
-	if glass_panel:
-		glass_panel.hide()
-	if gameplay_video_button:
-		gameplay_video_button.hide()
-	if donate_button:
-		donate_button.hide()
+		if glass_panel:
+			glass_panel.hide()
+		if gameplay_video_button:
+			gameplay_video_button.hide()
+		if donate_button:
+			donate_button.hide()
 		if events_button:
 			events_button.hide()
 		if background:
@@ -9449,6 +9479,8 @@ func _init_player_name_controls() -> void:
 		_hide_player_name_popup()
 		if _should_prompt_shooting_mechanics():
 			call_deferred("_show_shooting_mechanics_prompt_if_needed")
+		elif pending_post_setup_action != "":
+			call_deferred("_continue_pending_post_setup_action")
 		else:
 			_show_startup_loading_once()
 	else:
@@ -9554,6 +9586,8 @@ func _save_player_name(raw_name: String) -> void:
 	_init_player_name_controls()
 	if shooting_mechanics_prompt_pending_after_name:
 		call_deferred("_show_shooting_mechanics_prompt_if_needed")
+	elif pending_post_setup_action != "":
+		call_deferred("_continue_pending_post_setup_action")
 
 
 func _show_player_name_popup() -> void:
@@ -9998,6 +10032,7 @@ func _fill_marble_preview_frame(frame: Panel, preset: Dictionary, is_large: bool
 	var viewport: SubViewport = preview.get_node("PreviewViewport") as SubViewport
 	if viewport == null:
 		return
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 
 	var preview_root: Node3D = _build_preview_stage(
 		viewport,
@@ -10648,76 +10683,283 @@ func _add_trail_preview_geometry(parent: Node3D, trail_preset: Dictionary, is_la
 		_add_disabled_trail_preview(parent)
 		return
 
+	var texture_path: String = str(trail_preset.get("texture_path", "")).strip_edges()
+	if texture_path != "":
+		if _add_textured_trail_preview(parent, texture_path, is_large):
+			return
+
+	var scene_path: String = str(trail_preset.get("scene_path", "")).strip_edges()
+	if scene_path != "":
+		var imported_trail: Node3D = _instantiate_preview_trail_scene(scene_path)
+		if imported_trail != null:
+			imported_trail.position = Vector3(-0.38, -0.02, 0.0)
+			imported_trail.rotation_degrees = Vector3(0.0, 110.0, 0.0)
+			imported_trail.scale = Vector3.ONE * (0.72 if is_large else 0.44)
+			parent.add_child(imported_trail)
+			return
+
 	var primary_color: Color = trail_preset.get("color", Color(0.42, 0.92, 1.0, 0.34))
 	var secondary_color: Color = trail_preset.get("secondary_color", primary_color)
 	var emission_color: Color = trail_preset.get("emission", Color(0.18, 0.8, 1.0, 1.0))
+	_add_speed_streak_preview(parent, primary_color, secondary_color, emission_color, is_large)
+	return
+
 	var shape: String = str(trail_preset.get("shape", "comet"))
-	var segment_count: int = 4
+	var segment_count: int = 7
 	if is_large:
-		segment_count = 6
+		segment_count = 10
 
 	if shape == "dust":
-		for index in range(segment_count + 2):
+		for index in range(segment_count + 4):
 			var dust: MeshInstance3D = MeshInstance3D.new()
 			var dust_mesh: SphereMesh = SphereMesh.new()
-			var dust_scale: float = lerpf(0.14, 0.05, float(index) / float(max(segment_count + 1, 1)))
+			var dust_scale: float = lerpf(0.16, 0.035, float(index) / float(max(segment_count + 3, 1)))
 			dust_mesh.radius = dust_scale
 			dust_mesh.height = dust_scale * 2.0
 			dust.mesh = dust_mesh
 			dust.material_override = _make_trail_preview_material(
-				primary_color.lerp(secondary_color, float(index) / float(max(segment_count + 1, 1))),
+				primary_color.lerp(secondary_color, float(index) / float(max(segment_count + 3, 1))),
 				emission_color,
-				lerpf(0.7, 0.22, float(index) / float(max(segment_count + 1, 1)))
+				lerpf(0.78, 0.12, float(index) / float(max(segment_count + 3, 1)))
 			)
-			dust.position = Vector3(lerpf(-0.72, 0.12, float(index) / float(max(segment_count + 1, 1))), -0.01 + sin(float(index) * 0.9) * 0.03, 0.0)
+			dust.position = Vector3(lerpf(-0.86, 0.12, float(index) / float(max(segment_count + 3, 1))), -0.02 + sin(float(index) * 0.9) * 0.055, cos(float(index) * 1.3) * 0.05)
 			parent.add_child(dust)
 		return
 
 	for index in range(segment_count):
 		var t: float = float(index) / float(max(segment_count - 1, 1))
-		var beam: MeshInstance3D = MeshInstance3D.new()
-		var beam_mesh: BoxMesh = BoxMesh.new()
-		var width: float = lerpf(0.34, 0.12, t)
+		var plume: MeshInstance3D = MeshInstance3D.new()
+		var plume_mesh: SphereMesh = SphereMesh.new()
+		var radius: float = lerpf(0.17, 0.04, t)
 		if is_large:
-			width = lerpf(0.42, 0.14, t)
-		var height: float = 0.06
-		if shape == "ribbon":
-			height = 0.11
-		elif shape == "spark":
-			height = 0.04
-		beam_mesh.size = Vector3(width, height, height)
-		beam.mesh = beam_mesh
-		beam.material_override = _make_trail_preview_material(primary_color.lerp(secondary_color, t), emission_color, lerpf(0.78, 0.26, t))
-		beam.position = Vector3(lerpf(-0.62, 0.16, t), -0.02, 0.0)
-		if shape == "ribbon":
-			beam.position.y += sin(t * PI) * 0.05
-			beam.rotation_degrees = Vector3(0, 0, lerpf(26.0, -18.0, t))
-		elif shape == "spark":
-			if index % 2 == 0:
-				beam.position.y += 0.045
-				beam.rotation_degrees = Vector3(0, 0, -18.0)
-			else:
-				beam.position.y -= 0.018
-				beam.rotation_degrees = Vector3(0, 0, 12.0)
-		parent.add_child(beam)
+			radius *= 1.2
+		if shape == "spark":
+			radius *= 0.78
+		plume_mesh.radius = radius
+		plume_mesh.height = radius * 2.0
+		plume_mesh.radial_segments = 16
+		plume_mesh.rings = 8
+		plume.mesh = plume_mesh
+		plume.material_override = _make_trail_preview_material(primary_color.lerp(secondary_color, t), emission_color, lerpf(0.82, 0.14, t))
+		plume.position = Vector3(
+			lerpf(-0.76, 0.18, t),
+			-0.02 + sin(t * PI * 1.5) * 0.08,
+			cos(t * PI * 2.0) * lerpf(0.08, 0.015, t)
+		)
+		parent.add_child(plume)
 		if shape == "ribbon":
 			var accent: MeshInstance3D = MeshInstance3D.new()
-			var accent_mesh: BoxMesh = BoxMesh.new()
-			accent_mesh.size = Vector3(width * 0.86, height * 0.42, height * 0.42)
+			var accent_mesh: SphereMesh = SphereMesh.new()
+			accent_mesh.radius = radius * 0.58
+			accent_mesh.height = accent_mesh.radius * 2.0
 			accent.mesh = accent_mesh
 			accent.material_override = _make_trail_preview_material(secondary_color, emission_color.lightened(0.1), lerpf(0.55, 0.18, t))
-			accent.position = beam.position + Vector3(0.02, 0.045, 0.05)
-			accent.rotation_degrees = beam.rotation_degrees
+			accent.position = plume.position + Vector3(0.02, 0.06, 0.05)
 			parent.add_child(accent)
+		elif shape == "spark" and index % 2 == 0:
+			var spark: MeshInstance3D = MeshInstance3D.new()
+			var spark_mesh: CylinderMesh = CylinderMesh.new()
+			spark_mesh.top_radius = 0.012
+			spark_mesh.bottom_radius = 0.018
+			spark_mesh.height = 0.24
+			spark_mesh.radial_segments = 8
+			spark.mesh = spark_mesh
+			spark.rotation_degrees = Vector3(72.0, 0.0, -28.0)
+			spark.position = plume.position + Vector3(0.02, 0.035, 0.02)
+			spark.material_override = _make_trail_preview_material(emission_color, emission_color.lightened(0.2), lerpf(0.72, 0.2, t))
+			parent.add_child(spark)
 
 	var flare: MeshInstance3D = MeshInstance3D.new()
 	var flare_mesh: SphereMesh = SphereMesh.new()
-	flare_mesh.radius = 0.08
-	flare_mesh.height = 0.16
+	flare_mesh.radius = 0.13 if is_large else 0.1
+	flare_mesh.height = flare_mesh.radius * 2.0
 	flare.mesh = flare_mesh
 	flare.material_override = _make_trail_preview_material(secondary_color, emission_color, 0.92)
 	flare.position = Vector3(0.2, -0.01, 0.0)
 	parent.add_child(flare)
+
+
+func _add_speed_streak_preview(parent: Node3D, primary_color: Color, secondary_color: Color, emission_color: Color, is_large: bool) -> void:
+	var length: float = 1.08 if not is_large else 1.52
+	var glow_width: float = 0.15 if not is_large else 0.22
+	var marble_radius: float = 0.22 if not is_large else 0.27
+	var marble_center_x: float = 0.44
+	var head_x: float = marble_center_x - marble_radius
+
+	var aura: MeshInstance3D = MeshInstance3D.new()
+	aura.name = "SpeedTrailAuraPreview"
+	var aura_mesh: SphereMesh = SphereMesh.new()
+	aura_mesh.radius = 1.0
+	aura_mesh.height = 2.0
+	aura_mesh.radial_segments = 24
+	aura_mesh.rings = 12
+	aura.mesh = aura_mesh
+	aura.position = Vector3(marble_center_x, -0.02, 0.0)
+	aura.scale = Vector3.ONE * marble_radius * 1.2
+	aura.material_override = _make_trail_preview_material(Color(primary_color.r, primary_color.g, primary_color.b, 0.08), emission_color, 0.1)
+	parent.add_child(aura)
+
+	var glow: MeshInstance3D = MeshInstance3D.new()
+	glow.name = "SpeedTrailGlowPreview"
+	glow.mesh = _make_preview_flame_mesh(0.0, 1.0)
+	glow.position = Vector3(head_x, -0.02, 0.0)
+	glow.scale = Vector3(length, glow_width, maxf(glow_width * 0.32, 0.025))
+	glow.material_override = _make_trail_preview_material(primary_color, emission_color, 0.42)
+	parent.add_child(glow)
+
+	var core: MeshInstance3D = MeshInstance3D.new()
+	core.name = "SpeedTrailCorePreview"
+	core.mesh = _make_preview_flame_mesh(0.35, 0.58)
+	core.position = glow.position + Vector3(-0.02, 0.01, 0.018)
+	core.scale = Vector3(length * 0.92, maxf(glow_width * 0.44, 0.035), maxf(glow_width * 0.22, 0.02))
+	core.material_override = _make_trail_preview_material(emission_color, emission_color.lightened(0.2), 0.92)
+	parent.add_child(core)
+
+	var head: MeshInstance3D = MeshInstance3D.new()
+	head.name = "SpeedTrailHeadPreview"
+	var head_mesh: SphereMesh = SphereMesh.new()
+	head_mesh.radius = 0.09 if not is_large else 0.13
+	head_mesh.height = head_mesh.radius * 2.0
+	head.mesh = head_mesh
+	head.position = Vector3(head_x, -0.01, 0.04)
+	head.material_override = _make_trail_preview_material(secondary_color.lerp(emission_color, 0.45), emission_color, 0.7)
+	parent.add_child(head)
+
+
+func _make_preview_flame_mesh(phase: float, width_scale: float) -> ArrayMesh:
+	var segments: int = 8
+	var vertices: PackedVector3Array = PackedVector3Array()
+	var uvs: PackedVector2Array = PackedVector2Array()
+	var colors: PackedColorArray = PackedColorArray()
+	var indices: PackedInt32Array = PackedInt32Array()
+
+	for index in range(segments + 1):
+		var t: float = float(index) / float(segments)
+		var taper: float = pow(1.0 - t, 0.72)
+		var width: float = lerpf(0.06, 0.5, taper) * width_scale
+		var lift_pull: float = sin(t * PI * 2.4 + phase * PI * 2.0) * 0.1 * taper
+		var depth_pull: float = cos(t * PI * 1.8 + phase * PI) * 0.08 * taper
+		var x: float = -t
+		var alpha: float = clampf(1.0 - pow(t, 1.2), 0.0, 1.0)
+		vertices.append(Vector3(x, lift_pull - width, depth_pull))
+		vertices.append(Vector3(x, lift_pull + width, depth_pull))
+		uvs.append(Vector2(t, 0.0))
+		uvs.append(Vector2(t, 1.0))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+
+	for index in range(segments):
+		var base: int = index * 2
+		indices.append(base)
+		indices.append(base + 1)
+		indices.append(base + 2)
+		indices.append(base + 1)
+		indices.append(base + 3)
+		indices.append(base + 2)
+
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+
+	var mesh: ArrayMesh = ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _add_textured_trail_preview(parent: Node3D, texture_path: String, is_large: bool) -> bool:
+	var texture: Texture2D = _load_texture_from_path(texture_path)
+	if texture == null:
+		return false
+
+	var trail: MeshInstance3D = MeshInstance3D.new()
+	trail.name = "SkillTexturePreview"
+	var quad: QuadMesh = QuadMesh.new()
+	quad.size = Vector2(1.55, 0.78) if is_large else Vector2(1.08, 0.54)
+	trail.mesh = quad
+	trail.position = Vector3(-0.28, 0.0, 0.0)
+	trail.rotation_degrees = Vector3(0.0, 0.0, -12.0)
+	trail.material_override = _make_textured_trail_preview_material(texture, 1.0)
+	parent.add_child(trail)
+
+	var echo: MeshInstance3D = MeshInstance3D.new()
+	echo.name = "SkillTexturePreviewEcho"
+	var echo_quad: QuadMesh = QuadMesh.new()
+	echo_quad.size = quad.size * 0.86
+	echo.mesh = echo_quad
+	echo.position = trail.position + Vector3(-0.04, -0.04, 0.03)
+	echo.rotation_degrees = trail.rotation_degrees
+	echo.material_override = _make_textured_trail_preview_material(texture, 0.35)
+	parent.add_child(echo)
+	return true
+
+
+func _make_textured_trail_preview_material(texture: Texture2D, alpha: float) -> ShaderMaterial:
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = _get_skill_trail_preview_shader()
+	material.set_shader_parameter("trail_texture", texture)
+	material.set_shader_parameter("alpha_scale", alpha)
+	material.set_shader_parameter("emission_energy", 2.4)
+	return material
+
+
+func _get_skill_trail_preview_shader() -> Shader:
+	var shader: Shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled;
+
+uniform sampler2D trail_texture : source_color;
+uniform float alpha_scale = 1.0;
+uniform float emission_energy = 2.4;
+
+void fragment() {
+	vec4 tex = texture(trail_texture, UV);
+	float key_distance = distance(tex.rgb, vec3(1.0, 0.0, 1.0));
+	float key_alpha = smoothstep(0.08, 0.28, key_distance);
+	ALBEDO = tex.rgb * COLOR.rgb;
+	ALPHA = tex.a * key_alpha * alpha_scale * COLOR.a;
+	EMISSION = tex.rgb * emission_energy;
+}
+"""
+	return shader
+
+
+func _instantiate_preview_trail_scene(scene_path: String) -> Node3D:
+	if not ResourceLoader.exists(scene_path):
+		return null
+	var loaded: Resource = load(scene_path)
+	var packed: PackedScene = loaded as PackedScene
+	if packed == null:
+		return null
+	var instance: Node = packed.instantiate()
+	var trail_node: Node3D = instance as Node3D
+	if trail_node == null:
+		if instance != null:
+			instance.queue_free()
+		return null
+	_set_visible_recursive(trail_node, true)
+	_play_first_animation_recursive(trail_node)
+	return trail_node
+
+
+func _set_visible_recursive(node: Node, visible_state: bool) -> void:
+	if node is VisualInstance3D:
+		(node as VisualInstance3D).visible = visible_state
+	for child in node.get_children():
+		_set_visible_recursive(child, visible_state)
+
+
+func _play_first_animation_recursive(node: Node) -> void:
+	if node is AnimationPlayer:
+		var player: AnimationPlayer = node as AnimationPlayer
+		var animations: PackedStringArray = player.get_animation_list()
+		if not animations.is_empty():
+			player.play(animations[0])
+	for child in node.get_children():
+		_play_first_animation_recursive(child)
 
 
 func _add_disabled_trail_preview(parent: Node3D) -> void:
@@ -10741,6 +10983,9 @@ func _make_trail_preview_material(base_color: Color, emission_color: Color, alph
 	material.emission = emission_color
 	material.emission_energy_multiplier = 2.2
 	material.roughness = 0.18
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	material.no_depth_test = true
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return material
 
 

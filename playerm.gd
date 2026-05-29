@@ -2,6 +2,7 @@ extends RigidBody3D
 
 const TRAIL_MODEL_PATH_A: String = "res://looping_particle_trail_fbx_0.9mb.glb"
 const TRAIL_MODEL_PATH_B: String = "res://trail.glb"
+const GPU_TRAIL_SCRIPT: Script = preload("res://addons/GPUTrail/GPUTrail3D.gd")
 const SHOOTING_MECHANIC_DRAG: String = "drag"
 const SHOOTING_MECHANIC_SPLIT: String = "split"
 const SHOOTING_MECHANIC_PRESS: String = "press"
@@ -53,6 +54,8 @@ var trail_effect_root: Node3D = null
 var active_trail_node: Node3D = null
 var active_trail_source_path: String = ""
 var trail_motion_direction: Vector3 = Vector3.FORWARD
+var skill_trail_points: Array[Dictionary] = []
+var skill_trail_last_sample: Vector3 = Vector3(999999.0, 999999.0, 999999.0)
 var last_drag_position := Vector2.ZERO
 var smoothed_drag_vector := Vector2.ZERO
 var drag_reference_forward := Vector3.ZERO
@@ -1305,7 +1308,8 @@ func _update_trail(delta: float) -> void:
 
 	var speed: float = linear_velocity.length()
 	var is_moving_now: bool = speed > 0.42
-	if is_moving_now:
+	var has_live_gpu_trail: bool = active_trail_node != null and is_instance_valid(active_trail_node) and bool(active_trail_node.get_meta("uses_gpu_trail", false))
+	if is_moving_now or has_live_gpu_trail or (_trail_uses_texture() and not skill_trail_points.is_empty()):
 		_update_active_trail(speed, delta)
 	else:
 		_clear_active_trail()
@@ -1333,12 +1337,20 @@ func _update_active_trail(speed: float, delta: float) -> void:
 			return
 		trail_effect_root.add_child(active_trail_node)
 
+	if bool(active_trail_node.get_meta("uses_gpu_trail", false)):
+		_update_gpu_trail(active_trail_node, speed)
+		return
+
 	var move_direction: Vector3 = linear_velocity.normalized()
 	if move_direction.length_squared() > 0.0001:
 		var blend_weight: float = clampf(delta * 10.0, 0.0, 1.0)
 		trail_motion_direction = trail_motion_direction.slerp(move_direction, blend_weight).normalized()
 	elif trail_motion_direction.length_squared() <= 0.0001:
 		trail_motion_direction = Vector3.FORWARD
+
+	if bool(active_trail_node.get_meta("uses_skill_texture", false)):
+		_update_textured_ribbon_trail(active_trail_node, speed, delta)
+		return
 
 	var preset_scale: float = float(trail_settings.get("scale", 0.14))
 	var display_scale: float = lerpf(0.72, 1.08, clampf(speed / 8.0, 0.0, 1.0))
@@ -1347,17 +1359,116 @@ func _update_active_trail(speed: float, delta: float) -> void:
 	active_trail_node.scale = Vector3.ONE * maxf(preset_scale * display_scale * 4.8, 0.18)
 	active_trail_node.global_position = global_position + Vector3.UP * 0.03 - trail_motion_direction * distance_behind
 	active_trail_node.look_at(active_trail_node.global_position - trail_motion_direction, Vector3.UP)
-	_set_trail_node_alpha(active_trail_node, 1.0, 1.0)
+	if not bool(active_trail_node.get_meta("uses_skill_texture", false)):
+		_set_trail_node_alpha(active_trail_node, 1.0, 1.0)
 
 
 func _clear_active_trail() -> void:
 	if active_trail_node != null and is_instance_valid(active_trail_node):
 		active_trail_node.queue_free()
 	active_trail_node = null
+	skill_trail_points.clear()
+	skill_trail_last_sample = Vector3(999999.0, 999999.0, 999999.0)
 
 
 func _instantiate_trail_segment() -> Node3D:
-	return _build_procedural_trail()
+	return _build_gpu_trail()
+
+
+func _build_gpu_trail() -> Node3D:
+	var root: Node3D = Node3D.new()
+	root.name = "LiveGPUTrail"
+	root.top_level = true
+	root.set_meta("uses_gpu_trail", true)
+
+	var trail: GPUParticles3D = GPU_TRAIL_SCRIPT.new() as GPUParticles3D
+	if trail == null:
+		return _build_procedural_trail()
+	trail.name = "GPUTrail3D"
+	trail.emitting = true
+	root.add_child(trail)
+	root.set_meta("gpu_configured", false)
+	return root
+
+
+func _update_gpu_trail(root: Node3D, speed: float) -> void:
+	var trail: GPUParticles3D = root.get_node_or_null("GPUTrail3D") as GPUParticles3D
+	if trail == null:
+		return
+
+	if not bool(root.get_meta("gpu_configured", false)):
+		if trail.draw_pass_1 == null:
+			return
+		_configure_gpu_trail(trail)
+		root.set_meta("gpu_configured", true)
+
+	var move_direction: Vector3 = linear_velocity.normalized()
+	if move_direction.length_squared() > 0.0001:
+		trail_motion_direction = trail_motion_direction.slerp(move_direction, 0.18).normalized()
+	elif trail_motion_direction.length_squared() <= 0.0001:
+		trail_motion_direction = Vector3.FORWARD
+
+	var speed_ratio: float = clampf(speed / 8.0, 0.0, 1.0)
+	var preset_scale: float = maxf(float(trail_settings.get("scale", 0.14)), 0.08)
+	var width: float = lerpf(0.11, 0.2, speed_ratio) * maxf(preset_scale / 0.14, 0.72)
+	root.visible = true
+	root.global_position = global_position + Vector3.UP * 0.06 - trail_motion_direction * lerpf(0.02, 0.1, speed_ratio)
+	root.global_basis = Basis.IDENTITY
+	trail.scale = Vector3.ONE * width
+	trail.emitting = true
+
+
+func _configure_gpu_trail(trail: GPUParticles3D) -> void:
+	var lifetime: float = clampf(float(trail_settings.get("lifetime", 0.46)), 0.22, 0.9)
+	trail.set("length_seconds", lifetime)
+	trail.set("billboard", true)
+	trail.set("snap_to_transform", true)
+	trail.set("dewiggle", true)
+	trail.set("clip_overlaps", true)
+	trail.set("scroll", Vector2(-0.36, 0.0))
+
+	var texture_path: String = str(trail_settings.get("texture_path", "")).strip_edges()
+	if texture_path != "":
+		var texture: Texture2D = _load_trail_texture(texture_path)
+		if texture != null:
+			trail.set("texture", texture)
+
+	trail.set("color_ramp", _make_gpu_trail_color_ramp())
+	trail.set("curve", _make_gpu_trail_width_curve())
+
+
+func _make_gpu_trail_color_ramp() -> GradientTexture1D:
+	var primary: Color = trail_settings.get("color", Color(0.42, 0.92, 1.0, 0.46))
+	var secondary: Color = trail_settings.get("secondary_color", primary.lightened(0.22))
+	var emission: Color = trail_settings.get("emission", primary)
+	var gradient: Gradient = Gradient.new()
+	var tail: Color = secondary
+	tail.a = 0.0
+	var middle: Color = primary.lerp(secondary, 0.35)
+	middle.a = maxf(primary.a, 0.34)
+	var head: Color = emission
+	head.a = maxf(primary.a, 0.72)
+	gradient.set_color(0, tail)
+	gradient.set_color(1, head)
+	gradient.add_point(0.45, middle)
+	var texture: GradientTexture1D = GradientTexture1D.new()
+	texture.gradient = gradient
+	return texture
+
+
+func _make_gpu_trail_width_curve() -> CurveTexture:
+	var curve: Curve = Curve.new()
+	curve.add_point(Vector2(0.0, 0.0))
+	curve.add_point(Vector2(0.2, 0.32))
+	curve.add_point(Vector2(0.72, 0.92))
+	curve.add_point(Vector2(1.0, 0.08))
+	var texture: CurveTexture = CurveTexture.new()
+	texture.curve = curve
+	return texture
+
+
+func _trail_uses_texture() -> bool:
+	return str(trail_settings.get("texture_path", "")).strip_edges() != ""
 
 
 func _set_trail_node_alpha(root: Node, alpha: float, emission_scale: float) -> void:
@@ -1385,68 +1496,270 @@ func _set_trail_node_alpha(root: Node, alpha: float, emission_scale: float) -> v
 		_set_trail_node_alpha(child, alpha, emission_scale)
 
 
+func _update_textured_ribbon_trail(root: Node3D, speed: float, delta: float) -> void:
+	root.global_transform = Transform3D.IDENTITY
+
+	var lifetime: float = maxf(float(trail_settings.get("lifetime", 0.52)), 0.18)
+	for index in range(skill_trail_points.size() - 1, -1, -1):
+		var point: Dictionary = skill_trail_points[index]
+		point["age"] = float(point.get("age", 0.0)) + delta
+		if float(point["age"]) > lifetime:
+			skill_trail_points.remove_at(index)
+		else:
+			skill_trail_points[index] = point
+
+	if speed > 0.42:
+		var sample_position: Vector3 = global_position + Vector3.UP * 0.05
+		if skill_trail_points.is_empty() or sample_position.distance_to(skill_trail_last_sample) >= 0.08:
+			skill_trail_points.append({"position": sample_position, "age": 0.0})
+			skill_trail_last_sample = sample_position
+			while skill_trail_points.size() > 34:
+				skill_trail_points.remove_at(0)
+
+	var mesh_instance: MeshInstance3D = root.get_node_or_null("SkillTrailRibbon") as MeshInstance3D
+	if mesh_instance == null:
+		return
+	if skill_trail_points.size() < 2:
+		root.visible = false
+		mesh_instance.mesh = ArrayMesh.new()
+		return
+
+	root.visible = true
+	var camera: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	var speed_ratio: float = clampf(speed / 8.0, 0.0, 1.0)
+	var preset_scale: float = maxf(float(trail_settings.get("scale", 0.2)), 0.08)
+	var max_width: float = lerpf(0.38, 0.62, speed_ratio) * maxf(preset_scale * 4.0, 0.85)
+
+	var vertices: PackedVector3Array = PackedVector3Array()
+	var uvs: PackedVector2Array = PackedVector2Array()
+	var colors: PackedColorArray = PackedColorArray()
+	var indices: PackedInt32Array = PackedInt32Array()
+	var point_count: int = skill_trail_points.size()
+
+	for index in range(point_count):
+		var t: float = float(index) / float(maxi(point_count - 1, 1))
+		var point_data: Dictionary = skill_trail_points[index]
+		var position: Vector3 = point_data.get("position", global_position)
+		var previous_data: Dictionary = skill_trail_points[maxi(index - 1, 0)]
+		var next_data: Dictionary = skill_trail_points[mini(index + 1, point_count - 1)]
+		var previous_position: Vector3 = previous_data.get("position", position)
+		var next_position: Vector3 = next_data.get("position", position)
+		var tangent: Vector3 = (next_position - previous_position).normalized()
+		if tangent.length_squared() <= 0.0001:
+			tangent = trail_motion_direction.normalized()
+		if tangent.length_squared() <= 0.0001:
+			tangent = Vector3.FORWARD
+
+		var view_direction: Vector3 = Vector3.UP
+		if camera != null:
+			view_direction = (camera.global_position - position).normalized()
+		var side: Vector3 = tangent.cross(view_direction).normalized()
+		if side.length_squared() <= 0.0001:
+			side = Vector3.UP.cross(tangent).normalized()
+		if side.length_squared() <= 0.0001:
+			side = Vector3.RIGHT
+
+		var width: float = max_width * lerpf(0.22, 1.0, smoothstep(0.0, 1.0, t))
+		var age_alpha: float = clampf(1.0 - (float(point_data.get("age", 0.0)) / lifetime), 0.0, 1.0)
+		var tail_alpha: float = smoothstep(0.0, 0.18, t)
+		var alpha: float = age_alpha * tail_alpha
+
+		vertices.append(position - side * width)
+		vertices.append(position + side * width)
+		uvs.append(Vector2(t, 0.0))
+		uvs.append(Vector2(t, 1.0))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+
+	for index in range(point_count - 1):
+		var base: int = index * 2
+		indices.append(base)
+		indices.append(base + 1)
+		indices.append(base + 2)
+		indices.append(base + 1)
+		indices.append(base + 3)
+		indices.append(base + 2)
+
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+
+	var ribbon_mesh: ArrayMesh = ArrayMesh.new()
+	ribbon_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh_instance.mesh = ribbon_mesh
+
+
+func _build_textured_trail(texture_path: String) -> Node3D:
+	var texture: Texture2D = _load_trail_texture(texture_path)
+	if texture == null:
+		return null
+
+	var root: Node3D = Node3D.new()
+	root.name = "TexturedSkillTrail"
+	root.top_level = true
+	root.set_meta("uses_skill_texture", true)
+
+	var mesh_instance: MeshInstance3D = MeshInstance3D.new()
+	mesh_instance.name = "SkillTrailRibbon"
+	mesh_instance.mesh = ArrayMesh.new()
+	mesh_instance.material_override = _make_textured_trail_material(texture)
+	root.add_child(mesh_instance)
+
+	return root
+
+
+func _load_trail_texture(texture_path: String) -> Texture2D:
+	if ResourceLoader.exists(texture_path):
+		var texture_resource: Resource = ResourceLoader.load(texture_path)
+		if texture_resource is Texture2D:
+			return texture_resource as Texture2D
+
+	var image: Image = Image.new()
+	var load_path: String = texture_path
+	if texture_path.begins_with("res://"):
+		load_path = ProjectSettings.globalize_path(texture_path)
+	if image.load(load_path) == OK:
+		return ImageTexture.create_from_image(image)
+	return null
+
+
+func _make_textured_trail_material(texture: Texture2D, alpha: float = 1.0, emission_energy: float = 2.6) -> ShaderMaterial:
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = _get_skill_trail_shader()
+	material.set_shader_parameter("trail_texture", texture)
+	material.set_shader_parameter("alpha_scale", alpha)
+	material.set_shader_parameter("emission_energy", emission_energy)
+	return material
+
+
+func _get_skill_trail_shader() -> Shader:
+	var shader: Shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled;
+
+uniform sampler2D trail_texture : source_color;
+uniform float alpha_scale = 1.0;
+uniform float emission_energy = 2.6;
+
+void fragment() {
+	vec4 tex = texture(trail_texture, UV);
+	float key_distance = distance(tex.rgb, vec3(1.0, 0.0, 1.0));
+	float key_alpha = smoothstep(0.08, 0.28, key_distance);
+	ALBEDO = tex.rgb * COLOR.rgb;
+	ALPHA = tex.a * key_alpha * alpha_scale * COLOR.a;
+	EMISSION = tex.rgb * emission_energy;
+}
+"""
+	return shader
+
+
 func _build_procedural_trail() -> Node3D:
 	var root: Node3D = Node3D.new()
 	root.name = "ProceduralTrail"
 
 	var primary: Color = trail_settings.get("color", Color(0.42, 0.92, 1.0, 0.34))
-	var secondary: Color = trail_settings.get("secondary_color", primary)
 	var emission: Color = trail_settings.get("emission", primary)
-	var shape: String = str(trail_settings.get("shape", "comet"))
-
-	var body: MeshInstance3D = MeshInstance3D.new()
-	var cylinder: CylinderMesh = CylinderMesh.new()
-	cylinder.top_radius = 0.06
-	cylinder.bottom_radius = 0.16 if shape == "dust" else 0.12
-	cylinder.height = 0.72 if shape == "ribbon" else 0.58
-	cylinder.radial_segments = 16
-	body.mesh = cylinder
-	body.rotation_degrees = Vector3(90.0, 0.0, 0.0)
-	body.position = Vector3(0.0, 0.0, 0.2)
-	body.material_override = _make_trail_material(primary, emission, 1.5)
-	root.add_child(body)
-
-	var tip: MeshInstance3D = MeshInstance3D.new()
-	var tip_mesh: SphereMesh = SphereMesh.new()
-	tip_mesh.radius = 0.11
-	tip_mesh.height = 0.22
-	tip.mesh = tip_mesh
-	tip.position = Vector3(0.0, 0.0, 0.42)
-	tip.material_override = _make_trail_material(primary.lerp(Color.WHITE, 0.18), emission, 1.9)
-	root.add_child(tip)
 
 	var glow: MeshInstance3D = MeshInstance3D.new()
-	var glow_mesh: SphereMesh = SphereMesh.new()
-	glow_mesh.radius = 0.15 if shape == "dust" else 0.13
-	glow_mesh.height = glow_mesh.radius * 2.0
+	glow.name = "SpeedGlow"
+	var glow_mesh: BoxMesh = BoxMesh.new()
+	glow_mesh.size = Vector3(0.42, 0.018, 1.85)
 	glow.mesh = glow_mesh
-	glow.position = Vector3(0.0, 0.0, -0.02)
-	glow.material_override = _make_trail_material(secondary, emission, 1.2)
+	glow.material_override = _make_trail_material(primary, emission, 1.5)
 	root.add_child(glow)
 
-	if shape == "spark" or shape == "ribbon":
-		var accent: MeshInstance3D = MeshInstance3D.new()
-		var accent_mesh: SphereMesh = SphereMesh.new()
-		accent_mesh.radius = 0.08
-		accent_mesh.height = 0.16
-		accent.mesh = accent_mesh
-		accent.position = Vector3(0.0, 0.09, 0.12)
-		accent.material_override = _make_trail_material(secondary.lerp(emission, 0.4), emission, 2.1)
-		root.add_child(accent)
+	var core: MeshInstance3D = MeshInstance3D.new()
+	core.name = "SpeedCore"
+	var core_mesh: BoxMesh = BoxMesh.new()
+	core_mesh.size = Vector3(0.075, 0.016, 1.78)
+	core.mesh = core_mesh
+	core.position = Vector3(0.0, 0.012, 0.0)
+	core.material_override = _make_trail_material(Color(emission.r, emission.g, emission.b, 0.78), emission, 3.0)
+	root.add_child(core)
+
+	var head_glow: MeshInstance3D = MeshInstance3D.new()
+	head_glow.name = "SpeedHeadGlow"
+	var head_mesh: SphereMesh = SphereMesh.new()
+	head_mesh.radius = 0.12
+	head_mesh.height = 0.24
+	head_mesh.radial_segments = 16
+	head_mesh.rings = 8
+	head_glow.mesh = head_mesh
+	head_glow.position = Vector3(0.0, 0.04, 0.92)
+	head_glow.material_override = _make_trail_material(Color(emission.r, emission.g, emission.b, 0.48), emission, 2.6)
+	root.add_child(head_glow)
 
 	return root
 
 
-func _make_trail_material(albedo: Color, emission: Color, energy: float) -> StandardMaterial3D:
-	var material: StandardMaterial3D = StandardMaterial3D.new()
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
-	material.no_depth_test = false
-	material.albedo_color = Color(albedo.r, albedo.g, albedo.b, maxf(albedo.a, 0.24))
-	material.emission_enabled = true
-	material.emission = emission
-	material.emission_energy_multiplier = energy
+func _make_trail_material(albedo: Color, emission: Color, energy: float) -> ShaderMaterial:
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = _get_speed_streak_shader()
+	material.set_shader_parameter("trail_color", Color(albedo.r, albedo.g, albedo.b, maxf(albedo.a, 0.24)))
+	material.set_shader_parameter("emission_color", Color(emission.r, emission.g, emission.b, 1.0))
+	material.set_shader_parameter("emission_energy", energy)
+	return material
+
+
+func _get_speed_streak_shader() -> Shader:
+	var shader: Shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
+
+uniform vec4 trail_color : source_color = vec4(0.2, 0.8, 1.0, 0.5);
+uniform vec4 emission_color : source_color = vec4(0.2, 0.8, 1.0, 1.0);
+uniform float emission_energy = 2.0;
+
+void fragment() {
+	float along = clamp(VERTEX.z + 0.5, 0.0, 1.0);
+	float tail_fade = smoothstep(0.0, 0.2, along);
+	float head_keep = 1.0 - smoothstep(0.88, 1.0, along) * 0.25;
+	float side_fade = 1.0 - smoothstep(0.16, 0.5, abs(VERTEX.x));
+	float alpha = trail_color.a * tail_fade * head_keep * side_fade;
+	ALBEDO = trail_color.rgb;
+	ALPHA = alpha;
+	EMISSION = emission_color.rgb * emission_energy * max(alpha, 0.08);
+}
+"""
+	return shader
+
+
+func _make_trail_particle_mesh(shape: String) -> Mesh:
+	var mesh: SphereMesh = SphereMesh.new()
+	mesh.radius = 0.026 if shape == "spark" else 0.035
+	mesh.height = mesh.radius * 2.0
+	mesh.radial_segments = 8
+	mesh.rings = 4
+	return mesh
+
+
+func _make_trail_particle_material(primary: Color, secondary: Color, emission: Color, shape: String) -> ParticleProcessMaterial:
+	var material: ParticleProcessMaterial = ParticleProcessMaterial.new()
+	material.direction = Vector3(0.0, 0.0, -1.0)
+	material.spread = 22.0 if shape == "ribbon" else 42.0
+	material.initial_velocity_min = 0.08
+	material.initial_velocity_max = 0.42 if shape != "dust" else 0.28
+	material.gravity = Vector3(0.0, -0.08, 0.0) if shape == "dust" else Vector3.ZERO
+	material.damping_min = 0.4
+	material.damping_max = 1.4
+	material.scale_min = 0.45
+	material.scale_max = 1.55
+	var gradient: Gradient = Gradient.new()
+	gradient.set_color(0, primary.lerp(emission, 0.28))
+	var middle: Color = secondary.lerp(emission, 0.16)
+	middle.a = maxf(secondary.a, 0.36)
+	var faded: Color = secondary
+	faded.a = 0.0
+	gradient.set_color(1, faded)
+	gradient.add_point(0.45, middle)
+	var gradient_texture: GradientTexture1D = GradientTexture1D.new()
+	gradient_texture.gradient = gradient
+	material.color_ramp = gradient_texture
 	return material
 
 
@@ -1458,10 +1771,29 @@ func _get_trail_scene_path_from_preset(preset: Dictionary) -> String:
 	if not bool(preset.get("enabled", false)):
 		return ""
 
-	var shape: String = str(preset.get("shape", "comet"))
-	if shape == "dust":
-		return TRAIL_MODEL_PATH_B
-	return TRAIL_MODEL_PATH_A
+	var scene_path: String = str(preset.get("scene_path", "")).strip_edges()
+	if scene_path != "":
+		return scene_path
+	return ""
+
+
+func _set_visible_recursive(node: Node, visible_state: bool) -> void:
+	if node is VisualInstance3D:
+		(node as VisualInstance3D).visible = visible_state
+
+	for child in node.get_children():
+		_set_visible_recursive(child, visible_state)
+
+
+func _play_first_animation_recursive(node: Node) -> void:
+	if node is AnimationPlayer:
+		var player: AnimationPlayer = node as AnimationPlayer
+		var animations: PackedStringArray = player.get_animation_list()
+		if not animations.is_empty():
+			player.play(animations[0])
+
+	for child in node.get_children():
+		_play_first_animation_recursive(child)
 
 
 func _quadratic_bezier(start: Vector3, control: Vector3, end: Vector3, t: float) -> Vector3:

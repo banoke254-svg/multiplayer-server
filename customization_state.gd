@@ -6,6 +6,7 @@ const SAVE_VERSION: int = 9
 const DEFAULT_MARBLE_ID: String = "pearl_drift"
 const DEFAULT_TRAIL_ID: String = "comet"
 const DEFAULT_FIELD_ID: String = "glass_garden"
+const DEFAULT_BANNER_ID: String = "crystal"
 const DEFAULT_PLAYER_NAME: String = ""
 const DEFAULT_SHOOT_SENSITIVITY: float = 1.0
 const MIN_SHOOT_SENSITIVITY: float = 0.5
@@ -23,6 +24,9 @@ const DEFAULT_UNLOCKED_MARBLE_IDS := [
 const DEFAULT_UNLOCKED_FIELD_IDS := [
 	"glass_garden"
 ]
+const DEFAULT_UNLOCKED_BANNER_IDS := [
+	"crystal"
+]
 const HIDDEN_MARBLE_IDS := []
 const PREMIUM_IMPORTED_MARBLE_IDS := [
 	"environment_sphere",
@@ -38,6 +42,7 @@ const PREMIUM_IMPORTED_MARBLE_IDS := [
 var selected_marble_id: String = DEFAULT_MARBLE_ID
 var selected_trail_id: String = DEFAULT_TRAIL_ID
 var selected_field_id: String = DEFAULT_FIELD_ID
+var selected_banner_id: String = DEFAULT_BANNER_ID
 var player_name: String = DEFAULT_PLAYER_NAME
 var player_age: int = 0
 var player_login_id: String = ""
@@ -55,6 +60,7 @@ var leaderboard_wins: Dictionary = {}
 var leaderboard_names: Dictionary = {}
 var unlocked_marble_ids: PackedStringArray = DEFAULT_UNLOCKED_MARBLE_IDS.duplicate()
 var unlocked_field_ids: PackedStringArray = DEFAULT_UNLOCKED_FIELD_IDS.duplicate()
+var unlocked_banner_ids: PackedStringArray = DEFAULT_UNLOCKED_BANNER_IDS.duplicate()
 
 var marble_presets: Dictionary = {
 	"pearl_drift": {
@@ -499,6 +505,19 @@ var trail_presets: Dictionary = {
 		"lifetime": 0.42,
 		"interval": 0.035
 	},
+	"particle_loop": {
+		"name": "Particle Loop",
+		"description": "Imported looping particle trail.",
+		"enabled": true,
+		"color": Color(0.5, 0.9, 1.0, 0.38),
+		"secondary_color": Color(0.88, 0.96, 1.0, 0.26),
+		"emission": Color(0.24, 0.74, 1.0, 1.0),
+		"scale": 0.16,
+		"lifetime": 0.42,
+		"interval": 0.03,
+		"shape": "spark",
+		"scene_path": "res://looping_particle_trail_fbx_0.9mb.glb"
+	},
 	"ember": {
 		"name": "Ember",
 		"description": "Warm orange sparks trailing behind the marble.",
@@ -603,6 +622,59 @@ var trail_presets: Dictionary = {
 	}
 }
 
+var banner_presets: Dictionary = {
+	"crystal": {
+		"name": "Crystal Tag",
+		"description": "Clean glass name tag with cyan trim.",
+		"fill": Color(0.02, 0.07, 0.10, 0.58),
+		"accent": Color(0.42, 0.92, 1.0, 1.0),
+		"text": Color(0.96, 0.99, 1.0, 1.0),
+		"outline": Color(0.0, 0.02, 0.06, 0.92),
+		"shape": "banner",
+		"cost": 0
+	},
+	"inferno": {
+		"name": "Inferno Burner",
+		"description": "Premium fire banner with hot orange glow.",
+		"fill": Color(0.18, 0.035, 0.02, 0.72),
+		"accent": Color(1.0, 0.42, 0.08, 1.0),
+		"text": Color(1.0, 0.94, 0.78, 1.0),
+		"outline": Color(0.18, 0.02, 0.0, 0.96),
+		"shape": "burner",
+		"cost": 160
+	},
+	"royal_bubble": {
+		"name": "Royal Bubble",
+		"description": "Rounded purple-blue bubble for your name tag.",
+		"fill": Color(0.12, 0.07, 0.26, 0.74),
+		"accent": Color(0.82, 0.54, 1.0, 1.0),
+		"text": Color(0.98, 0.94, 1.0, 1.0),
+		"outline": Color(0.02, 0.0, 0.08, 0.96),
+		"shape": "bubble",
+		"cost": 140
+	},
+	"gold_plate": {
+		"name": "Gold Plate",
+		"description": "Luxury gold nameplate with bold dark contrast.",
+		"fill": Color(0.26, 0.17, 0.04, 0.78),
+		"accent": Color(1.0, 0.78, 0.18, 1.0),
+		"text": Color(1.0, 0.94, 0.72, 1.0),
+		"outline": Color(0.10, 0.06, 0.0, 0.98),
+		"shape": "plate",
+		"cost": 180
+	},
+	"lagoon_pop": {
+		"name": "Lagoon Pop",
+		"description": "Bright aqua-green custom bubble with a soft glow.",
+		"fill": Color(0.02, 0.15, 0.16, 0.72),
+		"accent": Color(0.18, 1.0, 0.72, 1.0),
+		"text": Color(0.86, 1.0, 0.96, 1.0),
+		"outline": Color(0.0, 0.08, 0.07, 0.96),
+		"shape": "bubble",
+		"cost": 120
+	}
+}
+
 var field_presets: Dictionary = {
 	"glass_garden": {
 		"name": "Glass Garden",
@@ -658,6 +730,10 @@ func get_trail_ids() -> PackedStringArray:
 	return PackedStringArray(trail_presets.keys())
 
 
+func get_banner_ids() -> PackedStringArray:
+	return PackedStringArray(banner_presets.keys())
+
+
 func get_field_ids() -> PackedStringArray:
 	return PackedStringArray(field_presets.keys())
 
@@ -669,7 +745,15 @@ func get_marble_preset(id: String) -> Dictionary:
 
 func get_trail_preset(id: String) -> Dictionary:
 	var preset: Dictionary = trail_presets.get(id, trail_presets[DEFAULT_TRAIL_ID])
-	return preset.duplicate(true)
+	var normalized: Dictionary = preset.duplicate(true)
+	normalized["id"] = id if trail_presets.has(id) else DEFAULT_TRAIL_ID
+	return normalized
+
+
+func get_banner_preset(id: String) -> Dictionary:
+	var preset: Dictionary = banner_presets.get(id, banner_presets[DEFAULT_BANNER_ID]).duplicate(true)
+	preset["id"] = id if banner_presets.has(id) else DEFAULT_BANNER_ID
+	return preset
 
 
 func get_selected_marble_preset() -> Dictionary:
@@ -693,6 +777,10 @@ func get_selected_marble_type() -> String:
 
 func get_selected_trail_preset() -> Dictionary:
 	return get_trail_preset(selected_trail_id)
+
+
+func get_selected_banner_preset() -> Dictionary:
+	return get_banner_preset(selected_banner_id)
 
 
 func get_field_preset(id: String) -> Dictionary:
@@ -973,6 +1061,18 @@ func get_field_unlock_currency(id: String) -> String:
 	return "coins"
 
 
+func get_banner_unlock_cost(id: String) -> int:
+	if id == DEFAULT_BANNER_ID:
+		return 0
+	if not banner_presets.has(id):
+		return 0
+	return int(banner_presets[id].get("cost", 120))
+
+
+func get_banner_unlock_currency(id: String) -> String:
+	return "coins"
+
+
 func is_marble_unlocked(id: String) -> bool:
 	if not marble_presets.has(id):
 		return false
@@ -1007,6 +1107,22 @@ func can_unlock_field(id: String) -> bool:
 	if is_field_unlocked(id):
 		return true
 	return get_currency_balance(get_field_unlock_currency(id)) >= get_field_unlock_cost(id)
+
+
+func is_banner_unlocked(id: String) -> bool:
+	if not banner_presets.has(id):
+		return false
+	if get_banner_unlock_cost(id) <= 0:
+		return true
+	return unlocked_banner_ids.has(id)
+
+
+func can_unlock_banner(id: String) -> bool:
+	if not banner_presets.has(id):
+		return false
+	if is_banner_unlocked(id):
+		return true
+	return get_currency_balance(get_banner_unlock_currency(id)) >= get_banner_unlock_cost(id)
 
 
 func unlock_marble(id: String) -> bool:
@@ -1061,6 +1177,33 @@ func unlock_field(id: String) -> bool:
 		return false
 	if not unlocked_field_ids.has(id):
 		unlocked_field_ids.append(id)
+	save_state()
+	return true
+
+
+func unlock_banner(id: String) -> bool:
+	if not banner_presets.has(id):
+		return false
+	if is_banner_unlocked(id):
+		return true
+
+	var unlock_cost: int = get_banner_unlock_cost(id)
+	var currency: String = get_banner_unlock_currency(id)
+	if get_currency_balance(currency) < unlock_cost:
+		return false
+
+	var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
+	if currency_manager == null:
+		return false
+	var spent: bool = false
+	if currency == "gold" and currency_manager.has_method("spend_gold"):
+		spent = bool(currency_manager.call("spend_gold", unlock_cost))
+	elif currency_manager.has_method("spend_coins"):
+		spent = bool(currency_manager.call("spend_coins", unlock_cost))
+	if not spent:
+		return false
+	if not unlocked_banner_ids.has(id):
+		unlocked_banner_ids.append(id)
 	save_state()
 	return true
 
@@ -1182,6 +1325,12 @@ func set_selected_trail(id: String) -> void:
 		save_state()
 
 
+func set_selected_banner(id: String) -> void:
+	if banner_presets.has(id) and is_banner_unlocked(id):
+		selected_banner_id = id
+		save_state()
+
+
 func set_selected_field(id: String) -> void:
 	if field_presets.has(id) and is_field_unlocked(id):
 		selected_field_id = id
@@ -1252,11 +1401,13 @@ func _get_remote_progress_payload() -> Dictionary:
 		"selected_marble_id": selected_marble_id,
 		"selected_trail_id": selected_trail_id,
 		"selected_field_id": selected_field_id,
+		"selected_banner_id": selected_banner_id,
 		"shoot_sensitivity": get_shoot_sensitivity(),
 		"aim_inverted": is_aim_inverted(),
 		"shooting_mechanic": get_shooting_mechanic(),
 		"unlocked_marble_ids": _packed_string_array_to_array(unlocked_marble_ids),
 		"unlocked_field_ids": _packed_string_array_to_array(unlocked_field_ids),
+		"unlocked_banner_ids": _packed_string_array_to_array(unlocked_banner_ids),
 		"leaderboard_wins": leaderboard_wins,
 		"leaderboard_names": leaderboard_names
 	}
@@ -1282,6 +1433,12 @@ func _apply_remote_progress(progress: Dictionary) -> void:
 		if field_presets.has(field_id) and not unlocked_field_ids.has(field_id):
 			unlocked_field_ids.append(field_id)
 
+	var remote_unlocked_banners: Array = progress.get("unlocked_banner_ids", []) if typeof(progress.get("unlocked_banner_ids", [])) == TYPE_ARRAY else []
+	for banner_id_variant in remote_unlocked_banners:
+		var banner_id: String = str(banner_id_variant).strip_edges()
+		if banner_presets.has(banner_id) and not unlocked_banner_ids.has(banner_id):
+			unlocked_banner_ids.append(banner_id)
+
 	var remote_marble_id: String = str(progress.get("selected_marble_id", "")).strip_edges()
 	if remote_marble_id != "" and marble_presets.has(remote_marble_id) and not _is_marble_hidden(remote_marble_id) and is_marble_unlocked(remote_marble_id):
 		selected_marble_id = remote_marble_id
@@ -1291,6 +1448,9 @@ func _apply_remote_progress(progress: Dictionary) -> void:
 	var remote_field_id: String = str(progress.get("selected_field_id", "")).strip_edges()
 	if remote_field_id != "" and field_presets.has(remote_field_id) and is_field_unlocked(remote_field_id):
 		selected_field_id = remote_field_id
+	var remote_banner_id: String = str(progress.get("selected_banner_id", "")).strip_edges()
+	if remote_banner_id != "" and banner_presets.has(remote_banner_id) and is_banner_unlocked(remote_banner_id):
+		selected_banner_id = remote_banner_id
 
 	if progress.has("shoot_sensitivity"):
 		shoot_sensitivity = clampf(float(progress.get("shoot_sensitivity", shoot_sensitivity)), MIN_SHOOT_SENSITIVITY, MAX_SHOOT_SENSITIVITY)
@@ -1327,6 +1487,7 @@ func load_state() -> void:
 	var marble_id: String = str(data.get("selected_marble_id", DEFAULT_MARBLE_ID))
 	var trail_id: String = str(data.get("selected_trail_id", DEFAULT_TRAIL_ID))
 	var field_id: String = str(data.get("selected_field_id", DEFAULT_FIELD_ID))
+	var banner_id: String = str(data.get("selected_banner_id", DEFAULT_BANNER_ID))
 	var saved_player_name: String = str(data.get("player_name", DEFAULT_PLAYER_NAME)).strip_edges()
 	var saved_player_age: int = int(data.get("player_age", 0))
 	var saved_player_login_id: String = str(data.get("player_login_id", "")).strip_edges()
@@ -1344,12 +1505,15 @@ func load_state() -> void:
 	var saved_leaderboard_names: Dictionary = data.get("leaderboard_names", {}) if typeof(data.get("leaderboard_names", {})) == TYPE_DICTIONARY else {}
 	var saved_unlocked_marbles: PackedStringArray = PackedStringArray(data.get("unlocked_marble_ids", []))
 	var saved_unlocked_fields: PackedStringArray = PackedStringArray(data.get("unlocked_field_ids", []))
+	var saved_unlocked_banners: PackedStringArray = PackedStringArray(data.get("unlocked_banner_ids", []))
 	if marble_presets.has(marble_id) and not _is_marble_hidden(marble_id):
 		selected_marble_id = marble_id
 	if trail_presets.has(trail_id):
 		selected_trail_id = trail_id
 	if field_presets.has(field_id):
 		selected_field_id = field_id
+	if banner_presets.has(banner_id):
+		selected_banner_id = banner_id
 	if saved_player_name != "":
 		player_name = saved_player_name.left(18)
 	player_age = clampi(saved_player_age, 0, 120)
@@ -1383,6 +1547,7 @@ func load_state() -> void:
 			leaderboard_names[winner_key] = winner_name
 	unlocked_marble_ids = DEFAULT_UNLOCKED_MARBLE_IDS.duplicate()
 	unlocked_field_ids = DEFAULT_UNLOCKED_FIELD_IDS.duplicate()
+	unlocked_banner_ids = DEFAULT_UNLOCKED_BANNER_IDS.duplicate()
 	if saved_version >= SAVE_VERSION:
 		for marble_id_variant in saved_unlocked_marbles:
 			var unlocked_id: String = str(marble_id_variant)
@@ -1392,10 +1557,16 @@ func load_state() -> void:
 		var unlocked_field_id: String = str(field_id_variant)
 		if field_presets.has(unlocked_field_id) and not unlocked_field_ids.has(unlocked_field_id):
 			unlocked_field_ids.append(unlocked_field_id)
+	for banner_id_variant in saved_unlocked_banners:
+		var unlocked_banner_id: String = str(banner_id_variant)
+		if banner_presets.has(unlocked_banner_id) and not unlocked_banner_ids.has(unlocked_banner_id):
+			unlocked_banner_ids.append(unlocked_banner_id)
 	if not is_marble_unlocked(selected_marble_id):
 		selected_marble_id = DEFAULT_MARBLE_ID
 	if not is_field_unlocked(selected_field_id):
 		selected_field_id = DEFAULT_FIELD_ID
+	if not is_banner_unlocked(selected_banner_id):
+		selected_banner_id = DEFAULT_BANNER_ID
 	_sync_game_manager()
 
 
@@ -1422,6 +1593,7 @@ func save_state() -> void:
 		"selected_marble_id": selected_marble_id,
 		"selected_trail_id": selected_trail_id,
 		"selected_field_id": selected_field_id,
+		"selected_banner_id": selected_banner_id,
 		"player_name": player_name,
 		"player_age": player_age,
 		"player_login_id": player_login_id,
@@ -1438,7 +1610,8 @@ func save_state() -> void:
 		"leaderboard_wins": leaderboard_wins,
 		"leaderboard_names": leaderboard_names,
 		"unlocked_marble_ids": unlocked_marble_ids,
-		"unlocked_field_ids": unlocked_field_ids
+		"unlocked_field_ids": unlocked_field_ids,
+		"unlocked_banner_ids": unlocked_banner_ids
 	}
 	file.store_string(JSON.stringify(data))
 

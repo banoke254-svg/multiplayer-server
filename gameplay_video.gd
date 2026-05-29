@@ -18,6 +18,7 @@ var target_ring: MeshInstance3D
 var lesson_label: Label3D
 var detail_label: Label3D
 var back_label: Label3D
+var hand_pointer: Node3D
 var elapsed: float = 0.0
 var segment_index: int = -1
 var segment_time: float = 0.0
@@ -66,6 +67,7 @@ func _build_world() -> void:
 	_build_hole()
 	_build_marbles()
 	_build_guides()
+	_build_hand_pointer()
 	_build_camera()
 
 
@@ -226,6 +228,31 @@ func _build_camera() -> void:
 	camera.current = true
 
 
+func _build_hand_pointer() -> void:
+	hand_pointer = Node3D.new()
+	hand_pointer.name = "HandPointer"
+	add_child(hand_pointer)
+
+	var palm := MeshInstance3D.new()
+	var palm_mesh := SphereMesh.new()
+	palm_mesh.radius = 0.24
+	palm_mesh.height = 0.28
+	palm_mesh.material = _make_emissive_material(Color(0.97, 0.9, 0.74, 1.0), 0.45)
+	palm.mesh = palm_mesh
+	hand_pointer.add_child(palm)
+
+	var finger := MeshInstance3D.new()
+	var finger_mesh := CylinderMesh.new()
+	finger_mesh.top_radius = 0.07
+	finger_mesh.bottom_radius = 0.09
+	finger_mesh.height = 0.62
+	finger_mesh.radial_segments = 16
+	finger_mesh.material = _make_emissive_material(Color(1.0, 0.95, 0.8, 1.0), 0.5)
+	finger.mesh = finger_mesh
+	finger.position = Vector3(0.0, -0.38, 0.0)
+	hand_pointer.add_child(finger)
+
+
 func _apply_segment(index: int) -> void:
 	segment_index = index
 	segment_time = 0.0
@@ -235,6 +262,8 @@ func _apply_segment(index: int) -> void:
 	target_ring.visible = true
 	aim_root.visible = true
 	power_root.visible = true
+	if hand_pointer != null:
+		hand_pointer.visible = true
 
 	match index:
 		0:
@@ -265,17 +294,21 @@ func _update_segment(delta: float) -> void:
 			var yaw := sin(t * TAU) * 0.58
 			_update_aim_line(player_marble.global_position, Vector3.FORWARD.rotated(Vector3.UP, yaw), 4.8)
 			_update_power_bars(0.35 + pulse * 0.1)
+			_update_hand_pointer(player_marble.global_position + Vector3(sin(t * TAU) * 1.35, 1.35, 1.0), Vector3(0.0, 0.0, -1.0), 0.92 + pulse * 0.12)
 		1:
 			_update_aim_line(player_marble.global_position, Vector3(0.42, 0.0, -1.0).normalized(), 4.8)
 			_update_power_bars(absf(sin(t * PI)))
+			_update_hand_pointer(player_marble.global_position + Vector3(-1.8, 0.9 + sin(t * TAU) * 1.15, 0.1), Vector3.DOWN, 0.95)
 		2:
 			_animate_marble(player_marble, Vector3(-5.4, 0.48, 5.2), Vector3(0.6, 0.48, -0.6), smoothstep(0.18, 0.82, t))
 			_update_aim_line(player_marble.global_position, Vector3(0.58, 0.0, -1.0).normalized(), 4.8)
 			_update_power_bars(0.72)
+			_update_hand_pointer(player_marble.global_position + Vector3(-0.8 + t * 2.0, 1.1, 0.6 - t * 1.8), Vector3(0.58, 0.0, -1.0), 0.9)
 		3:
 			_animate_marble(player_marble, Vector3(-3.8, 0.48, 2.5), Vector3(0.0, -0.72, -5.2), smoothstep(0.12, 0.86, t))
 			_update_aim_line(player_marble.global_position, Vector3(0.42, 0.0, -1.0).normalized(), 3.6)
 			_update_power_bars(0.55)
+			_update_hand_pointer(player_marble.global_position + Vector3(-0.7, 1.1, 0.6), Vector3(0.42, 0.0, -1.0), 0.84)
 		4:
 			var hit_t: float = smoothstep(0.05, 0.48, t)
 			_animate_marble(player_marble, Vector3(-4.2, 0.48, 3.4), Vector3(-0.3, 0.48, -1.1), hit_t)
@@ -285,6 +318,7 @@ func _update_segment(delta: float) -> void:
 				target_marble.visible = t < 0.9
 			_update_aim_line(player_marble.global_position, Vector3(0.58, 0.0, -1.0).normalized(), 4.4)
 			_update_power_bars(0.84)
+			_update_hand_pointer(player_marble.global_position + Vector3(-0.4, 1.2, 0.45), Vector3(0.58, 0.0, -1.0), 0.86)
 		_:
 			target_marble.visible = t < 0.38
 			target_ring.visible = false
@@ -292,6 +326,8 @@ func _update_segment(delta: float) -> void:
 			player_marble.rotation.y += delta * 1.4
 			_update_aim_line(player_marble.global_position, Vector3.ZERO, 0.0)
 			_update_power_bars(0.0)
+			if hand_pointer != null:
+				hand_pointer.visible = false
 	_update_rings()
 	_update_camera(t)
 
@@ -330,6 +366,18 @@ func _update_power_bars(power: float) -> void:
 		bar.visible = active
 		bar.global_position = player_marble.global_position + Vector3(-1.25, 0.24 + float(index) * 0.32, 0.0)
 		bar.scale = Vector3(1.0, 1.0 + power * 0.8, 1.0)
+
+
+func _update_hand_pointer(position_value: Vector3, direction: Vector3, scale_value: float) -> void:
+	if hand_pointer == null:
+		return
+	hand_pointer.visible = true
+	hand_pointer.global_position = position_value
+	var clean_direction: Vector3 = direction
+	if clean_direction.length_squared() <= 0.001:
+		clean_direction = Vector3.DOWN
+	hand_pointer.global_transform.basis = _basis_from_y(clean_direction.normalized())
+	hand_pointer.scale = Vector3.ONE * scale_value
 
 
 func _update_rings() -> void:

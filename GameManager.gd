@@ -204,6 +204,9 @@ func start_menu_music() -> void:
 	menu_music_player.max_polyphony = 1
 	if menu_music_player.stream == null:
 		menu_music_player.stream = _load_menu_music_stream()
+	if not menu_music_player.is_inside_tree():
+		call_deferred("_play_menu_music_when_ready")
+		return
 	if menu_music_player.stream != null and not menu_music_player.playing:
 		menu_music_player.play()
 
@@ -225,7 +228,7 @@ func _get_or_create_menu_music_player(root: Window) -> AudioStreamPlayer:
 		primary_player = AudioStreamPlayer.new()
 		primary_player.name = "MenuMusicPlayer"
 		primary_player.process_mode = Node.PROCESS_MODE_ALWAYS
-		root.add_child(primary_player)
+		root.add_child.call_deferred(primary_player)
 	return primary_player
 
 

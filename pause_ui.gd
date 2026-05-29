@@ -7,7 +7,6 @@ const SHOOTING_MECHANIC_HOLD_IMAGE_PATH: String = "res://ui/shoot_mechanic_hold.
 
 @export_file("*.tscn") var main_menu_scene_path: String = "res://Start_Menu.tscn"
 
-@onready var back_button: Button = $TopBar/BackButton
 @onready var pause_button: Button = $TopBar/PauseButton
 @onready var settings_button: Button = $TopBar/SettingsButton
 
@@ -30,7 +29,6 @@ var shooting_mechanics_popup: ColorRect = null
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	back_button.pressed.connect(_go_to_main_menu)
 	pause_button.pressed.connect(_toggle_pause)
 	settings_button.pressed.connect(_open_settings_overlay)
 	resume_button.pressed.connect(_resume_game)
@@ -468,7 +466,6 @@ func _preview_draw_ring(image: Image, center: Vector2, radius: int, color: Color
 
 
 func _style_buttons() -> void:
-	_style_top_button(back_button, Color(1.0, 0.82, 0.2, 1.0))
 	_style_top_button(pause_button, Color(0.34, 0.95, 1.0, 1.0))
 	_style_top_button(settings_button, Color(0.72, 0.8, 0.92, 1.0))
 

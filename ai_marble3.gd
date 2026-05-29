@@ -44,7 +44,6 @@ func _physics_process(_delta: float) -> void:
 
 func start_turn(turn_mgr: Node) -> void:
 	turn_manager = turn_mgr
-	print("AI", name, "starting turn...")
 
 	var target: Vector3 = hole.global_position if hole else global_position + Vector3.FORWARD
 	if marbles.size() > 1 and rng.randf() < 0.5:
@@ -94,7 +93,6 @@ func shoot(aim: Vector3, force: float) -> void:
 	var shot_direction: Vector3 = shot_context.get("direction", aim.normalized())
 	apply_central_impulse(_make_realistic_shot_impulse(shot_direction, shot_impulse, lift, aim))
 	_clamp_upward_velocity()
-	print("AI", name, "shooting with impulse =", shot_impulse)
 
 
 func _make_realistic_shot_impulse(shot_direction: Vector3, shot_impulse: float, lift: float, fallback_aim: Vector3) -> Vector3:
@@ -118,7 +116,6 @@ func _clamp_upward_velocity() -> void:
 
 
 func end_turn() -> void:
-	print("AI", name, "ending turn.")
 	turn_manager = null
 
 
@@ -180,7 +177,6 @@ func _choose_attack_target() -> Vector3:
 			best_target = marble
 
 	if best_target:
-		print("AI", name, "decided to ATTACK", best_target.name)
 		return best_target.global_position
 	return hole.global_position if hole else global_position + Vector3.FORWARD
 

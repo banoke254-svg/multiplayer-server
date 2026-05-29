@@ -18,7 +18,12 @@ const SHOT_SOUND_PATHS: Array[String] = [
 const THUMP_SOUND_PATHS: Array[String] = [
 	"res://audiomass-output.mp3"
 ]
+const GPU_TRAIL_SCRIPT: Script = preload("res://addons/GPUTrail/GPUTrail3D.gd")
+const FEEDBACK_FX_SCENE_PATH: String = "res://feedback/marble_feedback_fx.tscn"
 const TRAIL_PARTICLE_SCENE_PATH: String = "res://looping_particle_trail_fbx_0.9mb.glb"
+const MARBLE_TRAIL_RADIUS: float = 0.2
+const MARBLE_TRAIL_SURFACE_GAP: float = 0.035
+const MARBLE_TRAIL_VERTICAL_OFFSET: float = 0.045
 const SHOOTING_MECHANIC_DRAG_IMAGE_PATH: String = "res://ui/shoot_mechanic_drag.png"
 const SHOOTING_MECHANIC_SPLIT_IMAGE_PATH: String = "res://ui/shoot_mechanic_split.png"
 const SHOOTING_MECHANIC_HOLD_IMAGE_PATH: String = "res://ui/shoot_mechanic_hold.png"
@@ -183,6 +188,13 @@ var impact_sound_streams: Array[AudioStream] = []
 var shot_sound_streams: Array[AudioStream] = []
 var thump_sound_streams: Array[AudioStream] = []
 var marble_trail_roots: Dictionary = {}
+var marble_trail_points: Dictionary = {}
+var marble_trail_last_samples: Dictionary = {}
+var marble_trail_last_directions: Dictionary = {}
+var gpu_trail_resource_cache: Dictionary = {}
+var banner_material_cache: Dictionary = {}
+var speed_streak_shader_cache: Shader = null
+var trail_aura_shader_cache: Shader = null
 var ai_profiles: Dictionary = {}
 var lan: Node = null
 var lan_enabled: bool = false
@@ -238,6 +250,8 @@ var online_client_received_turn_state: bool = false
 var match_mechanic_guide_shown: bool = false
 var ai_display_names: Dictionary = {}
 var marble_name_tags: Dictionary = {}
+var marble_name_banners: Dictionary = {}
+var feedback_fx: Node = null
 
 
 func _ready() -> void:
@@ -259,6 +273,7 @@ func _ready() -> void:
 	_cache_respawn_surfaces()
 	call_deferred("_cache_respawn_surfaces")
 	_setup_impact_audio()
+	_setup_feedback_fx()
 	_setup_lan_multiplayer()
 	lineup_anchor = _get_lineup_anchor()
 	set_physics_process(true)
@@ -286,14 +301,17 @@ func _get_current_scene_safe() -> Node:
 func _physics_process(delta: float) -> void:
 	if online_waiting_for_match_start:
 		_refresh_marble_name_tags()
+		_update_marble_trails(delta)
 		return
 	if lan_enabled and not lan_is_host:
 		_refresh_marble_name_tags()
 		_smooth_lan_client_marbles(delta)
+		_update_marble_trails(delta)
 		_process_online_client_sync_request(delta)
 		return
 
 	_refresh_marble_name_tags()
+	_update_marble_trails(delta)
 	for marble in active_marbles:
 		_clamp_marble_upward_velocity(marble)
 		_assist_marble_into_hole(marble)
@@ -1022,6 +1040,7 @@ func _receive_online_match_finished(payload: Dictionary) -> void:
 	var winner_marble: Node3D = _find_marble_by_name(winner_marble_name)
 	if winner_marble != null:
 		_activate_camera_for_client(winner_marble)
+		_spawn_victory_reward(winner_marble)
 
 	game_finished.emit(winner_name)
 
@@ -1365,7 +1384,6 @@ func _run_lineup_phase() -> void:
 		turn_order.push_front(first_marble)
 
 	current_marble_index = 0
-	print("Lineup complete. Turn order: %s" % _get_turn_order_names())
 
 
 func _play_lineup_round(shooters: Array[Node3D]) -> void:
@@ -1418,12 +1436,7 @@ func _resolve_lineup_starter(candidates: Array, require_single_hole_entry: bool 
 			var hole_tie: bool = bool(result.get("hole_tie", false))
 			var no_hole_entry: bool = bool(result.get("no_hole_entry", false))
 			if hole_tie:
-				print("Multiple marbles entered the hole during lineup. Resetting them to shoot again: %s" % _get_marble_names(contenders))
 				require_single_hole_entry = true
-			elif no_hole_entry:
-				print("No tied marble entered the hole. Repeating the hole-entry playoff: %s" % _get_marble_names(contenders))
-			else:
-				print("Lineup tied. Retrying starter selection for: %s" % _get_marble_names(contenders))
 			current_hole_owner = null
 			pending_hole_turn_marble = null
 			_place_marbles_on_lineup(contenders)
@@ -1436,7 +1449,6 @@ func _resolve_remaining_lineup_hole_ties(first_marble: Node3D) -> Node3D:
 	var resolved_marble: Node3D = first_marble
 	var tied_entrants: Array[Node3D] = _collect_lineup_hole_entrants(active_marbles)
 	while tied_entrants.size() > 1:
-		print("Multiple marbles entered the hole during lineup. Resetting every entrant to shoot again: %s" % _get_marble_names(tied_entrants))
 		current_hole_owner = null
 		pending_hole_turn_marble = null
 		_place_marbles_on_lineup(tied_entrants)
@@ -1529,26 +1541,22 @@ func _play_match_turn(marble: Node3D) -> void:
 		if success:
 			if action_mode == ACTION_MODE_APPROACH:
 				if bool(result.get("eliminated", false)):
-					print("%s eliminated %s by hitting them and then entering the hole." % [marble.name, str(result.get("victim_name", "an opponent"))])
+					pass
 				elif bool(result.get("entered_hole", false)):
-					print("%s entered the hole and can attack next." % marble.name)
+					pass
 				else:
-					print("%s hit another marble and gets another chance to enter the hole." % marble.name)
 					retry_awarded.emit(_display_name_for_marble(marble))
 			else:
 				if bool(result.get("eliminated", false)) or result.has("victim_name"):
-					print("%s eliminated %s from the hole." % [marble.name, str(result.get("victim_name", "an opponent"))])
+					pass
 				elif bool(result.get("kept_turn_in_hole", false)):
-					print("%s stayed in the hole and keeps attacking." % marble.name)
-				else:
-					print("%s keeps the turn." % marble.name)
+					pass
 			if marble == player_marble:
 				_prepare_marble_for_instant_retry(marble)
 			if turn_delay > 0.0:
 				await _wait_seconds(turn_delay)
 			continue
 
-		print("%s missed and the turn moves on." % marble.name)
 		_clear_stored_approach_victim(marble)
 		return
 
@@ -1714,7 +1722,6 @@ func _perform_lan_remote_player_shot(marble: Node3D, action_mode: int) -> void:
 		warning_elapsed += delta
 
 		if warning_elapsed >= idle_player_warning_time and not warned:
-			print("Waiting for %s to shoot." % _display_name_for_marble(marble))
 			warned = true
 		elif warned and warning_elapsed >= idle_player_warning_time + 5.0:
 			warning_elapsed = idle_player_warning_time
@@ -2108,7 +2115,6 @@ func _wait_for_real_player_shot(action_mode: int = ACTION_MODE_NONE) -> void:
 		elapsed += get_process_delta_time()
 
 		if elapsed >= idle_player_warning_time and not warned:
-			print("Player is taking a while to shoot.")
 			warned = true
 		elif warned and elapsed >= idle_player_warning_time + 5.0:
 			elapsed = idle_player_warning_time
@@ -2741,8 +2747,6 @@ func _online_payload_server_time_seconds(payload: Dictionary) -> float:
 
 
 func notify_player_shot() -> void:
-	if not player_has_shot:
-		print("Player shot registered.")
 	player_has_shot = true
 	_register_shot(player_marble)
 
@@ -3045,7 +3049,7 @@ func _lan_remote_turn_started(action_mode: int) -> void:
 		_activate_camera_for_client(lan_remote_player_marble)
 	turn_changed.emit(lan_client_active_display_name, active_index)
 	if action_mode == ACTION_MODE_ATTACK:
-		print("LAN turn: attack from the hole.")
+		pass
 
 
 @rpc("any_peer", "call_remote", "unreliable")
@@ -3245,6 +3249,7 @@ func _on_marble_body_entered(other_body: Node, source_body: RigidBody3D) -> void
 	if other_body is RigidBody3D and active_marbles.has(other_body):
 		_apply_power_impact_response(source_body, other_body as RigidBody3D)
 		_play_marble_impact_sound(source_body, other_body as RigidBody3D)
+		_spawn_hit_reward(source_body, other_body as RigidBody3D)
 	else:
 		_play_surface_contact_sound(source_body, other_body)
 
@@ -3410,6 +3415,26 @@ func _ensure_marble_name_tag(marble: Node3D) -> Label3D:
 	return label
 
 
+func _ensure_marble_name_banner(marble: Node3D) -> MeshInstance3D:
+	if marble == null:
+		return null
+	var existing: MeshInstance3D = marble.get_node_or_null("NameTagBanner") as MeshInstance3D
+	if existing != null:
+		marble_name_banners[marble.get_instance_id()] = existing
+		return existing
+
+	var banner := MeshInstance3D.new()
+	banner.name = "NameTagBanner"
+	banner.top_level = true
+	var mesh := PlaneMesh.new()
+	mesh.size = Vector2(1.35, 0.34)
+	banner.mesh = mesh
+	banner.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	marble.add_child(banner)
+	marble_name_banners[marble.get_instance_id()] = banner
+	return banner
+
+
 func _refresh_marble_name_tags() -> void:
 	for marble in marbles:
 		if marble == null:
@@ -3417,6 +3442,7 @@ func _refresh_marble_name_tags() -> void:
 		var label: Label3D = _ensure_marble_name_tag(marble)
 		if label == null:
 			continue
+		var banner: MeshInstance3D = _ensure_marble_name_banner(marble)
 		var display_text: String = _display_name_for_marble(marble)
 		if online_enabled and online_local_player_marble == marble:
 			display_text += " (YOU)"
@@ -3425,11 +3451,79 @@ func _refresh_marble_name_tags() -> void:
 			is_active_turn = lan_client_active_marble_name == String(marble.name)
 		else:
 			is_active_turn = get_active_marble() == marble
-		if is_active_turn and active_marbles.has(marble):
-			display_text = "TURN: %s" % display_text
 		label.text = display_text
 		label.global_position = marble.global_position + Vector3.UP * 0.52
 		label.visible = marble.visible and active_marbles.has(marble)
+		_apply_name_tag_banner_style(marble, label, banner)
+
+
+func _apply_name_tag_banner_style(marble: Node3D, label: Label3D, banner: MeshInstance3D) -> void:
+	var preset := _get_banner_preset_for_marble(marble)
+	label.modulate = preset.get("text", Color(0.96, 0.99, 1.0, 0.92))
+	label.outline_modulate = preset.get("outline", Color(0.02, 0.03, 0.08, 0.88))
+	if banner == null:
+		return
+	var visible := label.visible
+	banner.visible = visible
+	if not visible:
+		return
+	banner.global_position = label.global_position + Vector3(0.0, -0.01, -0.012)
+	var material: StandardMaterial3D = _get_cached_banner_material(preset)
+	if banner.material_override != material:
+		banner.material_override = material
+	var text_width := clampf(float(label.text.length()) * 0.078 + 0.46, 1.05, 2.15)
+	var shape := str(preset.get("shape", "banner"))
+	var height := 0.34
+	if shape == "bubble":
+		height = 0.42
+	elif shape == "burner":
+		height = 0.38
+	var plane := banner.mesh as PlaneMesh
+	var size_signature: String = "%.3f|%.3f" % [text_width, height]
+	if plane != null and str(banner.get_meta("size_signature", "")) != size_signature:
+		plane.size = Vector2(text_width, height)
+		banner.set_meta("size_signature", size_signature)
+
+
+func _get_cached_banner_material(preset: Dictionary) -> StandardMaterial3D:
+	var signature: String = _get_banner_material_signature(preset)
+	var cached: StandardMaterial3D = banner_material_cache.get(signature, null) as StandardMaterial3D
+	if cached != null:
+		return cached
+	var material := StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	material.no_depth_test = true
+	material.albedo_color = preset.get("fill", Color(0.02, 0.07, 0.10, 0.58))
+	material.emission_enabled = true
+	material.emission = preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))
+	material.emission_energy_multiplier = 0.22
+	banner_material_cache[signature] = material
+	return material
+
+
+func _get_banner_material_signature(preset: Dictionary) -> String:
+	return PackedStringArray([
+		str(preset.get("fill", Color(0.02, 0.07, 0.10, 0.58))),
+		str(preset.get("accent", Color(0.42, 0.92, 1.0, 1.0)))
+	]).join("|")
+
+
+func _get_banner_preset_for_marble(marble: Node3D) -> Dictionary:
+	var customization: Node = get_node_or_null("/root/CustomizationState")
+	if customization != null and customization.has_method("get_selected_banner_preset"):
+		if marble == player_marble or (online_enabled and marble == online_local_player_marble):
+			return customization.call("get_selected_banner_preset")
+	if customization != null and customization.has_method("get_banner_preset"):
+		return customization.call("get_banner_preset", "crystal")
+	return {
+		"fill": Color(0.02, 0.07, 0.10, 0.58),
+		"accent": Color(0.42, 0.92, 1.0, 1.0),
+		"text": Color(0.96, 0.99, 1.0, 1.0),
+		"outline": Color(0.0, 0.02, 0.06, 0.92),
+		"shape": "banner"
+	}
 
 
 func _discover_scene_marbles() -> Array[Node3D]:
@@ -3513,6 +3607,74 @@ func _setup_impact_audio() -> void:
 		player.volume_db = 0.0
 		add_child(player)
 		impact_audio_players.append(player)
+
+
+func _setup_feedback_fx() -> void:
+	if feedback_fx != null and is_instance_valid(feedback_fx):
+		return
+	var scene := load(FEEDBACK_FX_SCENE_PATH) as PackedScene
+	if scene == null:
+		return
+	var current_scene: Node = _get_current_scene_safe()
+	if current_scene == null:
+		return
+	feedback_fx = scene.instantiate()
+	current_scene.add_child(feedback_fx)
+
+
+func _spawn_hit_reward(source_body: RigidBody3D, other_body: RigidBody3D) -> void:
+	if feedback_fx == null or not is_instance_valid(feedback_fx):
+		_setup_feedback_fx()
+	if feedback_fx == null or not feedback_fx.has_method("spawn_hit_sparks"):
+		return
+	var relative_speed := (source_body.linear_velocity - other_body.linear_velocity).length()
+	if relative_speed < 0.75:
+		return
+	var pair_key := "fx:%s" % _get_impact_pair_key(source_body, other_body)
+	var now_seconds := Time.get_ticks_msec() * 0.001
+	var last_played: float = float(last_impact_timestamp_by_pair.get(pair_key, -1.0))
+	if last_played >= 0.0 and now_seconds - last_played < 0.08:
+		return
+	last_impact_timestamp_by_pair[pair_key] = now_seconds
+	var intensity := clampf(inverse_lerp(0.75, 12.0, relative_speed), 0.35, 2.0)
+	var position := source_body.global_position.lerp(other_body.global_position, 0.5)
+	feedback_fx.call("spawn_hit_sparks", position, intensity, _get_feedback_accent_for_marble(source_body))
+	if intensity >= 1.05:
+		_punch_active_camera(intensity)
+
+
+func _spawn_hole_sink_reward(marble: Node3D) -> void:
+	if feedback_fx == null or not is_instance_valid(feedback_fx):
+		_setup_feedback_fx()
+	if feedback_fx != null and feedback_fx.has_method("spawn_hole_sink"):
+		feedback_fx.call("spawn_hole_sink", marble.global_position, _get_feedback_accent_for_marble(marble))
+
+
+func _spawn_victory_reward(marble: Node3D) -> void:
+	if feedback_fx == null or not is_instance_valid(feedback_fx):
+		_setup_feedback_fx()
+	if feedback_fx != null and feedback_fx.has_method("spawn_victory"):
+		feedback_fx.call("spawn_victory", marble.global_position, _get_feedback_accent_for_marble(marble))
+
+
+func _get_feedback_accent_for_marble(marble: Node) -> Color:
+	if marble == player_marble or (online_enabled and marble == online_local_player_marble):
+		var customization: Node = get_node_or_null("/root/CustomizationState")
+		if customization != null and customization.has_method("get_selected_banner_preset"):
+			var preset: Dictionary = customization.call("get_selected_banner_preset")
+			return preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))
+	return Color(1.0, 0.76, 0.18, 1.0)
+
+
+func _punch_active_camera(intensity: float) -> void:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	var tween := create_tween()
+	var original_fov := camera.fov
+	var punch_fov := original_fov + clampf(intensity * 2.4, 1.4, 4.2)
+	tween.tween_property(camera, "fov", punch_fov, 0.045).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(camera, "fov", original_fov, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 func _play_marble_impact_sound(source_body: RigidBody3D, other_body: RigidBody3D) -> void:
@@ -3781,7 +3943,8 @@ func _mark_marble_hole_entry(marble: Node3D) -> void:
 	if marble == null or not active_marbles.has(marble):
 		return
 
-	if not hole_entry_order_this_shot.has(marble):
+	var first_entry_this_shot: bool = not hole_entry_order_this_shot.has(marble)
+	if first_entry_this_shot:
 		hole_entry_order_this_shot.append(marble)
 	if game_phase == GAME_PHASE_LINEUP and current_action_mode == ACTION_MODE_LINEUP and not lineup_hole_entrants_this_round.has(marble):
 		lineup_hole_entrants_this_round.append(marble)
@@ -3795,6 +3958,8 @@ func _mark_marble_hole_entry(marble: Node3D) -> void:
 
 	current_shot_entered_hole = true
 	current_hole_owner = marble
+	if first_entry_this_shot:
+		_spawn_hole_sink_reward(marble)
 	if marble == player_marble:
 		player_entered_hole_this_match = true
 
@@ -4095,7 +4260,6 @@ func _eliminate_marble(target: Node3D, attacker: Node3D) -> void:
 		player_disqualified.emit(attacker_name)
 	_disable_marble(target)
 	_emit_scoreboard()
-	print("%s was removed from the game by %s." % [target.name, attacker.name if attacker != null else "unknown"])
 
 
 func _disable_marble(marble: Node3D) -> void:
@@ -4168,7 +4332,6 @@ func _move_extra_hole_marble_out(marble: Node3D, owner: Node3D) -> void:
 	_reset_marble_motion(marble, respawn_position)
 	if pending_hole_turn_marble == marble:
 		pending_hole_turn_marble = null
-	print("%s left the hole because %s already owns it." % [_display_name_for_marble(marble), _display_name_for_marble(owner)])
 
 
 func _find_hole_overflow_respawn_position(marble: Node3D) -> Vector3:
@@ -4455,7 +4618,6 @@ func _force_start_camera() -> void:
 
 	cam.current = true
 	cam.make_current()
-	print("Forced camera start on %s" % start_marble.name)
 
 
 func _activate_camera_for(marble: Node) -> void:
@@ -4570,7 +4732,6 @@ func _should_respawn_marble(marble: Node3D) -> bool:
 func _respawn_marble(marble: Node3D) -> void:
 	var respawn_position: Vector3 = _find_respawn_position(marble)
 	_reset_marble_motion(marble, respawn_position)
-	print("Respawned %s at %s after leaving the course." % [marble.name, str(respawn_position)])
 
 
 func _cache_respawn_surfaces() -> void:
@@ -4901,16 +5062,15 @@ func _finish_game() -> void:
 				currency_manager.call("add_coins", awarded_coins)
 			player_won.emit(awarded_coins)
 		var winner_name: String = _display_name_for_marble(winner)
+		_spawn_victory_reward(winner)
 		var customization: Node = get_node_or_null("/root/CustomizationState")
 		if customization != null and customization.has_method("record_match_win"):
 			customization.call("record_match_win", winner_name)
 		if online_enabled and lan_is_host:
 			_send_online_game_message("match_finished", _build_online_match_finished_payload(winner, winner_name))
 		game_finished.emit(winner_name)
-		print("%s wins the match." % winner_name)
 	else:
 		game_finished.emit("")
-		print("Game finished without a winner.")
 
 
 func _build_online_match_finished_payload(winner: Node3D, winner_name: String) -> Dictionary:
@@ -5025,9 +5185,10 @@ func _ensure_trail_root(marble: Node3D) -> Node3D:
 
 	var root: Node3D = Node3D.new()
 	root.name = "%sWorldTrailRoot" % marble.name
+	root.top_level = true
 	root.visible = false
 	current_scene.add_child(root)
-	root.add_child(_build_world_trail_marker())
+	root.add_child(_build_gpu_world_trail_marker())
 	marble_trail_roots[marble] = root
 	return root
 
@@ -5037,6 +5198,9 @@ func _clear_trail_for_marble(marble: Node3D) -> void:
 	if root != null and is_instance_valid(root):
 		root.queue_free()
 	marble_trail_roots.erase(marble)
+	marble_trail_points.erase(marble)
+	marble_trail_last_samples.erase(marble)
+	marble_trail_last_directions.erase(marble)
 
 
 func _get_trail_preset_for_marble(marble: Node3D) -> Dictionary:
@@ -5094,6 +5258,289 @@ func _get_trail_preset_for_marble(marble: Node3D) -> Dictionary:
 
 
 func _update_continuous_trail(root: Node3D, marble: Node3D, body: RigidBody3D, speed: float, moving: bool, preset: Dictionary, delta: float) -> void:
+	if not bool(preset.get("enabled", false)):
+		root.visible = false
+		return
+
+	_update_gpu_world_trail(root, marble, body, speed, moving, preset, delta)
+
+
+func _build_gpu_world_trail_marker() -> Node3D:
+	var root: Node3D = Node3D.new()
+	root.name = "GPUTrailMarker"
+	root.set_meta("gpu_configured", false)
+	root.set_meta("preset_signature", "")
+
+	var trail: GPUParticles3D = GPU_TRAIL_SCRIPT.new() as GPUParticles3D
+	if trail == null:
+		return _build_world_trail_marker()
+	trail.name = "GPUTrail3D"
+	trail.emitting = true
+	root.add_child(trail)
+	return root
+
+
+func _update_gpu_world_trail(root: Node3D, marble: Node3D, body: RigidBody3D, speed: float, moving: bool, preset: Dictionary, delta: float) -> void:
+	var marker: Node3D = root.get_node_or_null("GPUTrailMarker") as Node3D
+	if marker == null:
+		marker = _build_gpu_world_trail_marker()
+		root.add_child(marker)
+
+	var trail: GPUParticles3D = marker.get_node_or_null("GPUTrail3D") as GPUParticles3D
+	if trail == null:
+		_update_legacy_continuous_trail(root, marble, body, speed, moving, preset, delta)
+		return
+
+	if trail.draw_pass_1 == null:
+		root.visible = false
+		return
+
+	var signature: String = _get_trail_preset_signature(preset)
+	if str(marker.get_meta("preset_signature", "")) != signature:
+		_configure_gpu_world_trail(trail, preset)
+		marker.set_meta("preset_signature", signature)
+		marker.set_meta("gpu_configured", true)
+
+	var direction: Vector3 = Vector3.ZERO
+	if body != null:
+		direction = body.linear_velocity
+		direction.y = 0.0
+		if direction.length_squared() <= 0.0001:
+			direction = body.linear_velocity
+	if direction.length_squared() > 0.0001:
+		direction = direction.normalized()
+		marble_trail_last_directions[marble] = direction
+	else:
+		var stored_direction: Variant = marble_trail_last_directions.get(marble, Vector3.FORWARD)
+		direction = stored_direction if stored_direction is Vector3 else Vector3.FORWARD
+		if direction.length_squared() <= 0.0001:
+			direction = Vector3.FORWARD
+
+	var speed_ratio: float = clampf(speed / 8.0, 0.0, 1.0)
+	var preset_scale: float = maxf(float(preset.get("scale", 0.14)), 0.08)
+	var marble_radius: float = maxf(_get_marble_collision_radius(marble), MARBLE_TRAIL_RADIUS)
+	var width: float = lerpf(0.11, 0.22, speed_ratio) * maxf(preset_scale / 0.14, 0.72)
+	root.visible = moving or bool(marker.get_meta("gpu_configured", false))
+	root.global_position = marble.global_position + Vector3.UP * MARBLE_TRAIL_VERTICAL_OFFSET - direction * (marble_radius + MARBLE_TRAIL_SURFACE_GAP)
+	root.global_basis = Basis.IDENTITY
+	marker.global_basis = Basis.IDENTITY
+	trail.scale = trail.scale.lerp(Vector3.ONE * width, clampf(delta * 16.0, 0.0, 1.0))
+	trail.emitting = true
+
+
+func _configure_gpu_world_trail(trail: GPUParticles3D, preset: Dictionary) -> void:
+	var lifetime: float = clampf(float(preset.get("lifetime", 0.46)), 0.22, 0.95)
+	trail.set("length_seconds", lifetime)
+	trail.set("billboard", true)
+	trail.set("snap_to_transform", true)
+	trail.set("dewiggle", true)
+	trail.set("clip_overlaps", true)
+	trail.set("scroll", _get_gpu_trail_scroll(preset))
+	trail.set("mask", _get_cached_gpu_trail_mask(preset))
+	trail.set("mask_strength", 1.0)
+
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	if texture_path != "":
+		var texture: Texture2D = _load_trail_texture(texture_path)
+		if texture != null:
+			trail.set("texture", texture)
+
+	trail.set("color_ramp", _get_cached_gpu_trail_color_ramp(preset))
+	trail.set("curve", _get_cached_gpu_trail_width_curve(preset))
+
+
+func _get_trail_preset_signature(preset: Dictionary) -> String:
+	return PackedStringArray([
+		str(preset.get("color", Color.WHITE)),
+		str(preset.get("secondary_color", Color.WHITE)),
+		str(preset.get("emission", Color.WHITE)),
+		str(preset.get("scale", 0.14)),
+		str(preset.get("lifetime", 0.46)),
+		str(preset.get("texture_path", "")),
+		str(preset.get("id", "")),
+		str(preset.get("shape", ""))
+	]).join("|")
+
+
+func _make_gpu_world_trail_color_ramp(preset: Dictionary) -> GradientTexture1D:
+	var primary: Color = preset.get("color", Color(0.42, 0.92, 1.0, 0.46))
+	var secondary: Color = preset.get("secondary_color", primary.lightened(0.22))
+	var emission: Color = preset.get("emission", primary)
+	var style: String = _get_gpu_trail_style(preset)
+	var gradient: Gradient = Gradient.new()
+	var tail: Color = secondary
+	tail.a = 0.0
+	var middle: Color = primary.lerp(secondary, 0.35)
+	middle.a = maxf(primary.a, 0.34)
+	var head: Color = emission
+	head.a = maxf(primary.a, 0.76)
+	gradient.set_color(0, tail)
+	gradient.set_color(1, head)
+	match style:
+		"kenya":
+			var red: Color = primary
+			red.a = maxf(primary.a, 0.56)
+			var green: Color = secondary
+			green.a = maxf(secondary.a, 0.48)
+			gradient.add_point(0.28, green)
+			gradient.add_point(0.58, red)
+			gradient.add_point(0.82, Color(1.0, 1.0, 1.0, 0.78))
+		"aurora":
+			gradient.add_point(0.2, Color(primary.r, primary.g, primary.b, 0.42))
+			gradient.add_point(0.48, Color(secondary.r, secondary.g, secondary.b, 0.68))
+			gradient.add_point(0.76, Color(0.62, 1.0, 0.92, 0.58))
+		"dust":
+			gradient.add_point(0.32, Color(secondary.r, secondary.g, secondary.b, 0.18))
+			gradient.add_point(0.62, Color(primary.r, primary.g, primary.b, 0.5))
+		"spark":
+			gradient.add_point(0.18, Color(secondary.r, secondary.g, secondary.b, 0.08))
+			gradient.add_point(0.42, Color(emission.r, emission.g, emission.b, 0.82))
+			gradient.add_point(0.66, Color(primary.r, primary.g, primary.b, 0.18))
+		_:
+			gradient.add_point(0.45, middle)
+	var texture: GradientTexture1D = GradientTexture1D.new()
+	texture.gradient = gradient
+	return texture
+
+
+func _get_cached_gpu_trail_color_ramp(preset: Dictionary) -> GradientTexture1D:
+	var key: String = "ramp|%s" % _get_trail_preset_signature(preset)
+	var cached: GradientTexture1D = gpu_trail_resource_cache.get(key, null) as GradientTexture1D
+	if cached != null:
+		return cached
+	var texture: GradientTexture1D = _make_gpu_world_trail_color_ramp(preset)
+	gpu_trail_resource_cache[key] = texture
+	return texture
+
+
+func _make_gpu_world_trail_width_curve(preset: Dictionary) -> CurveTexture:
+	var style: String = _get_gpu_trail_style(preset)
+	var curve: Curve = Curve.new()
+	match style:
+		"ribbon", "kenya", "aurora":
+			curve.add_point(Vector2(0.0, 0.0))
+			curve.add_point(Vector2(0.12, 0.72))
+			curve.add_point(Vector2(0.42, 1.0))
+			curve.add_point(Vector2(0.78, 0.82))
+			curve.add_point(Vector2(1.0, 0.18))
+		"dust":
+			curve.add_point(Vector2(0.0, 0.0))
+			curve.add_point(Vector2(0.18, 0.28))
+			curve.add_point(Vector2(0.38, 0.52))
+			curve.add_point(Vector2(0.62, 0.28))
+			curve.add_point(Vector2(0.82, 0.44))
+			curve.add_point(Vector2(1.0, 0.05))
+		"spark":
+			curve.add_point(Vector2(0.0, 0.0))
+			curve.add_point(Vector2(0.12, 0.18))
+			curve.add_point(Vector2(0.24, 1.0))
+			curve.add_point(Vector2(0.38, 0.26))
+			curve.add_point(Vector2(0.54, 0.82))
+			curve.add_point(Vector2(0.72, 0.18))
+			curve.add_point(Vector2(0.9, 0.66))
+			curve.add_point(Vector2(1.0, 0.04))
+		_:
+			curve.add_point(Vector2(0.0, 0.0))
+			curve.add_point(Vector2(0.22, 0.34))
+			curve.add_point(Vector2(0.72, 0.88))
+			curve.add_point(Vector2(0.94, 1.0))
+			curve.add_point(Vector2(1.0, 0.08))
+	var texture: CurveTexture = CurveTexture.new()
+	texture.curve = curve
+	return texture
+
+
+func _get_cached_gpu_trail_width_curve(preset: Dictionary) -> CurveTexture:
+	var key: String = "curve|%s" % _get_trail_preset_signature(preset)
+	var cached: CurveTexture = gpu_trail_resource_cache.get(key, null) as CurveTexture
+	if cached != null:
+		return cached
+	var texture: CurveTexture = _make_gpu_world_trail_width_curve(preset)
+	gpu_trail_resource_cache[key] = texture
+	return texture
+
+
+func _get_gpu_trail_style(preset: Dictionary) -> String:
+	var id: String = str(preset.get("id", "")).to_lower()
+	var name: String = str(preset.get("name", "")).to_lower()
+	var shape: String = str(preset.get("shape", "comet")).to_lower()
+	if id.find("kenya") != -1 or name.find("kenya") != -1:
+		return "kenya"
+	if id.find("aurora") != -1 or name.find("aurora") != -1:
+		return "aurora"
+	if shape == "dust" or id.find("dust") != -1 or name.find("dust") != -1:
+		return "dust"
+	if shape == "spark" or id.find("static") != -1 or name.find("static") != -1:
+		return "spark"
+	if shape == "ribbon":
+		return "ribbon"
+	return "comet"
+
+
+func _get_gpu_trail_scroll(preset: Dictionary) -> Vector2:
+	match _get_gpu_trail_style(preset):
+		"ribbon", "aurora":
+			return Vector2(-0.24, 0.1)
+		"kenya":
+			return Vector2(-0.55, 0.0)
+		"dust":
+			return Vector2(-0.18, 0.22)
+		"spark":
+			return Vector2(-0.72, -0.08)
+		_:
+			return Vector2(-0.36, 0.0)
+
+
+func _make_gpu_trail_pattern_mask(preset: Dictionary) -> Texture2D:
+	var style: String = _get_gpu_trail_style(preset)
+	var image: Image = Image.create(128, 16, false, Image.FORMAT_RGBA8)
+	for x in range(128):
+		var u: float = float(x) / 127.0
+		for y in range(16):
+			var v: float = float(y) / 15.0
+			var value: float = 1.0
+			match style:
+				"kenya":
+					value = 1.0 if sin(u * TAU * 10.0) >= 0.5 else 0.42
+					if absf(v - 0.5) < 0.12:
+						value = 1.0
+				"aurora":
+					value = 0.62 + 0.38 * sin(u * TAU * 2.0 + v * TAU * 2.6)
+				"dust":
+					var raw_grain: float = sin(float(x * 37 + y * 91)) * 43758.5453
+					var grain: float = raw_grain - floor(raw_grain)
+					var cluster: float = 1.0 if grain >= 0.44 else 0.34
+					value = cluster * (0.45 + 0.55 * smoothstep(0.08, 0.72, u))
+				"spark":
+					var slash: float = 1.0 if sin((u * 15.0 + v * 4.0) * TAU) >= 0.58 else 0.0
+					value = 0.16 + 0.84 * slash
+				"ribbon":
+					value = 0.68 + 0.32 * sin((v * 3.0 + u * 1.5) * TAU)
+				_:
+					value = 0.82 + 0.18 * sin(u * TAU * 3.0)
+			image.set_pixel(x, y, Color(value, value, value, 1.0))
+	return ImageTexture.create_from_image(image)
+
+
+func _get_cached_gpu_trail_mask(preset: Dictionary) -> Texture2D:
+	var key: String = "mask|%s" % _get_trail_preset_signature(preset)
+	var cached: Texture2D = gpu_trail_resource_cache.get(key, null) as Texture2D
+	if cached != null:
+		return cached
+	var texture: Texture2D = _make_gpu_trail_pattern_mask(preset)
+	gpu_trail_resource_cache[key] = texture
+	return texture
+
+
+func _update_legacy_continuous_trail(root: Node3D, marble: Node3D, body: RigidBody3D, speed: float, moving: bool, preset: Dictionary, delta: float) -> void:
+	if str(preset.get("texture_path", "")).strip_edges() != "":
+		_update_textured_projectile_trail(root, marble, body, speed, moving, preset, delta)
+		return
+
+	var skill_marker: MeshInstance3D = root.get_node_or_null("SkillTrailRibbon") as MeshInstance3D
+	if skill_marker != null:
+		skill_marker.visible = false
+
 	var marker: Node3D = root.get_node_or_null("TrailMarker") as Node3D
 	if marker == null:
 		return
@@ -5102,55 +5549,77 @@ func _update_continuous_trail(root: Node3D, marble: Node3D, body: RigidBody3D, s
 		root.visible = false
 		return
 
-	var direction: Vector3 = body.linear_velocity.normalized()
+	var direction: Vector3 = body.linear_velocity
+	direction.y = 0.0
+	if direction.length_squared() > 0.0001:
+		direction = direction.normalized()
+	else:
+		direction = body.linear_velocity.normalized()
 	if direction.length_squared() <= 0.0001:
 		root.visible = false
 		return
 
 	root.visible = true
 	var speed_ratio: float = clampf(speed / 8.0, 0.0, 1.0)
-	var trail_length: float = lerpf(1.0, 2.7, speed_ratio)
-	var trail_width: float = lerpf(0.12, 0.28, speed_ratio) * maxf(float(preset.get("scale", 0.14)) * 5.2, 0.8)
-	var behind_distance: float = trail_length * 0.42 + 0.08
-	root.global_position = marble.global_position + Vector3.UP * 0.02 - direction * behind_distance
+	var trail_length: float = lerpf(1.45, 4.0, speed_ratio)
+	var trail_width: float = lerpf(0.08, 0.16, speed_ratio) * maxf(float(preset.get("scale", 0.14)) * 3.0, 0.65)
+	var marble_radius: float = maxf(_get_marble_collision_radius(marble), MARBLE_TRAIL_RADIUS)
+	root.global_position = marble.global_position + Vector3.UP * MARBLE_TRAIL_VERTICAL_OFFSET - direction * (marble_radius + MARBLE_TRAIL_SURFACE_GAP)
 	root.look_at(root.global_position - direction, Vector3.UP)
 
-	marker.scale = marker.scale.lerp(
-		Vector3(
-			lerpf(0.65, 1.15, speed_ratio),
-			lerpf(0.65, 1.15, speed_ratio),
-			lerpf(0.9, 1.8, speed_ratio)
-		) * maxf(float(preset.get("scale", 0.14)) * 3.4, 0.45),
-		clampf(delta * 10.0, 0.0, 1.0)
-	)
+	marker.scale = marker.scale.lerp(Vector3.ONE, clampf(delta * 10.0, 0.0, 1.0))
 
 	var ribbon: MeshInstance3D = root.get_node_or_null("TrailMarker/Ribbon") as MeshInstance3D
 	var core: MeshInstance3D = root.get_node_or_null("TrailMarker/Core") as MeshInstance3D
+	var head_glow: MeshInstance3D = root.get_node_or_null("TrailMarker/HeadGlow") as MeshInstance3D
+	var aura_shell: MeshInstance3D = root.get_node_or_null("TrailMarker/AuraShell") as MeshInstance3D
 	if ribbon != null and core != null:
-		ribbon.scale = ribbon.scale.lerp(Vector3(trail_width, 0.05, trail_length), clampf(delta * 14.0, 0.0, 1.0))
-		core.position = Vector3(0.0, 0.0, trail_length * 0.52)
-		core.scale = core.scale.lerp(Vector3.ONE * lerpf(0.12, 0.2, speed_ratio), clampf(delta * 14.0, 0.0, 1.0))
-		_apply_trail_materials(ribbon, core, preset, lerpf(0.55, 0.92, speed_ratio))
+		ribbon.position = Vector3.ZERO
+		ribbon.scale = ribbon.scale.lerp(Vector3(trail_width * 2.25, maxf(trail_width * 0.42, 0.04), trail_length), clampf(delta * 16.0, 0.0, 1.0))
+		core.position = Vector3(0.0, 0.012, -0.03)
+		core.scale = core.scale.lerp(Vector3(maxf(trail_width * 0.74, 0.035), maxf(trail_width * 0.22, 0.025), trail_length * 0.92), clampf(delta * 16.0, 0.0, 1.0))
+		if head_glow != null:
+			head_glow.position = Vector3(0.0, 0.035, 0.0)
+			head_glow.scale = head_glow.scale.lerp(Vector3.ONE * lerpf(0.12, 0.24, speed_ratio), clampf(delta * 16.0, 0.0, 1.0))
+		if aura_shell != null:
+			aura_shell.position = Vector3(0.0, -MARBLE_TRAIL_VERTICAL_OFFSET, marble_radius + MARBLE_TRAIL_SURFACE_GAP)
+			aura_shell.scale = aura_shell.scale.lerp(Vector3.ONE * marble_radius * lerpf(1.16, 1.34, speed_ratio), clampf(delta * 16.0, 0.0, 1.0))
+		_apply_trail_materials(ribbon, core, head_glow, aura_shell, preset, lerpf(0.62, 0.94, speed_ratio))
 
 
 func _build_world_trail_marker() -> Node3D:
 	var root: Node3D = Node3D.new()
 	root.name = "TrailMarker"
 
+	var aura_shell: MeshInstance3D = MeshInstance3D.new()
+	aura_shell.name = "AuraShell"
+	var aura_mesh: SphereMesh = SphereMesh.new()
+	aura_mesh.radius = 1.0
+	aura_mesh.height = 2.0
+	aura_mesh.radial_segments = 32
+	aura_mesh.rings = 16
+	aura_shell.mesh = aura_mesh
+	root.add_child(aura_shell)
+
 	var ribbon: MeshInstance3D = MeshInstance3D.new()
 	ribbon.name = "Ribbon"
-	var ribbon_mesh: BoxMesh = BoxMesh.new()
-	ribbon_mesh.size = Vector3(1.0, 0.08, 1.0)
-	ribbon.mesh = ribbon_mesh
+	ribbon.mesh = _make_pulled_flame_mesh(0.0, 1.0)
 	root.add_child(ribbon)
 
 	var core: MeshInstance3D = MeshInstance3D.new()
 	core.name = "Core"
-	var core_mesh: BoxMesh = BoxMesh.new()
-	core_mesh.size = Vector3(0.55, 0.04, 0.55)
-	core.mesh = core_mesh
-	core.position = Vector3(0.0, 0.0, 0.6)
+	core.mesh = _make_pulled_flame_mesh(0.34, 0.62)
 	root.add_child(core)
+
+	var head_glow: MeshInstance3D = MeshInstance3D.new()
+	head_glow.name = "HeadGlow"
+	var head_mesh: SphereMesh = SphereMesh.new()
+	head_mesh.radius = 1.0
+	head_mesh.height = 2.0
+	head_mesh.radial_segments = 16
+	head_mesh.rings = 8
+	head_glow.mesh = head_mesh
+	root.add_child(head_glow)
 
 	var particle_marker: Node3D = _build_particle_trail_marker()
 	if particle_marker != null:
@@ -5159,6 +5628,49 @@ func _build_world_trail_marker() -> Node3D:
 		root.add_child(particle_marker)
 
 	return root
+
+
+func _make_pulled_flame_mesh(phase: float, width_scale: float) -> ArrayMesh:
+	var segments: int = 10
+	var vertices: PackedVector3Array = PackedVector3Array()
+	var uvs: PackedVector2Array = PackedVector2Array()
+	var colors: PackedColorArray = PackedColorArray()
+	var indices: PackedInt32Array = PackedInt32Array()
+
+	for index in range(segments + 1):
+		var t: float = float(index) / float(segments)
+		var taper: float = pow(1.0 - t, 0.72)
+		var width: float = lerpf(0.06, 0.5, taper) * width_scale
+		var lateral_pull: float = sin(t * PI * 2.6 + phase * PI * 2.0) * 0.1 * taper
+		var lift_pull: float = sin(t * PI * 1.8 + phase * PI) * 0.08 * taper
+		var z: float = -t
+		var alpha: float = clampf(1.0 - pow(t, 1.2), 0.0, 1.0)
+		vertices.append(Vector3(lateral_pull - width, lift_pull, z))
+		vertices.append(Vector3(lateral_pull + width, lift_pull, z))
+		uvs.append(Vector2(t, 0.0))
+		uvs.append(Vector2(t, 1.0))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+
+	for index in range(segments):
+		var base: int = index * 2
+		indices.append(base)
+		indices.append(base + 1)
+		indices.append(base + 2)
+		indices.append(base + 1)
+		indices.append(base + 3)
+		indices.append(base + 2)
+
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+
+	var mesh: ArrayMesh = ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 func _build_particle_trail_marker() -> Node3D:
@@ -5185,37 +5697,303 @@ func _build_particle_trail_marker() -> Node3D:
 	return marker
 
 
-func _make_world_trail_material(albedo: Color, emission: Color, energy: float) -> StandardMaterial3D:
-	var material: StandardMaterial3D = StandardMaterial3D.new()
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.albedo_color = Color(albedo.r, albedo.g, albedo.b, maxf(albedo.a, 0.24))
-	material.emission_enabled = true
-	material.emission = emission
-	material.emission_energy_multiplier = energy
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+func _make_world_trail_material(albedo: Color, emission: Color, energy: float) -> ShaderMaterial:
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = _get_speed_streak_shader()
+	_configure_world_trail_material(material, albedo, emission, energy)
 	return material
 
 
-func _apply_trail_materials(ribbon: MeshInstance3D, core: MeshInstance3D, preset: Dictionary, alpha_scale: float) -> void:
+func _get_speed_streak_shader() -> Shader:
+	if speed_streak_shader_cache != null:
+		return speed_streak_shader_cache
+
+	var shader: Shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
+
+uniform vec4 trail_color : source_color = vec4(0.2, 0.8, 1.0, 0.5);
+uniform vec4 emission_color : source_color = vec4(0.2, 0.8, 1.0, 1.0);
+uniform float emission_energy = 2.0;
+
+void fragment() {
+	float along = clamp(VERTEX.z + 1.0, 0.0, 1.0);
+	float tail_fade = smoothstep(0.0, 0.28, along);
+	float head_keep = 1.0 - smoothstep(0.94, 1.0, along) * 0.12;
+	float side_fade = 1.0 - smoothstep(0.12, 0.56, abs(VERTEX.x));
+	float flame_noise = 0.82 + sin(TIME * 7.0 + along * 18.0 + VERTEX.x * 5.0) * 0.18;
+	float alpha = trail_color.a * tail_fade * head_keep * side_fade * flame_noise * COLOR.a;
+	ALBEDO = trail_color.rgb;
+	ALPHA = alpha;
+	EMISSION = emission_color.rgb * emission_energy * max(alpha, 0.08);
+}
+"""
+	speed_streak_shader_cache = shader
+	return speed_streak_shader_cache
+
+
+func _apply_trail_materials(ribbon: MeshInstance3D, core: MeshInstance3D, head_glow: MeshInstance3D, aura_shell: MeshInstance3D, preset: Dictionary, alpha_scale: float) -> void:
 	var primary: Color = preset.get("color", Color(0.42, 0.92, 1.0, 0.34))
-	var secondary: Color = preset.get("secondary_color", primary)
 	var emission: Color = preset.get("emission", primary)
-	ribbon.material_override = _make_world_trail_material(
-		Color(primary.r, primary.g, primary.b, maxf(primary.a * alpha_scale, 0.16)),
+	_apply_world_trail_material(
+		ribbon,
+		Color(primary.r, primary.g, primary.b, maxf(primary.a * alpha_scale, 0.12)),
 		emission,
-		1.9
+		1.6
 	)
-	core.material_override = _make_world_trail_material(
-		Color(secondary.r, secondary.g, secondary.b, maxf(secondary.a * alpha_scale, 0.12)),
+	_apply_world_trail_material(
+		core,
+		Color(emission.r, emission.g, emission.b, maxf(alpha_scale, 0.48)),
 		emission,
-		2.6
+		3.2
 	)
+	if head_glow != null:
+		_apply_world_trail_material(
+			head_glow,
+			Color(emission.r, emission.g, emission.b, maxf(alpha_scale * 0.58, 0.24)),
+			emission,
+			2.8
+		)
+	if aura_shell != null:
+		_apply_world_aura_material(
+			aura_shell,
+			Color(primary.r, primary.g, primary.b, maxf(primary.a * 0.46 * alpha_scale, 0.08)),
+			emission,
+			lerpf(1.7, 2.8, alpha_scale)
+		)
 
 	var particle: Node3D = ribbon.get_parent().get_node_or_null("ParticleTrail") as Node3D
 	if particle != null:
-		particle.scale = Vector3.ONE * maxf(float(preset.get("scale", 0.14)) * 4.0, 0.5)
-		_set_visible_recursive(particle, true)
+		particle.visible = str(preset.get("scene_path", "")).strip_edges() != ""
+		if particle.visible:
+			particle.position = Vector3(0.0, 0.0, -MARBLE_TRAIL_SURFACE_GAP)
+			particle.scale = Vector3.ONE * maxf(float(preset.get("scale", 0.14)) * 4.0, 0.5)
+			_set_visible_recursive(particle, true)
+
+
+func _apply_world_trail_material(target: MeshInstance3D, albedo: Color, emission: Color, energy: float) -> void:
+	if target == null:
+		return
+	var material: ShaderMaterial = target.material_override as ShaderMaterial
+	if material == null or material.shader != _get_speed_streak_shader():
+		material = ShaderMaterial.new()
+		material.shader = _get_speed_streak_shader()
+		target.material_override = material
+	_configure_world_trail_material(material, albedo, emission, energy)
+
+
+func _configure_world_trail_material(material: ShaderMaterial, albedo: Color, emission: Color, energy: float) -> void:
+	material.set_shader_parameter("trail_color", Color(albedo.r, albedo.g, albedo.b, maxf(albedo.a, 0.24)))
+	material.set_shader_parameter("emission_color", Color(emission.r, emission.g, emission.b, 1.0))
+	material.set_shader_parameter("emission_energy", energy)
+
+
+func _apply_world_aura_material(target: MeshInstance3D, albedo: Color, emission: Color, energy: float) -> void:
+	if target == null:
+		return
+	var material: ShaderMaterial = target.material_override as ShaderMaterial
+	if material == null or material.shader != _get_trail_aura_shader():
+		material = ShaderMaterial.new()
+		material.shader = _get_trail_aura_shader()
+		target.material_override = material
+	material.set_shader_parameter("aura_color", Color(albedo.r, albedo.g, albedo.b, maxf(albedo.a, 0.06)))
+	material.set_shader_parameter("emission_color", Color(emission.r, emission.g, emission.b, 1.0))
+	material.set_shader_parameter("emission_energy", energy)
+
+
+func _get_trail_aura_shader() -> Shader:
+	if trail_aura_shader_cache != null:
+		return trail_aura_shader_cache
+
+	var shader: Shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
+
+uniform vec4 aura_color : source_color = vec4(0.2, 0.8, 1.0, 0.12);
+uniform vec4 emission_color : source_color = vec4(0.2, 0.8, 1.0, 1.0);
+uniform float emission_energy = 2.2;
+
+void fragment() {
+	float rim = pow(1.0 - clamp(abs(dot(normalize(NORMAL), normalize(VIEW))), 0.0, 1.0), 2.2);
+	float pulse = 0.82 + sin(TIME * 5.5 + VERTEX.y * 7.0) * 0.18;
+	float alpha = aura_color.a * (0.22 + rim * 1.35) * pulse;
+	ALBEDO = aura_color.rgb;
+	ALPHA = alpha;
+	EMISSION = emission_color.rgb * emission_energy * max(alpha, 0.05);
+}
+"""
+	trail_aura_shader_cache = shader
+	return trail_aura_shader_cache
+
+
+func _update_textured_projectile_trail(root: Node3D, marble: Node3D, body: RigidBody3D, speed: float, moving: bool, preset: Dictionary, delta: float) -> void:
+	var marker: Node3D = root.get_node_or_null("TrailMarker") as Node3D
+	if marker != null:
+		marker.visible = false
+
+	var ribbon: MeshInstance3D = root.get_node_or_null("SkillTrailRibbon") as MeshInstance3D
+	if ribbon == null:
+		ribbon = _build_textured_projectile_marker(preset)
+		if ribbon == null:
+			root.visible = false
+			return
+		root.add_child(ribbon)
+
+	root.visible = true
+	root.global_transform = Transform3D.IDENTITY
+
+	var lifetime: float = maxf(float(preset.get("lifetime", 0.52)), 0.18)
+	var points: Array = marble_trail_points.get(marble, [])
+	for index in range(points.size() - 1, -1, -1):
+		var point: Dictionary = points[index]
+		point["age"] = float(point.get("age", 0.0)) + delta
+		if float(point["age"]) > lifetime:
+			points.remove_at(index)
+		else:
+			points[index] = point
+
+	if moving and body != null:
+		var sample_position: Vector3 = marble.global_position + Vector3.UP * 0.05
+		var last_sample: Vector3 = marble_trail_last_samples.get(marble, Vector3(999999.0, 999999.0, 999999.0))
+		if points.is_empty() or sample_position.distance_to(last_sample) >= 0.08:
+			points.append({"position": sample_position, "age": 0.0})
+			marble_trail_last_samples[marble] = sample_position
+			while points.size() > 36:
+				points.remove_at(0)
+
+	marble_trail_points[marble] = points
+	if points.size() < 2:
+		ribbon.visible = false
+		ribbon.mesh = ArrayMesh.new()
+		return
+
+	ribbon.visible = true
+	var camera: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
+	var speed_ratio: float = clampf(speed / 8.0, 0.0, 1.0)
+	var preset_scale: float = maxf(float(preset.get("scale", 0.2)), 0.08)
+	var max_width: float = lerpf(0.38, 0.66, speed_ratio) * maxf(preset_scale * 4.0, 0.85)
+
+	var vertices: PackedVector3Array = PackedVector3Array()
+	var uvs: PackedVector2Array = PackedVector2Array()
+	var colors: PackedColorArray = PackedColorArray()
+	var indices: PackedInt32Array = PackedInt32Array()
+	var point_count: int = points.size()
+
+	for index in range(point_count):
+		var t: float = float(index) / float(maxi(point_count - 1, 1))
+		var point_data: Dictionary = points[index]
+		var position: Vector3 = point_data.get("position", marble.global_position)
+		var previous_data: Dictionary = points[maxi(index - 1, 0)]
+		var next_data: Dictionary = points[mini(index + 1, point_count - 1)]
+		var previous_position: Vector3 = previous_data.get("position", position)
+		var next_position: Vector3 = next_data.get("position", position)
+		var tangent: Vector3 = (next_position - previous_position).normalized()
+		if tangent.length_squared() <= 0.0001 and body != null:
+			tangent = body.linear_velocity.normalized()
+		if tangent.length_squared() <= 0.0001:
+			tangent = Vector3.FORWARD
+
+		var view_direction: Vector3 = Vector3.UP
+		if camera != null:
+			view_direction = (camera.global_position - position).normalized()
+		var side: Vector3 = tangent.cross(view_direction).normalized()
+		if side.length_squared() <= 0.0001:
+			side = Vector3.UP.cross(tangent).normalized()
+		if side.length_squared() <= 0.0001:
+			side = Vector3.RIGHT
+
+		var width: float = max_width * lerpf(0.22, 1.0, smoothstep(0.0, 1.0, t))
+		var age_alpha: float = clampf(1.0 - (float(point_data.get("age", 0.0)) / lifetime), 0.0, 1.0)
+		var tail_alpha: float = smoothstep(0.0, 0.18, t)
+		var alpha: float = age_alpha * tail_alpha
+
+		vertices.append(position - side * width)
+		vertices.append(position + side * width)
+		uvs.append(Vector2(t, 0.0))
+		uvs.append(Vector2(t, 1.0))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+		colors.append(Color(1.0, 1.0, 1.0, alpha))
+
+	for index in range(point_count - 1):
+		var base: int = index * 2
+		indices.append(base)
+		indices.append(base + 1)
+		indices.append(base + 2)
+		indices.append(base + 1)
+		indices.append(base + 3)
+		indices.append(base + 2)
+
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+
+	var ribbon_mesh: ArrayMesh = ArrayMesh.new()
+	ribbon_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	ribbon.mesh = ribbon_mesh
+
+
+func _build_textured_projectile_marker(preset: Dictionary) -> MeshInstance3D:
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	var texture: Texture2D = _load_trail_texture(texture_path)
+	if texture == null:
+		return null
+	var ribbon: MeshInstance3D = MeshInstance3D.new()
+	ribbon.name = "SkillTrailRibbon"
+	ribbon.mesh = ArrayMesh.new()
+	ribbon.material_override = _make_textured_projectile_trail_material(texture)
+	return ribbon
+
+
+func _load_trail_texture(texture_path: String) -> Texture2D:
+	if texture_path == "":
+		return null
+	if ResourceLoader.exists(texture_path):
+		var texture_resource: Resource = ResourceLoader.load(texture_path)
+		if texture_resource is Texture2D:
+			return texture_resource as Texture2D
+	var image: Image = Image.new()
+	var load_path: String = texture_path
+	if texture_path.begins_with("res://"):
+		load_path = ProjectSettings.globalize_path(texture_path)
+	if image.load(load_path) == OK:
+		return ImageTexture.create_from_image(image)
+	return null
+
+
+func _make_textured_projectile_trail_material(texture: Texture2D) -> ShaderMaterial:
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = _get_textured_projectile_trail_shader()
+	material.set_shader_parameter("trail_texture", texture)
+	material.set_shader_parameter("alpha_scale", 1.0)
+	material.set_shader_parameter("emission_energy", 2.8)
+	return material
+
+
+func _get_textured_projectile_trail_shader() -> Shader:
+	var shader: Shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled;
+
+uniform sampler2D trail_texture : source_color;
+uniform float alpha_scale = 1.0;
+uniform float emission_energy = 2.8;
+
+void fragment() {
+	vec4 tex = texture(trail_texture, UV);
+	float key_distance = distance(tex.rgb, vec3(1.0, 0.0, 1.0));
+	float key_alpha = smoothstep(0.08, 0.28, key_distance);
+	ALBEDO = tex.rgb * COLOR.rgb;
+	ALPHA = tex.a * key_alpha * alpha_scale * COLOR.a;
+	EMISSION = tex.rgb * emission_energy;
+}
+"""
+	return shader
 
 
 func _play_first_animation_recursive(node: Node) -> void:

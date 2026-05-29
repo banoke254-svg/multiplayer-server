@@ -241,7 +241,8 @@ func _build_hover_indicator() -> void:
 
 	hover_label = Label.new()
 	hover_label.name = "HoverLabel"
-	hover_label.text = "TURN"
+	hover_label.text = ""
+	hover_label.visible = false
 	hover_label.position = Vector2(-34.0, -58.0)
 	hover_label.size = Vector2(68.0, 20.0)
 	hover_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -808,9 +809,9 @@ func _make_modal_style(fill_color: Color, border_color: Color) -> StyleBoxFlat:
 	return style
 
 
-func _make_elimination_popup_style(accent: Color) -> StyleBoxFlat:
+func _make_elimination_popup_style(accent: Color, fill_color: Color = Color(0.02, 0.04, 0.12, 0.46)) -> StyleBoxFlat:
 	var border_color := Color(accent.r, accent.g, accent.b, 0.66)
-	var style: StyleBoxFlat = _make_modal_style(Color(0.02, 0.04, 0.12, 0.46), border_color)
+	var style: StyleBoxFlat = _make_modal_style(fill_color, border_color)
 	style.shadow_size = 12
 	style.shadow_color = Color(0.0, 0.0, 0.0, 0.18)
 	return style
@@ -1043,14 +1044,24 @@ func _show_banner(message: String, color: Color, duration: float) -> void:
 	if elimination_popup == null or elimination_popup_label == null:
 		return
 
+	var banner_preset := _get_selected_banner_preset()
+	var accent: Color = banner_preset.get("accent", color)
+	var text_color: Color = banner_preset.get("text", color)
 	elimination_popup_label.text = message
-	elimination_popup_label.add_theme_color_override("font_color", Color(color.r, color.g, color.b, 0.96))
-	elimination_popup.add_theme_stylebox_override("panel", _make_elimination_popup_style(color))
+	elimination_popup_label.add_theme_color_override("font_color", Color(text_color.r, text_color.g, text_color.b, 0.96))
+	elimination_popup.add_theme_stylebox_override("panel", _make_elimination_popup_style(accent, banner_preset.get("fill", Color(0.02, 0.04, 0.12, 0.46))))
 	elimination_popup.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	elimination_popup.scale = Vector2.ONE
 	elimination_popup.visible = true
 	elimination_banner_time_left = duration
 	elimination_banner_duration = duration
+
+
+func _get_selected_banner_preset() -> Dictionary:
+	var customization: Node = get_node_or_null("/root/CustomizationState")
+	if customization != null and customization.has_method("get_selected_banner_preset"):
+		return customization.call("get_selected_banner_preset")
+	return {}
 
 
 func _update_turn_prompt() -> void:

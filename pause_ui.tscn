@@ -16,14 +16,9 @@ script = ExtResource("1_8j17b")
 layout_mode = 0
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 340.0
+offset_right = 248.0
 offset_bottom = 60.0
 theme_override_constants/separation = 10
-
-[node name="BackButton" type="Button" parent="TopBar"]
-layout_mode = 2
-custom_minimum_size = Vector2(92, 44)
-text = "Back"
 
 [node name="PauseButton" type="Button" parent="TopBar"]
 layout_mode = 2
