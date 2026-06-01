@@ -87,6 +87,17 @@ var banner_preview_cache: Dictionary = {}
 var field_preview_cache: Dictionary = {}
 var galaxy_backdrop: Node3D
 var trail_preview_root: Node3D
+var banner_preview_root: Node3D
+var banner_preview_label: Label3D
+var banner_preview_fill: MeshInstance3D
+var banner_preview_border: MeshInstance3D
+var banner_preview_effects: Node3D
+var banner_preview_2d_root: Control
+var banner_preview_2d_glow: Panel
+var banner_preview_2d_body: TextureRect
+var banner_preview_2d_video_player: VideoStreamPlayer
+var banner_preview_2d_border: Panel
+var banner_preview_2d_label: Label
 var showroom_root: Node3D
 var showroom_field_root: Node3D
 var title_logo: TextureRect
@@ -243,6 +254,8 @@ func _process(delta: float) -> void:
 	_process_gold_payment_status_poll(delta)
 	if display_marble != null and trail_preview_root != null:
 		_update_showroom_trail_preview(delta)
+	if display_marble != null and banner_preview_root != null:
+		_update_showroom_banner_preview()
 	if preview_camera != null:
 		var camera_weight: float = clampf(delta * SHOWROOM_CAMERA_SMOOTH, 0.0, 1.0)
 		preview_camera.position = preview_camera.position.lerp(showroom_camera_target_position, camera_weight)
@@ -662,6 +675,44 @@ func _ensure_showroom_neon_backdrop() -> void:
 	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	material.albedo_texture = texture
 	backdrop.material_override = material
+	_ensure_showroom_camera_backdrop(texture)
+
+
+func _ensure_showroom_camera_backdrop(texture: Texture2D = null) -> void:
+	if preview_camera == null:
+		return
+	var backdrop: MeshInstance3D = preview_camera.get_node_or_null("CameraNeonBackdrop") as MeshInstance3D
+	if backdrop == null:
+		backdrop = MeshInstance3D.new()
+		backdrop.name = "CameraNeonBackdrop"
+		preview_camera.add_child(backdrop)
+
+	var backdrop_mesh: QuadMesh = backdrop.mesh as QuadMesh
+	if backdrop_mesh == null:
+		backdrop_mesh = QuadMesh.new()
+		backdrop.mesh = backdrop_mesh
+	backdrop_mesh.size = Vector2(20.0, 11.4)
+	backdrop.position = Vector3(0.0, 0.0, -18.0)
+	backdrop.rotation = Vector3.ZERO
+	backdrop.visible = true
+	backdrop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+	if texture == null and ResourceLoader.exists(SHOWROOM_BACKGROUND_TEXTURE_PATH):
+		texture = load(SHOWROOM_BACKGROUND_TEXTURE_PATH) as Texture2D
+	if texture == null:
+		return
+
+	var material: StandardMaterial3D = backdrop.material_override as StandardMaterial3D
+	if material == null:
+		material = StandardMaterial3D.new()
+		backdrop.material_override = material
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	material.no_depth_test = false
+	material.render_priority = -10
+	material.albedo_texture = texture
+	material.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
 
 
 func _configure_room_shell_mesh(mesh_instance: MeshInstance3D, material: Material) -> void:
@@ -1237,6 +1288,8 @@ func _build_reference_showroom_ui() -> void:
 	right_plus.pressed.connect(_on_next_marble_pressed)
 	root.add_child(right_plus)
 
+	_ensure_banner_preview_2d_ui()
+
 	status_label = Label.new()
 	status_label.anchor_left = 0.0
 	status_label.anchor_top = 1.0
@@ -1287,6 +1340,16 @@ func _load_showroom_ui_texture(texture_path: String) -> Texture2D:
 		if texture_resource is Texture2D:
 			return texture_resource as Texture2D
 	push_warning("Could not load showroom UI texture: %s" % texture_path)
+	return null
+
+
+func _load_showroom_video(video_path: String) -> VideoStream:
+	if video_path == "":
+		return null
+	if ResourceLoader.exists(video_path):
+		var video_resource: Resource = ResourceLoader.load(video_path)
+		return video_resource as VideoStream
+	push_warning("Could not load showroom video: %s" % video_path)
 	return null
 
 
@@ -2216,10 +2279,22 @@ func _refresh_display() -> void:
 	else:
 		_transition_showroom_gallery_smooth(preset)
 		if showroom_mode == SHOWROOM_MODE_TRAILS:
+			_clear_showroom_banner_preview()
 			_show_selected_trail_preview(selected_trail_preset)
+		elif showroom_mode == SHOWROOM_MODE_BANNERS:
+			if trail_preview_root != null:
+				trail_preview_root.queue_free()
+				trail_preview_root = null
+			_clear_showroom_banner_preview()
+			_update_banner_preview_2d(banner_preset)
 		elif trail_preview_root != null:
 			trail_preview_root.queue_free()
 			trail_preview_root = null
+			_clear_showroom_banner_preview()
+		else:
+			_clear_showroom_banner_preview()
+		if display_marble != null and is_instance_valid(display_marble):
+			display_marble.visible = showroom_mode != SHOWROOM_MODE_BANNERS
 		
 	_showroom_sync_panels()
 
@@ -2476,9 +2551,12 @@ func _create_banner_belt_button(banner_id: String, preset: Dictionary) -> Button
 	box.add_theme_constant_override("separation", 6)
 	margin.add_child(box)
 
-	var preview: Panel = Panel.new()
-	preview.custom_minimum_size = Vector2(116, 28)
-	preview.add_theme_stylebox_override("panel", _make_banner_preview_style(preset))
+	var preview: TextureRect = TextureRect.new()
+	preview.custom_minimum_size = Vector2(124, 34)
+	preview.texture = _make_banner_2d_texture(preset)
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(preview)
 
 	var label: Label = Label.new()
@@ -2611,6 +2689,404 @@ func _make_banner_preview_style(preset: Dictionary) -> StyleBoxFlat:
 	style.shadow_size = 10
 	style.shadow_color = Color(accent.r, accent.g, accent.b, 0.22)
 	return style
+
+
+func _ensure_banner_preview_2d_ui() -> void:
+	if banner_preview_2d_root != null:
+		return
+
+	banner_preview_2d_root = Control.new()
+	banner_preview_2d_root.name = "Banner2DPreview"
+	banner_preview_2d_root.anchor_left = 0.5
+	banner_preview_2d_root.anchor_top = 0.0
+	banner_preview_2d_root.anchor_right = 0.5
+	banner_preview_2d_root.anchor_bottom = 0.0
+	banner_preview_2d_root.offset_left = -235.0
+	banner_preview_2d_root.offset_top = 250.0
+	banner_preview_2d_root.offset_right = 235.0
+	banner_preview_2d_root.offset_bottom = 368.0
+	banner_preview_2d_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner_preview_2d_root.z_index = 4
+	banner_preview_2d_root.visible = false
+	root.add_child(banner_preview_2d_root)
+
+	banner_preview_2d_glow = Panel.new()
+	banner_preview_2d_glow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	banner_preview_2d_glow.offset_left = 18.0
+	banner_preview_2d_glow.offset_top = 20.0
+	banner_preview_2d_glow.offset_right = -18.0
+	banner_preview_2d_glow.offset_bottom = -18.0
+	banner_preview_2d_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner_preview_2d_root.add_child(banner_preview_2d_glow)
+
+	banner_preview_2d_body = TextureRect.new()
+	banner_preview_2d_body.set_anchors_preset(Control.PRESET_FULL_RECT)
+	banner_preview_2d_body.offset_left = 18.0
+	banner_preview_2d_body.offset_top = 20.0
+	banner_preview_2d_body.offset_right = -18.0
+	banner_preview_2d_body.offset_bottom = -18.0
+	banner_preview_2d_body.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	banner_preview_2d_body.stretch_mode = TextureRect.STRETCH_SCALE
+	banner_preview_2d_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner_preview_2d_root.add_child(banner_preview_2d_body)
+
+	banner_preview_2d_video_player = VideoStreamPlayer.new()
+	banner_preview_2d_video_player.name = "BannerVideoPreview"
+	banner_preview_2d_video_player.set_anchors_preset(Control.PRESET_FULL_RECT)
+	banner_preview_2d_video_player.offset_left = 18.0
+	banner_preview_2d_video_player.offset_top = 20.0
+	banner_preview_2d_video_player.offset_right = -18.0
+	banner_preview_2d_video_player.offset_bottom = -18.0
+	banner_preview_2d_video_player.expand = true
+	banner_preview_2d_video_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner_preview_2d_video_player.visible = false
+	banner_preview_2d_video_player.material = _make_banner_video_key_material()
+	banner_preview_2d_root.add_child(banner_preview_2d_video_player)
+	if not banner_preview_2d_video_player.finished.is_connected(_restart_banner_preview_video):
+		banner_preview_2d_video_player.finished.connect(_restart_banner_preview_video)
+
+	banner_preview_2d_border = Panel.new()
+	banner_preview_2d_border.set_anchors_preset(Control.PRESET_FULL_RECT)
+	banner_preview_2d_border.offset_left = 18.0
+	banner_preview_2d_border.offset_top = 20.0
+	banner_preview_2d_border.offset_right = -18.0
+	banner_preview_2d_border.offset_bottom = -18.0
+	banner_preview_2d_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner_preview_2d_root.add_child(banner_preview_2d_border)
+
+	banner_preview_2d_label = Label.new()
+	banner_preview_2d_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	banner_preview_2d_label.offset_left = 42.0
+	banner_preview_2d_label.offset_right = -42.0
+	banner_preview_2d_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	banner_preview_2d_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	banner_preview_2d_label.clip_text = true
+	banner_preview_2d_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner_preview_2d_label.add_theme_font_size_override("font_size", 30)
+	banner_preview_2d_root.add_child(banner_preview_2d_label)
+
+
+func _update_banner_preview_2d(preset: Dictionary) -> void:
+	_ensure_banner_preview_2d_ui()
+	if banner_preview_2d_root == null:
+		return
+	banner_preview_2d_root.visible = showroom_mode == SHOWROOM_MODE_BANNERS
+	if preset.is_empty():
+		return
+
+	var fill: Color = preset.get("fill", Color(0.02, 0.07, 0.10, 0.86))
+	var accent: Color = preset.get("accent", Color(0.18, 1.0, 0.72, 1.0))
+	var text_color: Color = preset.get("text", Color(0.94, 1.0, 0.96, 1.0))
+	var outline_color: Color = preset.get("outline", Color(0.0, 0.06, 0.04, 0.96))
+	var shape: String = str(preset.get("shape", "banner"))
+	var style_name: String = str(preset.get("style", shape))
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	var video_path: String = str(preset.get("video_path", "")).strip_edges()
+	var radius: int = 20 if shape == "bubble" else 12
+	if shape == "plate":
+		radius = 8
+	if style_name == "royal_scroll":
+		radius = 24
+	elif style_name == "cyber_diamond":
+		radius = 4
+
+	_update_banner_preview_2d_video(video_path)
+	banner_preview_2d_body.visible = video_path == "" or banner_preview_2d_video_player == null or banner_preview_2d_video_player.stream == null
+	banner_preview_2d_body.texture = _make_banner_2d_texture(preset)
+	banner_preview_2d_body.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED if texture_path != "" else TextureRect.STRETCH_SCALE
+	banner_preview_2d_glow.visible = texture_path == ""
+	banner_preview_2d_border.visible = texture_path == ""
+	banner_preview_2d_glow.add_theme_stylebox_override("panel", _make_banner_2d_glow_style(accent, radius + 16))
+	var border_accent: Color = accent
+	if style_name == "cyber_diamond" or style_name == "royal_scroll" or texture_path != "":
+		border_accent.a = 0.0
+	banner_preview_2d_border.add_theme_stylebox_override("panel", _make_banner_2d_border_style(border_accent, radius))
+	banner_preview_2d_label.text = _get_showroom_banner_display_name()
+	if style_name == "cyber_diamond":
+		banner_preview_2d_label.offset_left = 106.0
+		banner_preview_2d_label.offset_right = -34.0
+		banner_preview_2d_label.offset_top = 0.0
+		banner_preview_2d_label.offset_bottom = 0.0
+	elif style_name == "royal_scroll":
+		banner_preview_2d_label.offset_left = 76.0
+		banner_preview_2d_label.offset_right = -76.0
+		banner_preview_2d_label.offset_top = 0.0
+		banner_preview_2d_label.offset_bottom = 0.0
+	elif _is_showroom_royal_wings_banner(preset):
+		banner_preview_2d_label.offset_left = 190.0
+		banner_preview_2d_label.offset_right = -190.0
+		banner_preview_2d_label.offset_top = 6.0
+		banner_preview_2d_label.offset_bottom = 6.0
+	elif _is_texture_banner_path(preset, "red_flame_frame"):
+		banner_preview_2d_label.offset_left = 130.0
+		banner_preview_2d_label.offset_right = -110.0
+		banner_preview_2d_label.offset_top = 16.0
+		banner_preview_2d_label.offset_bottom = -4.0
+	elif texture_path != "":
+		var text_area_width: float = _get_texture_banner_2d_text_width(preset)
+		var side_offset: float = maxf((470.0 - text_area_width) * 0.5, 42.0)
+		var x_offset: float = float(preset.get("text_x_offset_2d", 0.0))
+		var y_offset: float = float(preset.get("text_y_offset_2d", 0.0))
+		banner_preview_2d_label.offset_left = side_offset + x_offset
+		banner_preview_2d_label.offset_right = -side_offset + x_offset
+		banner_preview_2d_label.offset_top = y_offset
+		banner_preview_2d_label.offset_bottom = y_offset
+	else:
+		banner_preview_2d_label.offset_left = 42.0
+		banner_preview_2d_label.offset_right = -42.0
+		banner_preview_2d_label.offset_top = 0.0
+		banner_preview_2d_label.offset_bottom = 0.0
+	banner_preview_2d_label.add_theme_color_override("font_color", text_color)
+	banner_preview_2d_label.add_theme_color_override("font_outline_color", outline_color)
+	var font_scale: float = float(preset.get("text_font_scale", 1.0)) if texture_path != "" else 1.0
+	var base_font_size: float = 28.0 if banner_preview_2d_label.text.length() > 10 else 30.0
+	var safe_text_width: float = _get_banner_2d_text_width(preset, texture_path, style_name)
+	var fit_font: float = _get_banner_2d_fit_font_size(banner_preview_2d_label.text, safe_text_width)
+	var texture_fit_font: float = minf(base_font_size * font_scale, fit_font)
+	var final_font_size: int = int(round(texture_fit_font if texture_path != "" else minf(base_font_size, fit_font)))
+	if _is_showroom_royal_wings_banner(preset):
+		final_font_size = mini(final_font_size, 18)
+	elif _is_texture_banner_path(preset, "red_flame_frame"):
+		final_font_size = mini(final_font_size, 22)
+	banner_preview_2d_label.add_theme_constant_override("outline_size", maxi(1, int(round(float(final_font_size) * (0.16 if texture_path != "" else 0.24)))))
+	banner_preview_2d_label.add_theme_font_size_override("font_size", final_font_size)
+
+
+func _update_banner_preview_2d_video(video_path: String) -> void:
+	if banner_preview_2d_video_player == null:
+		return
+	if video_path == "":
+		banner_preview_2d_video_player.stop()
+		banner_preview_2d_video_player.stream = null
+		banner_preview_2d_video_player.visible = false
+		return
+	var current_path: String = str(banner_preview_2d_video_player.get_meta("video_path", ""))
+	if current_path != video_path:
+		banner_preview_2d_video_player.stop()
+		banner_preview_2d_video_player.stream = _load_showroom_video(video_path)
+		banner_preview_2d_video_player.set_meta("video_path", video_path)
+	banner_preview_2d_video_player.visible = banner_preview_2d_video_player.stream != null
+	if banner_preview_2d_video_player.visible and not banner_preview_2d_video_player.is_playing():
+		banner_preview_2d_video_player.play()
+
+
+func _restart_banner_preview_video() -> void:
+	if banner_preview_2d_video_player == null or not banner_preview_2d_video_player.visible:
+		return
+	banner_preview_2d_video_player.play()
+
+
+func _make_banner_video_key_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = """
+shader_type canvas_item;
+uniform float threshold = 0.16;
+uniform float softness = 0.18;
+
+void fragment() {
+	vec4 color = texture(TEXTURE, UV);
+	float brightness = max(max(color.r, color.g), color.b);
+	float red_energy = max(color.r - max(color.g, color.b) * 0.42, 0.0);
+	float alpha = smoothstep(threshold, threshold + softness, max(brightness * 0.72, red_energy));
+	COLOR = vec4(color.rgb, color.a * alpha);
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	return material
+
+
+func _get_banner_2d_text_width(preset: Dictionary, texture_path: String, style_name: String) -> float:
+	if texture_path != "":
+		return _get_texture_banner_2d_text_width(preset)
+	if style_name == "cyber_diamond":
+		return 330.0
+	if style_name == "royal_scroll":
+		return 318.0
+	return 386.0
+
+
+func _get_texture_banner_2d_text_width(preset: Dictionary) -> float:
+	var aspect: float = maxf(float(preset.get("texture_aspect", 3.16)), 0.2)
+	var displayed_width: float = minf(434.0, 80.0 * aspect)
+	var padding: float = float(preset.get("text_padding_2d", 26.0))
+	return maxf(displayed_width * clampf(float(preset.get("text_area_ratio", 0.68)), 0.18, 0.96) - padding, 48.0)
+
+
+func _get_banner_2d_fit_font_size(text_value: String, text_area_width: float) -> float:
+	var character_count: float = maxf(float(text_value.length()), 1.0)
+	return clampf(text_area_width / (character_count * 0.82), 6.0, 30.0)
+
+
+func _make_banner_2d_glow_style(accent: Color, radius: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	style.border_color = Color(0.0, 0.0, 0.0, 0.0)
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.0)
+	style.shadow_size = 0
+	return style
+
+
+func _make_banner_2d_border_style(accent: Color, radius: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	style.border_color = accent
+	style.border_width_left = 5
+	style.border_width_top = 5
+	style.border_width_right = 5
+	style.border_width_bottom = 5
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	style.shadow_color = Color(accent.r, accent.g, accent.b, 0.6)
+	style.shadow_size = 10
+	return style
+
+
+func _make_banner_2d_texture(preset: Dictionary) -> Texture2D:
+	var key: String = "banner_2d|%s|%s|%s|%s" % [
+		str(preset.get("id", "")),
+		str(preset.get("style", preset.get("shape", "banner"))),
+		str(preset.get("fill", Color(0.02, 0.07, 0.10, 0.86))),
+		str(preset.get("accent", Color(0.18, 1.0, 0.72, 1.0))) + "|" + str(preset.get("texture_path", ""))
+	]
+	var cached: Texture2D = banner_preview_cache.get(key, null) as Texture2D
+	if cached != null:
+		return cached
+
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	if texture_path != "":
+		var artwork_texture: Texture2D = _load_showroom_ui_texture(texture_path)
+		if artwork_texture != null:
+			banner_preview_cache[key] = artwork_texture
+			return artwork_texture
+
+	var width: int = 420
+	var height: int = 88
+	var image: Image = Image.create(width, height, false, Image.FORMAT_RGBA8)
+	var fill: Color = preset.get("fill", Color(0.02, 0.07, 0.10, 0.9))
+	var accent: Color = preset.get("accent", Color(0.18, 1.0, 0.72, 1.0))
+	var style_name: String = str(preset.get("style", preset.get("shape", "banner")))
+	if style_name == "cyber_diamond":
+		_draw_cyber_diamond_banner(image, fill, accent)
+		var texture_cyber: ImageTexture = ImageTexture.create_from_image(image)
+		banner_preview_cache[key] = texture_cyber
+		return texture_cyber
+	if style_name == "royal_scroll":
+		_draw_royal_scroll_banner(image, fill, accent)
+		var texture_scroll: ImageTexture = ImageTexture.create_from_image(image)
+		banner_preview_cache[key] = texture_scroll
+		return texture_scroll
+	for y in range(height):
+		var v: float = float(y) / float(maxi(height - 1, 1))
+		for x in range(width):
+			var u: float = float(x) / float(maxi(width - 1, 1))
+			var edge_x: float = minf(u, 1.0 - u)
+			var edge_y: float = minf(v, 1.0 - v)
+			var edge: float = clampf(minf(edge_x * 8.0, edge_y * 14.0), 0.0, 1.0)
+			var shine: float = smoothstep(0.0, 1.0, 1.0 - v) * 0.22
+			var center_glow: float = smoothstep(0.0, 1.0, 1.0 - absf(v - 0.64) * 3.0) * 0.32
+			var color: Color = fill.lerp(accent, center_glow + shine * 0.35)
+			color = color.darkened(0.18 * (1.0 - edge))
+			color.a = 0.94
+			image.set_pixel(x, y, color)
+	var texture: ImageTexture = ImageTexture.create_from_image(image)
+	banner_preview_cache[key] = texture
+	return texture
+
+
+func _draw_cyber_diamond_banner(image: Image, fill: Color, accent: Color) -> void:
+	var width: int = image.get_width()
+	var height: int = image.get_height()
+	var cyan_dark: Color = accent.darkened(0.34)
+	var bar_left: float = 62.0
+	var bar_right: float = float(width - 12)
+	var bar_top: float = 23.0
+	var bar_bottom: float = float(height - 16)
+	for y in range(height):
+		for x in range(width):
+			var px: float = float(x)
+			var py: float = float(y)
+			var color := Color(0, 0, 0, 0)
+			var in_bar: bool = px >= bar_left and px <= bar_right and py >= bar_top and py <= bar_bottom
+			var diamond_dist: float = absf(px - 54.0) + absf(py - 44.0)
+			var in_diamond_outer: bool = diamond_dist <= 48.0
+			var in_diamond_mid: bool = diamond_dist <= 40.0
+			var in_diamond_inner: bool = diamond_dist <= 31.0
+			if in_bar:
+				var v: float = (py - bar_top) / maxf(bar_bottom - bar_top, 1.0)
+				color = fill.lerp(Color(0.0, 0.0, 0.0, 0.96), v * 0.38)
+				color.a = 0.96
+				if py <= bar_top + 4.0 or py >= bar_bottom - 4.0 or px >= bar_right - 5.0:
+					color = accent
+					color.a = 0.94
+				elif py <= bar_top + 8.0 or py >= bar_bottom - 8.0:
+					color = cyan_dark
+					color.a = 0.78
+			if in_diamond_outer:
+				color = Color(0.0, 0.0, 0.0, 1.0)
+			if in_diamond_mid:
+				color = accent.darkened(0.16)
+				color.a = 1.0
+			if in_diamond_inner:
+				var glow: float = clampf(1.0 - diamond_dist / 31.0, 0.0, 1.0)
+				color = accent.lerp(Color(0.02, 0.22, 0.34, 1.0), 0.46 + glow * 0.18)
+				color.a = 1.0
+			if px >= 92.0 and px <= 178.0 and py >= 8.0 and py <= 18.0:
+				color = accent
+				color.a = 0.88
+			if px >= 282.0 and px <= 392.0 and py >= 70.0 and py <= 81.0:
+				color = accent.darkened(0.12)
+				color.a = 0.88
+			image.set_pixel(x, y, color)
+
+
+func _draw_royal_scroll_banner(image: Image, fill: Color, accent: Color) -> void:
+	var width: int = image.get_width()
+	var height: int = image.get_height()
+	var outline: Color = accent
+	var body_left: float = 48.0
+	var body_right: float = float(width - 48)
+	var body_top: float = 19.0
+	var body_bottom: float = float(height - 17)
+	for y in range(height):
+		for x in range(width):
+			var px: float = float(x)
+			var py: float = float(y)
+			var color := Color(0, 0, 0, 0)
+			var in_body: bool = px >= body_left and px <= body_right and py >= body_top and py <= body_bottom
+			var left_cloud: bool = _banner_point_in_circle(px, py, 46.0, 34.0, 22.0) or _banner_point_in_circle(px, py, 50.0, 54.0, 22.0) or _banner_point_in_circle(px, py, 68.0, 44.0, 24.0)
+			var right_cloud: bool = _banner_point_in_circle(px, py, width - 46.0, 34.0, 22.0) or _banner_point_in_circle(px, py, width - 50.0, 54.0, 22.0) or _banner_point_in_circle(px, py, width - 68.0, 44.0, 24.0)
+			var ribbon_left: bool = px < body_left and px > 4.0 and absf((py - 44.0) - sin(px * 0.08) * 9.0) < 5.0
+			var ribbon_right: bool = px > body_right and px < width - 4.0 and absf((py - 44.0) - sin(px * 0.08) * 9.0) < 5.0
+			var inside: bool = in_body or left_cloud or right_cloud or ribbon_left or ribbon_right
+			if inside:
+				var v: float = float(y) / float(maxi(height - 1, 1))
+				color = fill.lightened(0.24 * (1.0 - v)).lerp(fill.darkened(0.12), v * 0.55)
+				color.a = 0.95
+			var near_border: bool = false
+			if in_body:
+				near_border = py <= body_top + 4.0 or py >= body_bottom - 4.0 or px <= body_left + 4.0 or px >= body_right - 4.0
+			if left_cloud:
+				near_border = near_border or absf(px - 46.0) + absf(py - 34.0) > 35.0 or absf(px - 50.0) + absf(py - 54.0) > 35.0
+			if right_cloud:
+				near_border = near_border or absf(px - (width - 46.0)) + absf(py - 34.0) > 35.0 or absf(px - (width - 50.0)) + absf(py - 54.0) > 35.0
+			if near_border:
+				color = outline
+				color.a = 0.96
+			var screw: bool = _banner_point_in_circle(px, py, 72.0, 25.0, 4.0) or _banner_point_in_circle(px, py, 72.0, 63.0, 4.0) or _banner_point_in_circle(px, py, width - 72.0, 25.0, 4.0) or _banner_point_in_circle(px, py, width - 72.0, 63.0, 4.0)
+			if screw:
+				color = Color(1.0, 0.88, 0.48, 1.0)
+			image.set_pixel(x, y, color)
+
+
+func _banner_point_in_circle(px: float, py: float, cx: float, cy: float, radius: float) -> bool:
+	return Vector2(px - cx, py - cy).length_squared() <= radius * radius
 
 
 func _style_belt_item_button(button: Button, selected: bool, locked: bool) -> void:
@@ -2894,6 +3370,7 @@ func _clear_display_marble() -> void:
 	if trail_preview_root != null:
 		trail_preview_root.queue_free()
 		trail_preview_root = null
+	_clear_showroom_banner_preview()
 	if showroom_runtime_root != null:
 		for child in showroom_runtime_root.get_children():
 			child.queue_free()
@@ -2909,6 +3386,7 @@ func _clear_showroom_marble_preview() -> void:
 	if trail_preview_root != null:
 		trail_preview_root.queue_free()
 		trail_preview_root = null
+	_clear_showroom_banner_preview()
 	if showroom_transition_tween != null:
 		showroom_transition_tween.kill()
 		showroom_transition_tween = null
@@ -2943,6 +3421,13 @@ func _showroom_sync_panels() -> void:
 		banner_frame_panel.visible = showroom_mode == SHOWROOM_MODE_BANNERS
 	if field_frame_panel != null:
 		field_frame_panel.visible = showroom_mode == SHOWROOM_MODE_FIELDS
+	if banner_preview_2d_root != null:
+		banner_preview_2d_root.visible = showroom_mode == SHOWROOM_MODE_BANNERS
+	if banner_preview_2d_video_player != null:
+		if showroom_mode == SHOWROOM_MODE_BANNERS and banner_preview_2d_video_player.visible and banner_preview_2d_video_player.stream != null:
+			banner_preview_2d_video_player.play()
+		elif showroom_mode != SHOWROOM_MODE_BANNERS:
+			banner_preview_2d_video_player.stop()
 	if showroom_field_root != null:
 		showroom_field_root.visible = showroom_mode == SHOWROOM_MODE_FIELDS
 	if showroom_root != null:
@@ -2952,6 +3437,9 @@ func _showroom_sync_panels() -> void:
 	if showroom_mode == SHOWROOM_MODE_FIELDS:
 		showroom_camera_target_position = SHOWROOM_FIELD_CAMERA_POSITION
 		showroom_look_target_position = SHOWROOM_FIELD_LOOK_TARGET
+	elif showroom_mode == SHOWROOM_MODE_BANNERS:
+		showroom_camera_target_position = Vector3(0.0, 2.85, 5.35)
+		showroom_look_target_position = _get_selected_slot_position() + Vector3(0.0, 0.72, 0.0)
 	else:
 		showroom_camera_target_position = _get_default_camera_position()
 		showroom_look_target_position = _get_default_look_target()
@@ -3353,6 +3841,8 @@ func _update_decor_showroom_marbles() -> void:
 
 
 func _optimize_marble_for_showroom(root: Node3D, palette: Dictionary) -> void:
+	if bool(palette.get("preserve_imported_look", false)):
+		return
 	var allow_flame_effects := _palette_uses_flame_effects(palette)
 	var stack: Array[Node] = [root]
 	while not stack.is_empty():
@@ -3646,6 +4136,453 @@ func _get_marble_preview_texture(marble_id: String, preset: Dictionary) -> Textu
 	return texture
 
 
+func _clear_showroom_banner_preview() -> void:
+	if banner_preview_root != null:
+		banner_preview_root.queue_free()
+	banner_preview_root = null
+	banner_preview_label = null
+	banner_preview_fill = null
+	banner_preview_border = null
+	banner_preview_effects = null
+	if display_marble != null and is_instance_valid(display_marble) and showroom_mode != SHOWROOM_MODE_FIELDS and showroom_mode != SHOWROOM_MODE_BANNERS:
+		display_marble.visible = true
+
+
+func _show_selected_banner_preview(preset: Dictionary) -> void:
+	if showroom_runtime_root == null:
+		return
+	if preset.is_empty():
+		_clear_showroom_banner_preview()
+		return
+	_ensure_showroom_banner_preview_nodes()
+	_configure_showroom_banner_preview(preset)
+	_update_showroom_banner_preview()
+
+
+func _ensure_showroom_banner_preview_nodes() -> void:
+	if banner_preview_root != null and is_instance_valid(banner_preview_root):
+		return
+
+	banner_preview_root = Node3D.new()
+	banner_preview_root.name = "SelectedBannerPreview"
+	showroom_runtime_root.add_child(banner_preview_root)
+
+	banner_preview_border = MeshInstance3D.new()
+	banner_preview_border.name = "BannerBorder"
+	var border_mesh := QuadMesh.new()
+	border_mesh.size = Vector2(1.22, 0.34)
+	banner_preview_border.mesh = border_mesh
+	banner_preview_border.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	banner_preview_border.position = Vector3(0.0, -0.01, -0.03)
+	banner_preview_root.add_child(banner_preview_border)
+
+	banner_preview_effects = Node3D.new()
+	banner_preview_effects.name = "BannerEffects"
+	banner_preview_effects.position = Vector3(0.0, -0.012, -0.04)
+	banner_preview_root.add_child(banner_preview_effects)
+
+	banner_preview_fill = MeshInstance3D.new()
+	banner_preview_fill.name = "BannerFill"
+	var fill_mesh := QuadMesh.new()
+	fill_mesh.size = Vector2(1.08, 0.26)
+	banner_preview_fill.mesh = fill_mesh
+	banner_preview_fill.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	banner_preview_fill.position = Vector3(0.0, -0.01, -0.02)
+	banner_preview_root.add_child(banner_preview_fill)
+
+	banner_preview_label = Label3D.new()
+	banner_preview_label.name = "BannerName"
+	banner_preview_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	banner_preview_label.no_depth_test = true
+	banner_preview_label.fixed_size = false
+	banner_preview_label.pixel_size = 0.004
+	banner_preview_label.font_size = 44
+	banner_preview_label.outline_size = 8
+	banner_preview_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	banner_preview_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	banner_preview_label.position = Vector3(0.0, -0.01, -0.005)
+	banner_preview_root.add_child(banner_preview_label)
+
+
+func _configure_showroom_banner_preview(preset: Dictionary) -> void:
+	if banner_preview_root == null:
+		return
+
+	var display_name: String = _get_showroom_banner_display_name()
+	var shape: String = str(preset.get("shape", "banner"))
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	var text_width: float = clampf(float(display_name.length()) * 0.064 + 0.58, 1.05, 1.78)
+	var height: float = 0.28
+	if shape == "bubble":
+		height = 0.34
+	elif shape == "burner":
+		height = 0.31
+	elif shape == "plate":
+		height = 0.29
+	if texture_path != "":
+		var texture_aspect: float = maxf(float(preset.get("texture_aspect", 3.16)), 0.2)
+		text_width = maxf(text_width, _get_texture_showroom_banner_min_width(preset))
+		height = text_width / texture_aspect
+
+	var fill_mesh := banner_preview_fill.mesh as QuadMesh if banner_preview_fill != null else null
+	if fill_mesh != null:
+		fill_mesh.size = Vector2(text_width, height)
+	var border_mesh := banner_preview_border.mesh as QuadMesh if banner_preview_border != null else null
+	if border_mesh != null:
+		border_mesh.size = Vector2(text_width + 0.14, height + 0.08)
+
+	if banner_preview_label != null:
+		banner_preview_label.text = display_name
+		banner_preview_label.modulate = preset.get("text", Color(0.96, 0.99, 1.0, 1.0))
+		banner_preview_label.outline_modulate = preset.get("outline", Color(0.0, 0.02, 0.06, 0.94))
+		if texture_path != "":
+			if _is_showroom_royal_wings_banner(preset):
+				text_width = _get_texture_showroom_banner_min_width(preset)
+				banner_preview_label.font_size = _get_showroom_royal_wings_name_font_size(banner_preview_label.text)
+				banner_preview_label.outline_size = maxi(1, int(round(float(banner_preview_label.font_size) * 0.16)))
+			else:
+				banner_preview_label.outline_size = maxi(1, int(round(float(banner_preview_label.font_size) * 0.16)))
+				text_width = _expand_texture_showroom_banner_width_for_text(preset, text_width, banner_preview_label)
+				text_width = maxf(text_width, _get_texture_showroom_banner_min_width(preset))
+			height = text_width / maxf(float(preset.get("texture_aspect", 3.16)), 0.2)
+			_reset_showroom_banner_label_box(banner_preview_label)
+			var texture_text_offset: Vector3 = _get_texture_showroom_banner_text_offset(preset)
+			banner_preview_label.position = Vector3(texture_text_offset.x, -0.01 + texture_text_offset.y, -0.005)
+		else:
+			banner_preview_label.outline_size = maxi(3, int(round(float(banner_preview_label.font_size) * 0.18)))
+			text_width = _expand_generated_showroom_banner_width_for_text(preset, text_width, banner_preview_label)
+			_reset_showroom_banner_label_box(banner_preview_label)
+			banner_preview_label.position = Vector3(0.0, -0.01, -0.005)
+
+	if fill_mesh != null:
+		fill_mesh.size = Vector2(text_width, height)
+	if border_mesh != null:
+		border_mesh.size = Vector2(text_width + 0.14, height + 0.08)
+
+	if banner_preview_fill != null:
+		banner_preview_fill.material_override = _make_showroom_banner_material(preset, "fill")
+	if banner_preview_border != null:
+		banner_preview_border.visible = texture_path == ""
+		banner_preview_border.material_override = _make_showroom_banner_material(preset, "border")
+	_rebuild_showroom_banner_design(preset, text_width, height)
+
+
+func _update_showroom_banner_preview() -> void:
+	if banner_preview_root == null or not is_instance_valid(banner_preview_root):
+		return
+	var visible_state: bool = showroom_mode == SHOWROOM_MODE_BANNERS
+	banner_preview_root.visible = visible_state
+	if not visible_state:
+		return
+	if display_marble != null and is_instance_valid(display_marble):
+		display_marble.visible = false
+	banner_preview_root.position = _get_selected_slot_position() + Vector3(0.0, 0.72, 0.0)
+	banner_preview_root.scale = Vector3.ONE * 1.28
+	showroom_look_target_position = banner_preview_root.global_position
+	showroom_camera_target_position = Vector3(0.0, 2.85, 5.35)
+
+
+func _rebuild_showroom_banner_design(preset: Dictionary, width: float, height: float) -> void:
+	if banner_preview_effects == null:
+		return
+	for child in banner_preview_effects.get_children():
+		child.queue_free()
+
+	var style: String = str(preset.get("style", preset.get("shape", "banner")))
+	var accent: Color = preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))
+	var fill: Color = preset.get("fill", Color(0.02, 0.07, 0.10, 0.82))
+	if str(preset.get("texture_path", "")).strip_edges() != "":
+		return
+
+	_add_showroom_banner_quad("SoftGlow", Vector2(width + 0.44, height + 0.28), Vector3(0.0, 0.0, -0.03), 0.0, _make_showroom_banner_color_material(accent, 0.22, 1.8, "glow"))
+
+	match style:
+		"flame":
+			_add_showroom_banner_quad("HeatBase", Vector2(width + 0.22, height + 0.14), Vector3(0.0, -0.01, -0.028), 0.0, _make_showroom_banner_color_material(Color(1.0, 0.16, 0.02, 1.0), 0.16, 1.6, "heat"))
+			var flame_material: StandardMaterial3D = _make_showroom_banner_color_material(Color(1.0, 0.48, 0.08, 1.0), 0.82, 2.8, "flame")
+			for i in range(5):
+				var t: float = float(i) / 4.0
+				var x: float = lerpf(-width * 0.42, width * 0.42, t)
+				var flame_height: float = 0.20 + 0.08 * sin(t * PI)
+				_add_showroom_banner_flame("Flame%d" % i, Vector3(x, height * 0.5 - 0.01, -0.012), 0.16, flame_height, lerpf(-0.06, 0.06, t), flame_material)
+		"glow", "aqua_glow":
+			var pulse_color: Color = accent.lerp(Color(1.0, 1.0, 1.0, 1.0), 0.18)
+			_add_showroom_banner_quad("OuterGlow", Vector2(width + 0.68, height + 0.46), Vector3(0.0, 0.0, -0.04), 0.0, _make_showroom_banner_color_material(pulse_color, 0.14, 2.4, "outer_glow"))
+			for i in range(3):
+				var side: float = -1.0 if i % 2 == 0 else 1.0
+				var x: float = side * (width * 0.5 + 0.08 + float(i) * 0.025)
+				var y: float = lerpf(-height * 0.28, height * 0.3, float(i) / 2.0)
+				_add_showroom_banner_quad("GlowOrb%d" % i, Vector2(0.11, 0.11), Vector3(x, y, -0.018), 0.0, _make_showroom_banner_color_material(pulse_color, 0.58, 2.2, "orb%d" % i))
+		"plate":
+			var trim_material: StandardMaterial3D = _make_showroom_banner_color_material(accent, 0.9, 1.1, "plate_trim")
+			_add_showroom_banner_quad("TopTrim", Vector2(width + 0.18, 0.035), Vector3(0.0, height * 0.5 + 0.035, -0.014), 0.0, trim_material)
+			_add_showroom_banner_quad("BottomTrim", Vector2(width + 0.18, 0.035), Vector3(0.0, -height * 0.5 - 0.035, -0.014), 0.0, trim_material)
+			_add_showroom_banner_quad("LeftBolt", Vector2(0.08, 0.08), Vector3(-width * 0.48, 0.0, -0.012), 0.785, trim_material)
+			_add_showroom_banner_quad("RightBolt", Vector2(0.08, 0.08), Vector3(width * 0.48, 0.0, -0.012), 0.785, trim_material)
+		_:
+			var shard_material: StandardMaterial3D = _make_showroom_banner_color_material(accent.lerp(Color.WHITE, 0.16), 0.72, 1.9, "crystal_shard")
+			_add_showroom_banner_quad("LeftShard", Vector2(0.12, height + 0.08), Vector3(-width * 0.5 - 0.075, 0.0, -0.015), -0.28, shard_material)
+			_add_showroom_banner_quad("RightShard", Vector2(0.12, height + 0.08), Vector3(width * 0.5 + 0.075, 0.0, -0.015), 0.28, shard_material)
+			_add_showroom_banner_quad("TopSlash", Vector2(width * 0.42, 0.035), Vector3(width * 0.12, height * 0.5 + 0.07, -0.012), -0.22, shard_material)
+
+
+func _get_texture_banner_3d_text_width(preset: Dictionary, displayed_width: float) -> float:
+	var ratio: float = clampf(float(preset.get("text_area_ratio", 0.68)), 0.18, 0.96)
+	var padding: float = float(preset.get("text_padding_3d", 0.08))
+	return maxf(displayed_width * ratio - padding, 0.12)
+
+
+func _get_generated_banner_3d_text_width(preset: Dictionary, displayed_width: float) -> float:
+	var style_name: String = str(preset.get("style", preset.get("shape", "banner")))
+	if style_name == "royal_scroll":
+		return maxf(displayed_width - 0.42, 0.28)
+	if style_name == "cyber_diamond":
+		return maxf(displayed_width - 0.52, 0.26)
+	return maxf(displayed_width - 0.22, 0.32)
+
+
+func _get_banner_3d_fit_font_size(text_value: String, safe_width: float, pixel_size: float) -> float:
+	var character_count: float = maxf(float(text_value.length()), 1.0)
+	return safe_width / maxf(character_count * pixel_size * 0.92, 0.001)
+
+
+func _expand_texture_showroom_banner_width_for_text(preset: Dictionary, current_width: float, label: Label3D) -> float:
+	var ratio: float = clampf(float(preset.get("text_area_ratio", 0.68)), 0.18, 0.96)
+	var padding: float = float(preset.get("text_padding_3d", 0.08))
+	var required_text_width: float = _get_showroom_banner_required_text_width(label)
+	return maxf(current_width, (required_text_width + padding) / ratio)
+
+
+func _get_texture_showroom_banner_min_width(preset: Dictionary) -> float:
+	var texture_path: String = str(preset.get("texture_path", "")).to_lower()
+	if texture_path.find("royal_wings") != -1:
+		return 1.18
+	if texture_path.find("red_flame_frame") != -1:
+		return 1.45
+	if texture_path.find("bd_strip") != -1:
+		return 1.45
+	if texture_path.find("red_shadow") != -1:
+		return 1.42
+	return 1.12
+
+
+func _get_texture_showroom_banner_text_offset(preset: Dictionary) -> Vector3:
+	var texture_path: String = str(preset.get("texture_path", "")).to_lower()
+	if texture_path.find("royal_wings") != -1:
+		return Vector3(0.0, -0.035, 0.0)
+	if texture_path.find("red_flame_frame") != -1:
+		return Vector3(0.08, -0.055, 0.0)
+	return Vector3(float(preset.get("text_x_offset_3d", 0.0)), float(preset.get("text_y_offset_3d", 0.0)), 0.0)
+
+
+func _is_showroom_royal_wings_banner(preset: Dictionary) -> bool:
+	return str(preset.get("texture_path", "")).to_lower().find("royal_wings") != -1
+
+
+func _is_texture_banner_path(preset: Dictionary, path_key: String) -> bool:
+	return str(preset.get("texture_path", "")).to_lower().find(path_key) != -1
+
+
+func _get_showroom_royal_wings_name_font_size(text_value: String) -> int:
+	var length: int = text_value.length()
+	if length >= 8:
+		return 12
+	if length >= 6:
+		return 13
+	if length >= 4:
+		return 14
+	return 14
+
+
+func _expand_generated_showroom_banner_width_for_text(preset: Dictionary, current_width: float, label: Label3D) -> float:
+	var required_text_width: float = _get_showroom_banner_required_text_width(label)
+	var style_name: String = str(preset.get("style", preset.get("shape", "banner")))
+	var decoration_width: float = 0.42 if style_name == "royal_scroll" else 0.52 if style_name == "cyber_diamond" else 0.22
+	return maxf(current_width, required_text_width + decoration_width)
+
+
+func _get_showroom_banner_required_text_width(label: Label3D) -> float:
+	var character_count: float = maxf(float(label.text.length()), 1.0)
+	return character_count * 0.16 + 0.5
+
+
+func _reset_showroom_banner_label_box(label: Label3D) -> void:
+	label.width = 0.0
+	label.offset = Vector2.ZERO
+
+
+func _add_showroom_banner_quad(node_name: String, size: Vector2, local_position: Vector3, rotation_z: float, material: Material) -> void:
+	if banner_preview_effects == null:
+		return
+	var quad := MeshInstance3D.new()
+	quad.name = node_name
+	var mesh := QuadMesh.new()
+	mesh.size = size
+	quad.mesh = mesh
+	quad.position = local_position
+	quad.rotation.z = rotation_z
+	quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	quad.material_override = material
+	banner_preview_effects.add_child(quad)
+
+
+func _add_showroom_banner_flame(node_name: String, local_position: Vector3, width: float, height: float, lean: float, material: Material) -> void:
+	if banner_preview_effects == null:
+		return
+	var flame := MeshInstance3D.new()
+	flame.name = node_name
+	flame.mesh = _make_showroom_banner_triangle_mesh(width, height, lean)
+	flame.position = local_position
+	flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	flame.material_override = material
+	banner_preview_effects.add_child(flame)
+
+
+func _make_showroom_banner_triangle_mesh(width: float, height: float, lean: float) -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+		Vector3(-width * 0.5, 0.0, 0.0),
+		Vector3(width * 0.5, 0.0, 0.0),
+		Vector3(lean, height, 0.0)
+	])
+	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2])
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _get_showroom_banner_display_name() -> String:
+	if customization != null and customization.has_method("get_player_name"):
+		var saved_name: String = str(customization.call("get_player_name")).strip_edges()
+		if saved_name != "":
+			return saved_name.left(18)
+	return "PLAYER"
+
+
+func _make_showroom_banner_material(preset: Dictionary, role: String) -> StandardMaterial3D:
+	var key: String = "banner_material|%s|%s|%s|%s" % [
+		role,
+		str(preset.get("fill", Color(0.02, 0.07, 0.10, 0.82))),
+		str(preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))),
+		str(preset.get("texture_path", "")) + "|" + str(preset.get("video_path", ""))
+	]
+	var cached: StandardMaterial3D = banner_preview_cache.get(key, null) as StandardMaterial3D
+	if cached != null:
+		return cached
+
+	var material := StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	material.no_depth_test = true
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.render_priority = 5 if role == "fill" else 4
+
+	var fill: Color = preset.get("fill", Color(0.02, 0.07, 0.10, 0.82))
+	var accent: Color = preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	var video_path: String = str(preset.get("video_path", "")).strip_edges()
+	if video_path != "":
+		if role == "fill":
+			var video_texture: Texture2D = _get_showroom_banner_video_texture(video_path)
+			if video_texture != null:
+				material.albedo_texture = video_texture
+			elif texture_path != "":
+				var fallback_texture: Texture2D = _load_showroom_ui_texture(texture_path)
+				if fallback_texture != null:
+					material.albedo_texture = fallback_texture
+			material.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
+			material.emission_enabled = false
+		else:
+			material.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
+			material.emission_enabled = false
+	elif texture_path != "":
+		if role == "fill":
+			var texture: Texture2D = _load_showroom_ui_texture(texture_path)
+			if texture != null:
+				material.albedo_texture = texture
+			material.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
+			material.emission_enabled = false
+		else:
+			material.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
+			material.emission_enabled = false
+	elif role == "border":
+		accent.a = maxf(accent.a, 0.94)
+		material.albedo_color = accent
+		material.emission_enabled = true
+		material.emission = accent
+		material.emission_energy_multiplier = 0.72
+	else:
+		fill.a = maxf(fill.a, 0.84)
+		material.albedo_color = fill
+		material.emission_enabled = true
+		material.emission = accent
+		material.emission_energy_multiplier = 0.18
+
+	banner_preview_cache[key] = material
+	return material
+
+
+func _get_showroom_banner_video_texture(video_path: String) -> Texture2D:
+	var key: String = "banner_video_texture|%s" % video_path
+	var cached: Texture2D = banner_preview_cache.get(key, null) as Texture2D
+	if cached != null:
+		return cached
+	var stream: VideoStream = _load_showroom_video(video_path)
+	if stream == null:
+		return null
+
+	var viewport := SubViewport.new()
+	viewport.name = "BannerVideoViewport"
+	viewport.size = Vector2i(650, 260)
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(viewport)
+
+	var video_player := VideoStreamPlayer.new()
+	video_player.name = "BannerVideo"
+	video_player.set_anchors_preset(Control.PRESET_FULL_RECT)
+	video_player.expand = true
+	video_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	video_player.stream = stream
+	video_player.material = _make_banner_video_key_material()
+	viewport.add_child(video_player)
+	video_player.play()
+	video_player.finished.connect(func() -> void:
+		if is_instance_valid(video_player):
+			video_player.play()
+	)
+
+	var texture: Texture2D = viewport.get_texture()
+	banner_preview_cache[key] = texture
+	return texture
+
+
+func _make_showroom_banner_color_material(color: Color, alpha: float, energy: float, key_suffix: String) -> StandardMaterial3D:
+	var key: String = "banner_color|%s|%s|%.3f|%.3f" % [key_suffix, str(color), alpha, energy]
+	var cached: StandardMaterial3D = banner_preview_cache.get(key, null) as StandardMaterial3D
+	if cached != null:
+		return cached
+
+	var material := StandardMaterial3D.new()
+	var albedo: Color = color
+	albedo.a = alpha
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if alpha < 0.35 else BaseMaterial3D.BLEND_MODE_MIX
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	material.no_depth_test = true
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.render_priority = 3
+	material.albedo_color = albedo
+	material.emission_enabled = true
+	material.emission = color
+	material.emission_energy_multiplier = energy
+	banner_preview_cache[key] = material
+	return material
+
+
 func _update_showroom_trail_preview(delta: float) -> void:
 	if display_marble == null or trail_preview_root == null:
 		return
@@ -3911,7 +4848,7 @@ func _get_cached_gpu_trail_mask(preset: Dictionary, showroom_preview: bool = fal
 
 
 func _get_gpu_trail_resource_signature(preset: Dictionary) -> String:
-	return PackedStringArray([
+	return "|".join(PackedStringArray([
 		str(preset.get("id", "")),
 		str(preset.get("name", "")),
 		str(preset.get("shape", "")),
@@ -3919,7 +4856,7 @@ func _get_gpu_trail_resource_signature(preset: Dictionary) -> String:
 		str(preset.get("secondary_color", Color.WHITE)),
 		str(preset.get("emission", Color.WHITE)),
 		str(preset.get("scale", 0.14))
-	]).join("|")
+	]))
 
 
 func _add_showroom_textured_trail(parent: Node3D, texture_path: String) -> bool:

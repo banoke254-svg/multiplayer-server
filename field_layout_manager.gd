@@ -7,7 +7,7 @@ extends Node
 
 const LAYOUTS: Dictionary = {
 	"classic": {
-		"hole_position": Vector3(0.0, 0.108582, 14.6135),
+		"hole_position": Vector3(-0.75, 0.108582, 14.6135),
 		"walls": {
 			"walls": {"position": Vector3(0.0, 1.02143, -19.47), "rotation": Vector3.ZERO, "scale": Vector3.ONE},
 			"walls2": {"position": Vector3(-0.0325832, 0.0, 20.3325), "rotation": Vector3.ZERO, "scale": Vector3.ONE},
@@ -44,7 +44,7 @@ func _apply_layout(layout: Dictionary) -> void:
 	if override_wall_layout:
 		_apply_wall_layout(layout.get("walls", {}))
 	if override_hole_position:
-		_apply_hole_position(layout.get("hole_position", Vector3(0.0, 0.108582, 14.6135)))
+		_apply_hole_position(layout.get("hole_position", Vector3(-0.75, 0.108582, 14.6135)))
 	if override_marble_positions:
 		_apply_marble_positions(layout.get("marbles", {}))
 	if override_marble_scale:

@@ -25,6 +25,10 @@ const SHOOTING_MECHANIC_HOLD_IMAGE_PATH: String = "res://ui/shoot_mechanic_hold.
 
 var shooting_mechanics_button: Button = null
 var shooting_mechanics_popup: ColorRect = null
+var settings_scroll: ScrollContainer = null
+var settings_touch_scroll_last_positions: Dictionary = {}
+var settings_panel: Panel = null
+var settings_stack: VBoxContainer = null
 
 
 func _ready() -> void:
@@ -36,11 +40,16 @@ func _ready() -> void:
 	pause_menu_button.pressed.connect(_go_to_main_menu)
 	close_settings_button.pressed.connect(_close_settings_overlay)
 	settings_menu_button.pressed.connect(_go_to_main_menu)
+	get_viewport().size_changed.connect(_layout_settings_panel)
+	_ensure_settings_scroll_area()
 	_bind_slider(master_slider, "Master")
 	_bind_slider(music_slider, "Music")
 	_bind_slider(sfx_slider, "SFX")
 	_bind_shoot_sensitivity_slider()
 	_ensure_shooting_mechanics_controls()
+	_refresh_settings_touch_scroll_bindings()
+	_layout_settings_panel()
+	_style_settings_overlay()
 	_style_buttons()
 	_sync_audio_sliders()
 	_sync_shoot_sensitivity_slider()
@@ -85,6 +94,8 @@ func _open_settings_overlay() -> void:
 	get_tree().paused = true
 	pause_overlay.visible = false
 	settings_overlay.visible = true
+	_layout_settings_panel()
+	_refresh_settings_touch_scroll_bindings()
 	_sync_audio_sliders()
 	_sync_shoot_sensitivity_slider()
 	_refresh_shooting_mechanics_button()
@@ -111,6 +122,159 @@ func _go_to_main_menu() -> void:
 
 func _sync_pause_state() -> void:
 	pause_button.text = "Resume" if get_tree().paused and not settings_overlay.visible else "Pause"
+
+
+func _get_settings_stack() -> VBoxContainer:
+	var stack: VBoxContainer = settings_overlay.get_node_or_null("Panel/SettingsScroll/VBoxContainer") as VBoxContainer
+	if stack != null:
+		return stack
+	return settings_overlay.get_node_or_null("Panel/VBoxContainer") as VBoxContainer
+
+
+func _ensure_settings_scroll_area() -> void:
+	var panel: Panel = settings_overlay.get_node_or_null("Panel") as Panel
+	var stack: VBoxContainer = _get_settings_stack()
+	if panel == null or stack == null:
+		return
+	settings_panel = panel
+	settings_stack = stack
+
+	settings_scroll = panel.get_node_or_null("SettingsScroll") as ScrollContainer
+	if settings_scroll == null:
+		settings_scroll = ScrollContainer.new()
+		settings_scroll.name = "SettingsScroll"
+		settings_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+		settings_scroll.offset_left = 30.0
+		settings_scroll.offset_top = 24.0
+		settings_scroll.offset_right = -30.0
+		settings_scroll.offset_bottom = -24.0
+		settings_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		settings_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		settings_scroll.follow_focus = true
+		settings_scroll.scroll_deadzone = 4
+		settings_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+		panel.add_child(settings_scroll)
+
+		var old_parent: Node = stack.get_parent()
+		if old_parent != null:
+			old_parent.remove_child(stack)
+		settings_scroll.add_child(stack)
+		stack.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		stack.offset_left = 0.0
+		stack.offset_top = 0.0
+		stack.offset_right = 0.0
+		stack.offset_bottom = 0.0
+		stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stack.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	else:
+		settings_scroll.offset_left = 30.0
+		settings_scroll.offset_top = 24.0
+		settings_scroll.offset_right = -30.0
+		settings_scroll.offset_bottom = -24.0
+		settings_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		settings_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		settings_scroll.follow_focus = true
+		settings_scroll.scroll_deadzone = 4
+		settings_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+
+	var scroll_input_callable: Callable = Callable(self, "_on_settings_touch_scroll_gui_input").bind(settings_scroll, settings_scroll)
+	if not settings_scroll.gui_input.is_connected(scroll_input_callable):
+		settings_scroll.gui_input.connect(scroll_input_callable)
+
+
+func _layout_settings_panel() -> void:
+	if settings_overlay == null:
+		return
+	var panel: Panel = settings_overlay.get_node_or_null("Panel") as Panel
+	if panel == null:
+		return
+	settings_panel = panel
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var panel_width: float = clampf(viewport_size.x - 32.0, 460.0, 660.0)
+	var panel_height: float = clampf(viewport_size.y - 34.0, 420.0, 540.0)
+	if viewport_size.x < 500.0:
+		panel_width = maxf(viewport_size.x - 20.0, 320.0)
+	if viewport_size.y < 450.0:
+		panel_height = maxf(viewport_size.y - 20.0, 360.0)
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.offset_left = -panel_width * 0.5
+	panel.offset_right = panel_width * 0.5
+	panel.offset_top = -panel_height * 0.5
+	panel.offset_bottom = panel_height * 0.5
+
+	if settings_scroll != null:
+		var horizontal_margin: float = 32.0 if panel_width >= 520.0 else 22.0
+		settings_scroll.offset_left = horizontal_margin
+		settings_scroll.offset_top = 24.0
+		settings_scroll.offset_right = -horizontal_margin
+		settings_scroll.offset_bottom = -24.0
+
+
+func _refresh_settings_touch_scroll_bindings() -> void:
+	_ensure_settings_scroll_area()
+	var stack: VBoxContainer = _get_settings_stack()
+	if stack == null or settings_scroll == null:
+		return
+	_bind_settings_touch_scroll_control(stack, settings_scroll)
+	for child in stack.get_children():
+		_bind_settings_touch_scroll_descendants(child, settings_scroll)
+
+
+func _bind_settings_touch_scroll_descendants(node: Node, scroll: ScrollContainer) -> void:
+	var control: Control = node as Control
+	if control != null:
+		_bind_settings_touch_scroll_control(control, scroll)
+	for child in node.get_children():
+		_bind_settings_touch_scroll_descendants(child, scroll)
+
+
+func _bind_settings_touch_scroll_control(control: Control, scroll: ScrollContainer) -> void:
+	if control == null or scroll == null:
+		return
+	if control.mouse_filter == Control.MOUSE_FILTER_STOP and not (control is Button) and not (control is LineEdit) and not (control is HSlider):
+		control.mouse_filter = Control.MOUSE_FILTER_PASS
+	var scroll_input_callable: Callable = Callable(self, "_on_settings_touch_scroll_gui_input").bind(scroll, control)
+	if not control.gui_input.is_connected(scroll_input_callable):
+		control.gui_input.connect(scroll_input_callable)
+
+
+func _on_settings_touch_scroll_gui_input(event: InputEvent, scroll: ScrollContainer, source_control: Control) -> void:
+	if scroll == null:
+		return
+	var scroll_key: int = scroll.get_instance_id()
+	if event is InputEventScreenTouch:
+		var touch_event: InputEventScreenTouch = event as InputEventScreenTouch
+		if touch_event.pressed:
+			settings_touch_scroll_last_positions[scroll_key] = touch_event.position
+		else:
+			settings_touch_scroll_last_positions.erase(scroll_key)
+	elif event is InputEventScreenDrag:
+		var drag_event: InputEventScreenDrag = event as InputEventScreenDrag
+		if source_control is HSlider and absf(drag_event.relative.x) > absf(drag_event.relative.y):
+			return
+		if absf(drag_event.relative.y) < 1.0:
+			return
+		scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - int(round(drag_event.relative.y)))
+		settings_touch_scroll_last_positions[scroll_key] = drag_event.position
+		scroll.accept_event()
+	elif event is InputEventMouseButton:
+		var mouse_button: InputEventMouseButton = event as InputEventMouseButton
+		if mouse_button.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mouse_button.pressed:
+			settings_touch_scroll_last_positions[scroll_key] = mouse_button.position
+		else:
+			settings_touch_scroll_last_positions.erase(scroll_key)
+	elif event is InputEventMouseMotion and settings_touch_scroll_last_positions.has(scroll_key) and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
+		var last_position: Vector2 = settings_touch_scroll_last_positions.get(scroll_key, mouse_motion.position)
+		var motion_delta: Vector2 = mouse_motion.position - last_position
+		settings_touch_scroll_last_positions[scroll_key] = mouse_motion.position
+		if source_control is HSlider and absf(motion_delta.x) > absf(motion_delta.y):
+			return
+		if absf(motion_delta.y) >= 1.0:
+			scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - int(round(motion_delta.y)))
+			scroll.accept_event()
 
 
 func _bind_slider(slider: HSlider, bus_name: String) -> void:
@@ -145,14 +309,12 @@ func _sync_shoot_sensitivity_slider() -> void:
 
 
 func _ensure_shooting_mechanics_controls() -> void:
-	var stack: VBoxContainer = settings_overlay.get_node_or_null("Panel/VBoxContainer") as VBoxContainer
+	var stack: VBoxContainer = _get_settings_stack()
 	if stack == null:
 		return
 
-	var panel: Panel = settings_overlay.get_node_or_null("Panel") as Panel
-	if panel != null:
-		panel.offset_top = -210.0
-		panel.offset_bottom = 210.0
+	settings_stack = stack
+	_layout_settings_panel()
 
 	var buttons_row: Node = stack.get_node_or_null("Buttons")
 	if shooting_mechanics_button == null:
@@ -172,6 +334,7 @@ func _ensure_shooting_mechanics_controls() -> void:
 		shooting_mechanics_button.pressed.connect(_open_shooting_mechanics_popup)
 
 	_ensure_shooting_mechanics_popup()
+	_style_settings_overlay()
 
 
 func _ensure_shooting_mechanics_popup() -> void:
@@ -465,6 +628,71 @@ func _preview_draw_ring(image: Image, center: Vector2, radius: int, color: Color
 				image.set_pixel(x, y, color)
 
 
+func _style_settings_overlay() -> void:
+	var panel: Panel = settings_panel if settings_panel != null else settings_overlay.get_node_or_null("Panel") as Panel
+	if panel != null:
+		panel.add_theme_stylebox_override("panel", _make_settings_panel_style(Color(0.025, 0.055, 0.065, 0.86), Color(0.33, 1.0, 0.88, 0.95)))
+
+	var stack: VBoxContainer = _get_settings_stack()
+	if stack != null:
+		settings_stack = stack
+		stack.add_theme_constant_override("separation", 16)
+
+	var title: Label = settings_overlay.get_node_or_null("Panel/SettingsScroll/VBoxContainer/Title") as Label
+	if title == null:
+		title = settings_overlay.get_node_or_null("Panel/VBoxContainer/Title") as Label
+	if title != null:
+		title.text = "SETTINGS"
+		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		title.add_theme_font_size_override("font_size", 21)
+		title.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 1.0))
+		title.add_theme_color_override("font_shadow_color", Color(0.47, 0.25, 0.95, 0.85))
+		title.add_theme_constant_override("shadow_offset_x", 2)
+		title.add_theme_constant_override("shadow_offset_y", 2)
+		title.add_theme_constant_override("shadow_outline_size", 2)
+
+	for label in [
+		settings_overlay.get_node_or_null("Panel/SettingsScroll/VBoxContainer/MasterLabel") as Label,
+		settings_overlay.get_node_or_null("Panel/SettingsScroll/VBoxContainer/MusicLabel") as Label,
+		settings_overlay.get_node_or_null("Panel/SettingsScroll/VBoxContainer/SfxLabel") as Label,
+		settings_overlay.get_node_or_null("Panel/SettingsScroll/VBoxContainer/ShootSensitivityLabel") as Label,
+		settings_overlay.get_node_or_null("Panel/SettingsScroll/VBoxContainer/ShootingMechanicsLabel") as Label
+	]:
+		_style_settings_label(label)
+
+	for slider in [master_slider, music_slider, sfx_slider, shoot_sensitivity_slider]:
+		_style_settings_slider(slider)
+
+	var buttons_row: HBoxContainer = settings_overlay.get_node_or_null("Panel/SettingsScroll/VBoxContainer/Buttons") as HBoxContainer
+	if buttons_row == null:
+		buttons_row = settings_overlay.get_node_or_null("Panel/VBoxContainer/Buttons") as HBoxContainer
+	if buttons_row != null:
+		buttons_row.add_theme_constant_override("separation", 16)
+		buttons_row.alignment = BoxContainer.ALIGNMENT_CENTER
+
+
+func _style_settings_label(label: Label) -> void:
+	if label == null:
+		return
+	label.text = label.text.to_upper()
+	label.add_theme_font_size_override("font_size", 16)
+	label.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 1.0))
+	label.add_theme_color_override("font_shadow_color", Color(0.43, 0.22, 0.86, 0.75))
+	label.add_theme_constant_override("shadow_offset_x", 2)
+	label.add_theme_constant_override("shadow_offset_y", 2)
+	label.add_theme_constant_override("shadow_outline_size", 1)
+
+
+func _style_settings_slider(slider: HSlider) -> void:
+	if slider == null:
+		return
+	slider.custom_minimum_size = Vector2(0.0, 26.0)
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.add_theme_stylebox_override("slider", _make_slider_track_style(Color(0.72, 0.82, 0.8, 0.72), 4))
+	slider.add_theme_stylebox_override("grabber_area", _make_slider_track_style(Color(0.36, 1.0, 0.88, 0.95), 4))
+	slider.add_theme_stylebox_override("grabber_area_highlight", _make_slider_track_style(Color(0.95, 0.82, 0.22, 1.0), 4))
+
+
 func _style_buttons() -> void:
 	_style_top_button(pause_button, Color(0.34, 0.95, 1.0, 1.0))
 	_style_top_button(settings_button, Color(0.72, 0.8, 0.92, 1.0))
@@ -479,7 +707,7 @@ func _style_buttons() -> void:
 	]:
 		if button == null:
 			continue
-		button.custom_minimum_size = Vector2(maxf(button.custom_minimum_size.x, 96.0), maxf(button.custom_minimum_size.y, 44.0))
+		button.custom_minimum_size = Vector2(maxf(button.custom_minimum_size.x, 120.0), maxf(button.custom_minimum_size.y, 46.0))
 		_style_overlay_button(button)
 
 
@@ -524,6 +752,18 @@ func _make_button_style(accent_color: Color, fill_color: Color) -> StyleBoxFlat:
 	style.expand_margin_top = 2
 	style.expand_margin_right = 2
 	style.expand_margin_bottom = 2
+	return style
+
+
+func _make_slider_track_style(fill_color: Color, radius: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill_color
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_right = radius
+	style.corner_radius_bottom_left = radius
+	style.content_margin_top = 4.0
+	style.content_margin_bottom = 4.0
 	return style
 
 

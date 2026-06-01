@@ -51,7 +51,7 @@ res://main.tscn::cb2d89a51eb104b8832d943975136d35::1779868082::res://.godot/expo
 res://marble.tscn::b1a558a7cdca56f6df4c1cfab22dc527::1779482027::res://.godot/exported/133200997/export-e0f0ed28f44173f5d9427041d4205695-marble.scn
 res://online_relay_server.tscn::4937680b4e4403c307e8083c32b0af41::1778832939::res://.godot/exported/133200997/export-f432b1db541addfeb7b339e8024f55d1-online_relay_server.scn
 res://path_indicator.tscn::22a57a32d6066ec0638357f7eb13c8dc::1778832939::res://.godot/exported/133200997/export-fd07966a12a2b149f8ffc37a283271d8-path_indicator.scn
-res://pause_ui.tscn::59df326e15ebc5898db4fe0c3b6a83a2::1778832939::res://.godot/exported/133200997/export-79ab14b69636a4f1c198031a02c5fdc8-pause_ui.scn
+res://pause_ui.tscn::869be6ab0d986ca0117d40db80047f07::1780043093::res://.godot/exported/133200997/export-79ab14b69636a4f1c198031a02c5fdc8-pause_ui.scn
 res://settings.tscn::c6a6493ab51ce70f54c210965b9ae471::1778832939::res://.godot/exported/133200997/export-5e6299b8d8c40760f2987e3552e86b12-settings.scn
 res://settingsMenu.tscn::49022b0e2432ec3c15a7b8d070f42d46::1778832939::res://.godot/exported/133200997/export-0959f5721cd1cb41c91a77201a53ac07-settingsMenu.scn
 res://single_glass_ball.tscn::e99ebbcdcd84c8876c61ad499dd39734::1778832940::res://.godot/exported/133200997/export-85079c22f23962588e186b7a6970e6a9-single_glass_ball.scn
@@ -63,3 +63,12 @@ res://marbles/environment_sphere_model.tscn::8d87543b3b496040fb94a9cd88ae718e::1
 res://marbles/roblox_magic_sphere_model.tscn::5164f5684cfdb7cfb5310b64564d6d8a::1778832939::res://.godot/exported/133200997/export-59fee73700179ffe740b3db36a1e46df-roblox_magic_sphere_model.scn
 res://marbles/marble_ribbon_crimson.tscn::caa60aee6d1b6ba106d863b3a883d9e7::1778832939::res://.godot/exported/133200997/export-0c2d859c7ff4984ca2d0112664018307-marble_ribbon_crimson.scn
 res://Bano ke writing.tscn::c66aeb6c6b2178f4cb438fc87958e956::1779482027::res://.godot/exported/133200997/export-8babcb126c783db3354ff27691cd4cbb-Bano ke writing.scn
+res://addons/GPUTrail/defaults/curve.tres::0d0b5694d495abccf411d1a88b51699e::1765117532::res://.godot/exported/133200997/export-6f0571d51bf72f483c98ae86eae5b949-curve.res
+res://addons/GPUTrail/defaults/texture.tres::b9c9e3cdb05ee8574def3320cfcd6d70::1765117532::res://.godot/exported/133200997/export-d970c31acb81edc51958b852e6a5660d-texture.res
+res://feedback/marble_feedback_fx.tscn::b8cb0104ba2159c8e33075c58f344578::1780043853::res://.godot/exported/133200997/export-c39cc4946afac74c31b863fe79e4c24a-marble_feedback_fx.scn
+res://GPUTrail-main/defaults/curve.tres::0d0b5694d495abccf411d1a88b51699e::1780054487::res://.godot/exported/133200997/export-8060d63f2e91ad5cab465f5d8073a223-curve.res
+res://GPUTrail-main/defaults/texture.tres::b9c9e3cdb05ee8574def3320cfcd6d70::1780054487::res://.godot/exported/133200997/export-804d5625b800c3f2ba70b7fe493588f7-texture.res
+res://tools/perf_smoke_simulation.tscn::969e03ece01f0b2026278b8f24ab3696::1780060315::res://.godot/exported/133200997/export-e17ce467506cbc2b2ad9e95ca41286e5-perf_smoke_simulation.scn
+res://ui/name_tag_banner_preview.tscn::4041448e392c60845490235d4d4550de::1780044383::res://.godot/exported/133200997/export-5ee671a5909f81d9f4058007b7589a9c-name_tag_banner_preview.scn
+res://gameplay_video.tscn::e74f02a6841370b883fd9912f9c090ab::1780033874::res://.godot/exported/133200997/export-7e130d5fd582930c693a1943c7c1f441-gameplay_video.scn
+res://Player.tscn::8daaa01c2ecc6b254e443307326948bc::1780032783::res://.godot/exported/133200997/export-90e1ff3baa03524a506ff0f7a9d78dcf-Player.scn

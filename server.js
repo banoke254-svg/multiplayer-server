@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
+const { Pool } = require('pg');
 
 loadEnvFile(path.join(__dirname, '.env'));
 
@@ -22,6 +23,7 @@ const GOOGLE_DEVICE_SCOPE = String(process.env.GOOGLE_DEVICE_SCOPE || 'email pro
 const GOOGLE_API_HOST = 'oauth2.googleapis.com';
 const GOOGLE_DEVICE_CODE_PATH = '/device/code';
 const GOOGLE_TOKEN_PATH = '/token';
+const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const PROFILE_STORE_PATH = process.env.PROFILE_STORE_PATH || path.join(__dirname, 'player_profiles.json');
 const EVENTS_STORE_PATH = process.env.EVENTS_STORE_PATH || path.join(__dirname, 'game_events.json');
 const GOLD_PACK_TIERS = new Map([
@@ -67,9 +69,25 @@ const paymentRecordsByInvoiceId = new Map();
 const paymentRecords = [];
 const playerProfilesByLoginId = new Map();
 const authSessionsByToken = new Map();
+const profileDbPool = createProfileDbPool();
+let profileDbReady = false;
 let gameEvents = loadGameEvents();
 
 loadPlayerProfiles();
+
+function createProfileDbPool() {
+  if (!DATABASE_URL) {
+    return null;
+  }
+
+  const shouldUseSsl = !/^postgres(?:ql)?:\/\/[^@]*@?(?:localhost|127\.0\.0\.1)(?::|\/)/i.test(DATABASE_URL)
+    && String(process.env.PGSSLMODE || '').toLowerCase() !== 'disable';
+
+  return new Pool({
+    connectionString: DATABASE_URL,
+    ssl: shouldUseSsl ? { rejectUnauthorized: false } : false
+  });
+}
 
 function createSocialSets() {
   return {
@@ -2605,6 +2623,72 @@ function loadPlayerProfiles() {
   }
 }
 
+async function initializeProfileDatabase() {
+  if (!profileDbPool) {
+    console.log('[profiles] DATABASE_URL not set; using local JSON profile store.');
+    return;
+  }
+
+  try {
+    await profileDbPool.query(`
+      CREATE TABLE IF NOT EXISTS player_profiles (
+        login_id TEXT PRIMARY KEY,
+        profile JSONB NOT NULL,
+        updated_at BIGINT NOT NULL DEFAULT 0
+      )
+    `);
+
+    const result = await profileDbPool.query('SELECT profile FROM player_profiles');
+    result.rows.forEach((row) => {
+      const profile = sanitizeStoredPlayerProfile(row.profile);
+      if (profile && profile.login_id) {
+        playerProfilesByLoginId.set(profile.login_id, profile);
+      }
+    });
+
+    profileDbReady = true;
+
+    if (playerProfilesByLoginId.size > 0) {
+      await savePlayerProfilesToDatabase();
+    }
+
+    console.log(`[profiles] PostgreSQL profile store ready (${playerProfilesByLoginId.size} profiles loaded).`);
+  } catch (error) {
+    console.warn(`[profiles] PostgreSQL profile store unavailable: ${error.message}`);
+    console.warn('[profiles] Falling back to local JSON profile store for this run.');
+  }
+}
+
+function sanitizeStoredPlayerProfile(profile) {
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+    return null;
+  }
+
+  const loginId = sanitizeAdminText(profile.login_id, 40);
+  if (!loginId) {
+    return null;
+  }
+
+  return {
+    login_id: loginId,
+    provider: sanitizeAdminText(profile.provider || (loginId.startsWith('google:') ? 'google' : 'guest'), 24),
+    google_sub: sanitizeAdminText(profile.google_sub, 64),
+    name: sanitizeAdminText(profile.name || 'Player', 40),
+    email: sanitizeAdminText(profile.email, 120),
+    email_verified: Boolean(profile.email_verified),
+    picture: sanitizeAdminText(profile.picture, 240),
+    country: sanitizeCountry(profile.country || ''),
+    ranking_points: sanitizePositiveInt(profile.ranking_points || profile.points, 1000000000),
+    ranking_wins: sanitizePositiveInt(profile.ranking_wins || profile.wins, 1000000),
+    ranking_eliminations: sanitizePositiveInt(profile.ranking_eliminations || profile.eliminations, 1000000),
+    player_age: sanitizePositiveInt(profile.player_age, 120),
+    progress: sanitizeProfileProgress(profile.progress || {}),
+    created_at: Number(profile.created_at || Date.now()),
+    updated_at: Number(profile.updated_at || Date.now()),
+    last_seen_at: Number(profile.last_seen_at || 0)
+  };
+}
+
 function savePlayerProfiles() {
   try {
     const profileStoreDirectory = path.dirname(PROFILE_STORE_PATH);
@@ -2618,6 +2702,43 @@ function savePlayerProfiles() {
     }, null, 2));
   } catch (error) {
     console.warn(`[profiles] could not save ${PROFILE_STORE_PATH}: ${error.message}`);
+  }
+
+  if (profileDbReady) {
+    savePlayerProfilesToDatabase().catch((error) => {
+      console.warn(`[profiles] could not save PostgreSQL profiles: ${error.message}`);
+    });
+  }
+}
+
+async function savePlayerProfilesToDatabase() {
+  if (!profileDbReady) {
+    return;
+  }
+
+  const profiles = Array.from(playerProfilesByLoginId.values()).map(serializePlayerProfile);
+  if (profiles.length === 0) {
+    return;
+  }
+
+  const client = await profileDbPool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const profile of profiles) {
+      await client.query(
+        `INSERT INTO player_profiles (login_id, profile, updated_at)
+         VALUES ($1, $2::jsonb, $3)
+         ON CONFLICT (login_id)
+         DO UPDATE SET profile = EXCLUDED.profile, updated_at = EXCLUDED.updated_at`,
+        [profile.login_id, JSON.stringify(profile), Number(profile.updated_at || Date.now())]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -2767,8 +2888,9 @@ const outboundFlushTimer = setInterval(() => {
 
 const profileAuthCleanupTimer = setInterval(cleanupProfileAuthSessions, PROFILE_AUTH_CLEANUP_INTERVAL_MS);
 
-httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`[server] Bano ke WebSocket server running on port ${PORT}`);
+startServer().catch((error) => {
+  console.error(`[server] startup failed: ${error.message}`);
+  process.exit(1);
 });
 
 process.on('SIGINT', shutdown);
@@ -3313,6 +3435,13 @@ function sanitizeCountry(value) {
   return cleanValue.slice(0, 40);
 }
 
+async function startServer() {
+  await initializeProfileDatabase();
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`[server] Bano ke WebSocket server running on port ${PORT}`);
+  });
+}
+
 function shutdown() {
   console.log('[server] shutting down');
   clearInterval(heartbeatTimer);
@@ -3327,7 +3456,18 @@ function shutdown() {
   });
 
   httpServer.close(() => {
-    process.exit(0);
+    if (!profileDbPool) {
+      process.exit(0);
+      return;
+    }
+
+    profileDbPool.end()
+      .catch((error) => {
+        console.warn(`[profiles] could not close PostgreSQL pool: ${error.message}`);
+      })
+      .finally(() => {
+        process.exit(0);
+      });
   });
 
   setTimeout(() => {

@@ -24,6 +24,12 @@ var arrow_tip: MeshInstance3D = null
 var _segment_mesh: CylinderMesh = null
 var _tip_mesh: CylinderMesh = null
 var _aim_material: StandardMaterial3D = null
+var aim_line_glow: MeshInstance3D = null
+var aim_line_core: MeshInstance3D = null
+var aim_line_tip: MeshInstance3D = null
+var _aim_glow_material: ShaderMaterial = null
+var _aim_core_material: ShaderMaterial = null
+var _aim_tip_material: ShaderMaterial = null
 
 
 func _ready() -> void:
@@ -183,39 +189,32 @@ func _choose_attack_target() -> Vector3:
 
 func _create_aim_indicator() -> void:
 	_segment_mesh = CylinderMesh.new()
-	_segment_mesh.top_radius = 0.055
-	_segment_mesh.bottom_radius = 0.055
+	_segment_mesh.top_radius = 1.0
+	_segment_mesh.bottom_radius = 1.0
 	_segment_mesh.height = 1.0
-	_segment_mesh.radial_segments = 14
+	_segment_mesh.radial_segments = 16
 
-	_tip_mesh = CylinderMesh.new()
-	_tip_mesh.top_radius = 0.0
-	_tip_mesh.bottom_radius = 0.14
-	_tip_mesh.height = 0.42
-	_tip_mesh.radial_segments = 14
+	_aim_glow_material = _make_aim_extension_material(Color(0.28, 0.95, 1.0, 0.2), 1.5)
+	_aim_core_material = _make_aim_extension_material(Color(0.84, 1.0, 0.98, 0.78), 2.6)
+	_aim_tip_material = _make_aim_extension_material(Color(0.48, 1.0, 0.9, 0.62), 2.1)
 
-	_aim_material = StandardMaterial3D.new()
-	_aim_material.albedo_color = Color(1.0, 0.9, 0.45, 0.42)
-	_aim_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_aim_material.roughness = 0.18
-	_aim_material.emission_enabled = true
-	_aim_material.emission = Color(1.0, 0.78, 0.24, 1.0)
-	_aim_material.emission_energy_multiplier = 0.85
+	aim_line_glow = _make_aim_line_instance("AiAimExtensionGlow", _aim_glow_material)
+	add_child(aim_line_glow)
 
-	for index in range(7):
-		var segment := MeshInstance3D.new()
-		segment.name = "AiAimSegment%d" % index
-		segment.mesh = _segment_mesh
-		segment.material_override = _aim_material
-		segment.visible = false
-		indicator_segments.append(segment)
-		add_child(segment)
+	aim_line_core = _make_aim_line_instance("AiAimExtensionCore", _aim_core_material)
+	add_child(aim_line_core)
 
 	arrow_tip = MeshInstance3D.new()
-	arrow_tip.name = "AiAimTip"
-	arrow_tip.mesh = _tip_mesh
-	arrow_tip.material_override = _aim_material
+	arrow_tip.name = "AiAimExtensionTip"
+	var tip_mesh: SphereMesh = SphereMesh.new()
+	tip_mesh.radius = 0.08
+	tip_mesh.height = 0.16
+	tip_mesh.radial_segments = 12
+	tip_mesh.rings = 6
+	arrow_tip.mesh = tip_mesh
+	arrow_tip.material_override = _aim_tip_material
 	arrow_tip.visible = false
+	aim_line_tip = arrow_tip
 	add_child(arrow_tip)
 
 
@@ -227,50 +226,108 @@ func _show_aim_preview(direction: Vector3, force: float) -> void:
 	var shot_ratio := _get_effective_power_ratio(_get_force_ratio(force))
 	var path_length := lerpf(1.3, 4.6, shot_ratio)
 	var arc_height := lerpf(0.1, 0.65, shot_ratio)
-	var start := global_position + Vector3.UP * 0.12
-	var finish := start + direction.normalized() * path_length
-	var control := start.lerp(finish, 0.5) + Vector3.UP * arc_height
-	var points: Array[Vector3] = []
+	var safe_direction := direction.normalized()
+	var start := global_position + Vector3.UP * 0.12 + safe_direction * 0.26
+	var finish := global_position + Vector3.UP * 0.12 + safe_direction * path_length + Vector3.UP * minf(arc_height * 0.1, 0.08)
+	var line_vector := finish - start
+	var line_length := maxf(line_vector.length(), 0.1)
+	var line_direction := line_vector.normalized()
+	var line_center := start.lerp(finish, 0.5)
+	var beam_basis := _basis_from_y(line_direction)
+	var core_radius := lerpf(0.022, 0.038, shot_ratio)
+	var glow_radius := core_radius * 1.75
 
-	for index in range(indicator_segments.size() + 1):
-		var t := float(index) / float(indicator_segments.size())
-		points.append(_quadratic_bezier(start, control, finish, t))
+	_update_aim_extension_materials(shot_ratio)
+	_position_aim_line(aim_line_glow, beam_basis, line_center, line_length, glow_radius)
+	_position_aim_line(aim_line_core, beam_basis, line_center, line_length, core_radius)
 
-	for index in range(indicator_segments.size()):
-		var segment := indicator_segments[index]
-		var segment_start: Vector3 = points[index]
-		var segment_end: Vector3 = points[index + 1]
-		var segment_vector := segment_end - segment_start
-		var segment_length := segment_vector.length()
-		if segment_length <= 0.001:
-			segment.visible = false
-			continue
-
-		segment.visible = true
-		segment.global_transform = Transform3D(
-			_basis_from_y(segment_vector.normalized()),
-			segment_start.lerp(segment_end, 0.5)
-		)
-		var thickness := lerpf(0.12, 0.05, float(index) / float(max(indicator_segments.size() - 1, 1)))
-		segment.scale = Vector3(thickness, segment_length, thickness)
-
-	var tip_vector := finish - points[indicator_segments.size() - 1]
-	if tip_vector.length_squared() == 0.0:
-		tip_vector = direction
-	arrow_tip.visible = true
-	arrow_tip.global_transform = Transform3D(
-		_basis_from_y(tip_vector.normalized()),
-		finish
-	)
-	var tip_scale := lerpf(0.12, 0.2, shot_ratio)
-	arrow_tip.scale = Vector3(tip_scale, _tip_mesh.height, tip_scale)
+	if arrow_tip:
+		arrow_tip.visible = true
+		arrow_tip.global_position = finish
+		var tip_scale := lerpf(0.38, 0.68, shot_ratio)
+		arrow_tip.scale = Vector3.ONE * tip_scale
 
 
 func _hide_aim_indicator() -> void:
 	for segment in indicator_segments:
 		segment.visible = false
+	if aim_line_glow:
+		aim_line_glow.visible = false
+	if aim_line_core:
+		aim_line_core.visible = false
 	if arrow_tip:
 		arrow_tip.visible = false
+
+
+func _make_aim_line_instance(node_name: String, material: Material) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = node_name
+	mesh_instance.mesh = _segment_mesh
+	mesh_instance.material_override = material
+	mesh_instance.visible = false
+	return mesh_instance
+
+
+func _make_aim_extension_material(color: Color, energy: float) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = _get_aim_extension_shader()
+	material.set_shader_parameter("beam_color", color)
+	material.set_shader_parameter("emission_energy", energy)
+	return material
+
+
+func _get_aim_extension_shader() -> Shader:
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
+
+uniform vec4 beam_color : source_color = vec4(0.5, 1.0, 0.95, 0.7);
+uniform float emission_energy = 2.0;
+
+void fragment() {
+	ALBEDO = beam_color.rgb;
+	ALPHA = beam_color.a;
+	EMISSION = beam_color.rgb * emission_energy;
+}
+"""
+	return shader
+
+
+func _position_aim_line(line: MeshInstance3D, basis: Basis, center: Vector3, length: float, radius: float) -> void:
+	if line == null or not is_instance_valid(line):
+		return
+	line.visible = true
+	line.global_transform = Transform3D(basis, center)
+	line.scale = Vector3(radius, length, radius)
+
+
+func _update_aim_extension_materials(shot_ratio: float) -> void:
+	var trail_color := _get_aim_extension_color()
+	var core_color := trail_color.lerp(Color(1.0, 1.0, 1.0, 1.0), 0.42)
+	core_color.a = lerpf(0.58, 0.86, shot_ratio)
+	var glow_color := trail_color
+	glow_color.a = lerpf(0.16, 0.28, shot_ratio)
+	var tip_color := trail_color.lerp(Color(1.0, 1.0, 1.0, 1.0), 0.2)
+	tip_color.a = lerpf(0.46, 0.68, shot_ratio)
+
+	if _aim_core_material != null:
+		_aim_core_material.set_shader_parameter("beam_color", core_color)
+	if _aim_glow_material != null:
+		_aim_glow_material.set_shader_parameter("beam_color", glow_color)
+	if _aim_tip_material != null:
+		_aim_tip_material.set_shader_parameter("beam_color", tip_color)
+
+
+func _get_aim_extension_color() -> Color:
+	var customization: Node = get_node_or_null("/root/CustomizationState")
+	if customization != null and customization.has_method("get_selected_trail_preset"):
+		var selected_preset: Dictionary = customization.call("get_selected_trail_preset")
+		if selected_preset.has("emission"):
+			return selected_preset.get("emission", Color(0.42, 1.0, 0.94, 1.0))
+		if selected_preset.has("color"):
+			return selected_preset.get("color", Color(0.42, 1.0, 0.94, 1.0))
+	return Color(0.42, 1.0, 0.94, 1.0)
 
 
 func _quadratic_bezier(start: Vector3, control: Vector3, finish: Vector3, t: float) -> Vector3:

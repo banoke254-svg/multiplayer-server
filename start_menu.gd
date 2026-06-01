@@ -467,6 +467,7 @@ var sfx_slider: HSlider
 var shoot_sensitivity_slider: HSlider
 var online_server_input: LineEdit
 var online_server_save_button: Button
+var settings_touch_scroll_last_positions: Dictionary = {}
 
 var customize_popup: Control
 var customize_back_button: Button
@@ -4485,6 +4486,85 @@ func _on_online_touch_scroll_gui_input(event: InputEvent, scroll: ScrollContaine
 			scroll.accept_event()
 
 
+func _configure_settings_touch_scroll(scroll: ScrollContainer) -> void:
+	if scroll == null:
+		return
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.follow_focus = true
+	scroll.scroll_deadzone = 4
+	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	var scroll_input_callable: Callable = Callable(self, "_on_settings_touch_scroll_gui_input").bind(scroll, scroll)
+	if not scroll.gui_input.is_connected(scroll_input_callable):
+		scroll.gui_input.connect(scroll_input_callable)
+
+
+func _attach_settings_touch_scroll_content(content: Control, scroll: ScrollContainer) -> void:
+	if content == null or scroll == null:
+		return
+	content.mouse_filter = Control.MOUSE_FILTER_PASS
+	_bind_settings_touch_scroll_control(content, scroll)
+	for child in content.get_children():
+		_bind_settings_touch_scroll_descendants(child, scroll)
+
+
+func _bind_settings_touch_scroll_descendants(node: Node, scroll: ScrollContainer) -> void:
+	var control: Control = node as Control
+	if control != null:
+		_bind_settings_touch_scroll_control(control, scroll)
+	for child in node.get_children():
+		_bind_settings_touch_scroll_descendants(child, scroll)
+
+
+func _bind_settings_touch_scroll_control(control: Control, scroll: ScrollContainer) -> void:
+	if control == null or scroll == null:
+		return
+	if control.mouse_filter == Control.MOUSE_FILTER_STOP and not (control is Button) and not (control is LineEdit) and not (control is HSlider):
+		control.mouse_filter = Control.MOUSE_FILTER_PASS
+	var scroll_input_callable: Callable = Callable(self, "_on_settings_touch_scroll_gui_input").bind(scroll, control)
+	if not control.gui_input.is_connected(scroll_input_callable):
+		control.gui_input.connect(scroll_input_callable)
+
+
+func _on_settings_touch_scroll_gui_input(event: InputEvent, scroll: ScrollContainer, source_control: Control) -> void:
+	if scroll == null:
+		return
+	var scroll_key: int = scroll.get_instance_id()
+	if event is InputEventScreenTouch:
+		var touch_event: InputEventScreenTouch = event as InputEventScreenTouch
+		if touch_event.pressed:
+			settings_touch_scroll_last_positions[scroll_key] = touch_event.position
+		else:
+			settings_touch_scroll_last_positions.erase(scroll_key)
+	elif event is InputEventScreenDrag:
+		var drag_event: InputEventScreenDrag = event as InputEventScreenDrag
+		if source_control is HSlider and absf(drag_event.relative.x) > absf(drag_event.relative.y):
+			return
+		if absf(drag_event.relative.y) < 1.0:
+			return
+		scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - int(round(drag_event.relative.y)))
+		settings_touch_scroll_last_positions[scroll_key] = drag_event.position
+		scroll.accept_event()
+	elif event is InputEventMouseButton:
+		var mouse_button: InputEventMouseButton = event as InputEventMouseButton
+		if mouse_button.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mouse_button.pressed:
+			settings_touch_scroll_last_positions[scroll_key] = mouse_button.position
+		else:
+			settings_touch_scroll_last_positions.erase(scroll_key)
+	elif event is InputEventMouseMotion and settings_touch_scroll_last_positions.has(scroll_key) and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
+		var last_position: Vector2 = settings_touch_scroll_last_positions.get(scroll_key, mouse_motion.position)
+		var motion_delta: Vector2 = mouse_motion.position - last_position
+		settings_touch_scroll_last_positions[scroll_key] = mouse_motion.position
+		if source_control is HSlider and absf(motion_delta.x) > absf(motion_delta.y):
+			return
+		if absf(motion_delta.y) >= 1.0:
+			scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - int(round(motion_delta.y)))
+			scroll.accept_event()
+
+
 func _load_texture_from_path(texture_path: String) -> Texture2D:
 	var direct_texture: Texture2D = _load_image_texture_direct(texture_path)
 	if direct_texture != null:
@@ -5871,6 +5951,9 @@ func _rebuild_settings_popup_contents() -> void:
 	settings_account_button.name = "SettingsAccountButton"
 	settings_account_button.text = "ACCOUNT / GOOGLE"
 	rows.add_child(_create_settings_account_row())
+
+	_configure_settings_touch_scroll(scroll)
+	_attach_settings_touch_scroll_content(rows, scroll)
 
 	if not settings_back_button.pressed.is_connected(_hide_settings_popup):
 		settings_back_button.pressed.connect(_hide_settings_popup)
@@ -10554,6 +10637,8 @@ func _create_preview_marble_node(palette: Dictionary, model_scale: float) -> Nod
 
 
 func _preserve_preview_marble_original_colors(marble: Node3D, palette: Dictionary) -> void:
+	if bool(palette.get("preserve_imported_look", false)):
+		return
 	var allow_flame_effects := _palette_uses_flame_effects(palette)
 	var stack: Array[Node] = [marble]
 	while not stack.is_empty():

@@ -706,7 +706,7 @@ func _build_online_chat_toast() -> void:
 	online_chat_toast_panel.offset_right = 200.0
 	online_chat_toast_panel.offset_bottom = 52.0
 	online_chat_toast_panel.z_index = 600
-	online_chat_toast_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	online_chat_toast_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	online_chat_toast_panel.hide()
 	online_chat_toast_panel.add_theme_stylebox_override("panel", _make_modal_style(Color(0.015, 0.025, 0.055, 0.94), Color(0.31, 0.97, 0.85, 0.92)))
 	add_child(online_chat_toast_panel)
@@ -715,6 +715,7 @@ func _build_online_chat_toast() -> void:
 
 	var margin: MarginContainer = MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_theme_constant_override("margin_left", 16)
 	margin.add_theme_constant_override("margin_top", 12)
 	margin.add_theme_constant_override("margin_right", 16)
@@ -723,12 +724,14 @@ func _build_online_chat_toast() -> void:
 
 	var stack: VBoxContainer = VBoxContainer.new()
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stack.add_theme_constant_override("separation", 4)
 	margin.add_child(stack)
 
 	online_chat_toast_sender_label = Label.new()
 	online_chat_toast_sender_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	online_chat_toast_sender_label.clip_text = true
+	online_chat_toast_sender_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	online_chat_toast_sender_label.add_theme_font_size_override("font_size", 12)
 	online_chat_toast_sender_label.add_theme_color_override("font_color", Color(0.31, 0.97, 0.85, 1.0))
 	online_chat_toast_sender_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.75))
@@ -738,6 +741,7 @@ func _build_online_chat_toast() -> void:
 	online_chat_toast_text_label = Label.new()
 	online_chat_toast_text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	online_chat_toast_text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	online_chat_toast_text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	online_chat_toast_text_label.max_lines_visible = 2
 	online_chat_toast_text_label.add_theme_font_size_override("font_size", 15)
 	online_chat_toast_text_label.add_theme_color_override("font_color", Color(0.96, 0.99, 1.0, 1.0))
@@ -1020,6 +1024,8 @@ func _update_online_chat_toast(delta: float) -> void:
 
 
 func _on_online_chat_toast_gui_input(event: InputEvent) -> void:
+	if get_tree().paused:
+		return
 	if event is InputEventMouseButton:
 		var mouse_event: InputEventMouseButton = event as InputEventMouseButton
 		if mouse_event.pressed and mouse_event.button_index == MOUSE_BUTTON_LEFT:

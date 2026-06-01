@@ -60,6 +60,8 @@ func _resolve_marble_type(palette: Dictionary) -> String:
 
 func _prepare_marble_visual(root: Node3D) -> void:
 	_make_materials_unique(root)
+	if bool(active_palette.get("preserve_imported_look", false)):
+		return
 	var allow_flame_effects := _uses_flame_marble_scene()
 	_strip_visual_illumination(root, allow_flame_effects)
 	if _uses_imported_model_scene():

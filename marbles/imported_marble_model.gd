@@ -3,6 +3,12 @@ extends Node3D
 
 const TARGET_MARBLE_DIAMETER: float = 0.4
 
+@export var preserve_imported_look: bool = false
+@export var tint_imported_materials: bool = false
+@export var imported_albedo_tint: Color = Color(1.0, 1.0, 1.0, 1.0)
+@export var imported_emission_tint: Color = Color(0.0, 0.0, 0.0, 1.0)
+@export var imported_emission_energy: float = 0.0
+
 var _source: Node3D = null
 
 
@@ -18,7 +24,10 @@ func _configure_model() -> void:
 	_source = get_node_or_null("Source") as Node3D
 	if _source == null:
 		return
-	_strip_imported_illumination(_source)
+	_source.visible = true
+
+	if not preserve_imported_look:
+		_strip_imported_illumination(_source)
 
 	var meshes: Array[MeshInstance3D] = []
 	_collect_meshes(_source, meshes)
@@ -49,6 +58,62 @@ func _configure_model() -> void:
 	var scale_factor: float = TARGET_MARBLE_DIAMETER / largest_dimension
 	_source.position = (_source.position - combined_aabb.get_center()) * scale_factor
 	_source.scale *= scale_factor
+	if tint_imported_materials:
+		_tint_imported_materials(_source)
+
+
+func _tint_imported_materials(node: Node) -> void:
+	for child in node.get_children():
+		_tint_imported_materials(child)
+
+	var mesh_instance := node as MeshInstance3D
+	if mesh_instance == null:
+		return
+
+	if mesh_instance.material_override != null:
+		mesh_instance.material_override = _tint_imported_material(mesh_instance.material_override)
+
+	if mesh_instance.mesh == null:
+		return
+	for surface_index in range(mesh_instance.mesh.get_surface_count()):
+		var material := mesh_instance.get_surface_override_material(surface_index)
+		if material == null:
+			material = mesh_instance.mesh.surface_get_material(surface_index)
+		if material != null:
+			mesh_instance.set_surface_override_material(surface_index, _tint_imported_material(material))
+
+
+func _tint_imported_material(source: Material) -> Material:
+	var standard := source as StandardMaterial3D
+	if standard != null:
+		var tinted_standard := standard.duplicate(true) as StandardMaterial3D
+		if tinted_standard != null:
+			var source_color: Color = tinted_standard.albedo_color
+			tinted_standard.albedo_color = Color(
+				source_color.r * imported_albedo_tint.r,
+				source_color.g * imported_albedo_tint.g,
+				source_color.b * imported_albedo_tint.b,
+				source_color.a * imported_albedo_tint.a
+			)
+			if imported_emission_energy > 0.0:
+				tinted_standard.emission_enabled = true
+				tinted_standard.emission = imported_emission_tint
+				tinted_standard.emission_energy_multiplier = imported_emission_energy
+			return tinted_standard
+
+	var shader_material := source as ShaderMaterial
+	if shader_material != null:
+		var tinted_shader := shader_material.duplicate(true) as ShaderMaterial
+		if tinted_shader != null:
+			for parameter_name in ["albedo", "albedo_color", "base_color", "color", "tint_color"]:
+				tinted_shader.set_shader_parameter(parameter_name, imported_albedo_tint)
+			if imported_emission_energy > 0.0:
+				for parameter_name in ["emission", "emission_color", "glow_color"]:
+					tinted_shader.set_shader_parameter(parameter_name, imported_emission_tint)
+				for parameter_name in ["emission_strength", "emission_energy", "glow_strength"]:
+					tinted_shader.set_shader_parameter(parameter_name, imported_emission_energy)
+			return tinted_shader
+	return source.duplicate(true) if source != null else source
 
 
 func _collect_meshes(node: Node, meshes: Array[MeshInstance3D]) -> void:

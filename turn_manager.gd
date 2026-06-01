@@ -36,6 +36,7 @@ const PHYSICS_IMPACT_COOLDOWN: float = 0.05
 const PHYSICS_IMPACT_MIN_SPEED: float = 0.18
 const PHYSICS_IMPACT_MAX_SPEED: float = 16.0
 const LINEUP_DISTANCE_TIE_EPSILON: float = 0.035
+const LINEUP_MAX_TIE_BREAK_ROUNDS: int = 3
 const ONLINE_REMOTE_DISCOVERY_GRACE_SECONDS: float = 0.85
 const ONLINE_REMOTE_READY_WAIT_SECONDS: float = 8.0
 const ONLINE_CLIENT_SYNC_REQUEST_INTERVAL: float = 0.7
@@ -50,10 +51,10 @@ const LAN_STATE_VELOCITY_CHANGE_EPSILON: float = 0.035
 const LAN_CLIENT_STATE_BUFFER_MAX_SAMPLES: int = 8
 const LAN_CLIENT_STATE_BUFFER_MAX_AGE: float = 0.85
 const LAN_STATE_MOVING_SYNC_THRESHOLD: float = 0.045
-const ONLINE_LOCAL_PREDICTION_RECONCILE_DELAY: float = 0.28
+const ONLINE_LOCAL_PREDICTION_RECONCILE_DELAY: float = 0.18
 const ONLINE_LOCAL_PREDICTION_MAX_SECONDS: float = 6.0
 const ONLINE_LOCAL_PREDICTION_RECONCILE_SPEED: float = 5.0
-const ONLINE_LOCAL_PREDICTION_SOFT_RECONCILE_SPEED: float = 2.6
+const ONLINE_LOCAL_PREDICTION_SOFT_RECONCILE_SPEED: float = 4.2
 const ONLINE_LOCAL_PREDICTION_POSITION_DEADZONE: float = 0.18
 const AI_PLAYER_NAME_POOL: Array[String] = [
 	"Oliver",
@@ -107,13 +108,13 @@ const ACTION_MODE_ATTACK: int = 3
 @export var hole_capture_assist_force: float = 2.8
 @export var hole_capture_centering_force: float = 1.35
 @export var lan_state_send_rate: float = 24.0
-@export var online_state_send_rate: float = 36.0
-@export var online_full_snapshot_interval: float = 1.25
+@export var online_state_send_rate: float = 48.0
+@export var online_full_snapshot_interval: float = 0.8
 @export var lan_state_lerp_speed: float = 30.0
-@export var online_interpolation_delay: float = 0.14
-@export var online_extrapolation_limit: float = 0.08
-@export var online_aim_send_rate: float = 30.0
-@export var online_local_aim_smoothing: float = 0.58
+@export var online_interpolation_delay: float = 0.09
+@export var online_extrapolation_limit: float = 0.12
+@export var online_aim_send_rate: float = 45.0
+@export var online_local_aim_smoothing: float = 0.72
 @export var lan_remote_player_marble_name: String = "AI MARBLE1"
 @export var ai_goal_base_score: float = 1.32
 @export var ai_attack_base_score: float = 1.08
@@ -146,9 +147,9 @@ const ACTION_MODE_ATTACK: int = 3
 @export var out_of_bounds_fall_y: float = -1.8
 @export var respawn_edge_margin: float = 2.4
 @export var respawn_height_above_ground: float = 0.26
-@export var respawn_marble_clearance: float = 1.0
+@export var respawn_marble_clearance: float = 1.75
 @export var hole_occupant_respawn_clearance: float = 1.25
-@export var lineup_side_spacing: float = 0.75
+@export var lineup_side_spacing: float = 1.85
 @export var elimination_coin_reward: int = 10
 @export var win_coin_reward: int = 100
 
@@ -193,6 +194,7 @@ var marble_trail_last_samples: Dictionary = {}
 var marble_trail_last_directions: Dictionary = {}
 var gpu_trail_resource_cache: Dictionary = {}
 var banner_material_cache: Dictionary = {}
+var marble_name_banner_borders: Dictionary = {}
 var speed_streak_shader_cache: Shader = null
 var trail_aura_shader_cache: Shader = null
 var ai_profiles: Dictionary = {}
@@ -243,12 +245,14 @@ var online_fallback_marble_name_by_client_id: Dictionary = {}
 var online_ready_client_ids: Dictionary = {}
 var online_display_name_by_client_id: Dictionary = {}
 var online_remote_trail_presets_by_marble_name: Dictionary = {}
+var online_remote_banner_presets_by_marble_name: Dictionary = {}
 var online_waiting_for_match_start: bool = false
 var online_client_sync_elapsed: float = 0.0
 var online_client_sync_request_timer: float = 0.0
 var online_client_received_turn_state: bool = false
 var match_mechanic_guide_shown: bool = false
 var ai_display_names: Dictionary = {}
+var ai_banner_presets_by_marble_name: Dictionary = {}
 var marble_name_tags: Dictionary = {}
 var marble_name_banners: Dictionary = {}
 var feedback_fx: Node = null
@@ -263,6 +267,8 @@ func _ready() -> void:
 	if active_marbles.is_empty():
 		push_error("No marbles were assigned to the turn manager.")
 		return
+	respawn_marble_clearance = maxf(respawn_marble_clearance, 1.75)
+	lineup_side_spacing = maxf(lineup_side_spacing, 1.85)
 
 	_assign_ai_player_names()
 	_assign_ai_profiles()
@@ -1196,6 +1202,9 @@ func _get_local_online_customization_payload() -> Dictionary:
 	var trail_id: String = str(customization.get("selected_trail_id")).strip_edges()
 	if trail_id != "":
 		payload["trail_id"] = trail_id
+	var banner_id: String = str(customization.get("selected_banner_id")).strip_edges()
+	if banner_id != "":
+		payload["banner_id"] = banner_id
 	return payload
 
 
@@ -1244,6 +1253,13 @@ func _apply_online_customization_payload_to_marble(marble: Node3D, payload: Dict
 		if not trail_preset.is_empty():
 			online_remote_trail_presets_by_marble_name[String(marble.name)] = trail_preset
 			_clear_trail_for_marble(marble)
+
+	var banner_id: String = str(payload.get("banner_id", "")).strip_edges()
+	if banner_id != "" and customization.has_method("get_banner_preset"):
+		var banner_preset: Dictionary = customization.call("get_banner_preset", banner_id)
+		if not banner_preset.is_empty():
+			online_remote_banner_presets_by_marble_name[String(marble.name)] = banner_preset.duplicate(true)
+			_refresh_marble_name_tags()
 
 
 func _show_match_shooting_mechanic_guide() -> void:
@@ -1425,7 +1441,8 @@ func _lock_non_lineup_controls(allowed_marble: Node3D) -> void:
 
 func _resolve_lineup_starter(candidates: Array, require_single_hole_entry: bool = false) -> Node3D:
 	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
-	while contenders.size() > 1:
+	var tie_break_rounds: int = 0
+	while contenders.size() > 1 and tie_break_rounds < LINEUP_MAX_TIE_BREAK_ROUNDS:
 		var result := _get_lineup_result(contenders, require_single_hole_entry)
 		var winner: Node3D = result.get("winner", null) as Node3D
 		if winner != null:
@@ -1434,31 +1451,35 @@ func _resolve_lineup_starter(candidates: Array, require_single_hole_entry: bool 
 		contenders = _filter_active_lineup_contenders(result.get("retry", []) as Array)
 		if contenders.size() > 1:
 			var hole_tie: bool = bool(result.get("hole_tie", false))
-			var no_hole_entry: bool = bool(result.get("no_hole_entry", false))
 			if hole_tie:
 				require_single_hole_entry = true
 			current_hole_owner = null
 			pending_hole_turn_marble = null
 			_place_marbles_on_lineup(contenders)
 			await _play_lineup_round(contenders)
+			tie_break_rounds += 1
 
-	return contenders[0] if not contenders.is_empty() else null
+	return _choose_lineup_fallback_starter(contenders)
 
 
 func _resolve_remaining_lineup_hole_ties(first_marble: Node3D) -> Node3D:
 	var resolved_marble: Node3D = first_marble
 	var tied_entrants: Array[Node3D] = _collect_lineup_hole_entrants(active_marbles)
-	while tied_entrants.size() > 1:
+	var tie_break_rounds: int = 0
+	while tied_entrants.size() > 1 and tie_break_rounds < LINEUP_MAX_TIE_BREAK_ROUNDS:
 		current_hole_owner = null
 		pending_hole_turn_marble = null
 		_place_marbles_on_lineup(tied_entrants)
 		await _play_lineup_round(tied_entrants)
 		resolved_marble = await _resolve_lineup_starter(tied_entrants, true)
+		if resolved_marble != null:
+			return resolved_marble
 		tied_entrants = _collect_lineup_hole_entrants(tied_entrants)
-	return resolved_marble
+		tie_break_rounds += 1
+	return resolved_marble if resolved_marble != null else _choose_lineup_fallback_starter(tied_entrants)
 
 
-func _get_lineup_result(candidates: Array, require_single_hole_entry: bool = false) -> Dictionary:
+func _get_lineup_result(candidates: Array, _require_single_hole_entry: bool = false) -> Dictionary:
 	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
 	if contenders.size() <= 1:
 		return {"winner": contenders[0] if not contenders.is_empty() else null, "retry": []}
@@ -1468,13 +1489,27 @@ func _get_lineup_result(candidates: Array, require_single_hole_entry: bool = fal
 		return {"winner": hole_entrants[0], "retry": []}
 	if hole_entrants.size() > 1:
 		return {"winner": null, "retry": hole_entrants, "hole_tie": true}
-	if require_single_hole_entry:
-		return {"winner": null, "retry": contenders, "no_hole_entry": true}
 
 	var closest: Array[Node3D] = _collect_closest_lineup_marbles(contenders)
 	if closest.size() == 1:
 		return {"winner": closest[0], "retry": []}
 	return {"winner": null, "retry": closest}
+
+
+func _choose_lineup_fallback_starter(candidates: Array) -> Node3D:
+	var contenders: Array[Node3D] = _filter_active_lineup_contenders(candidates)
+	if contenders.is_empty():
+		contenders = _filter_active_lineup_contenders(active_marbles)
+	if contenders.is_empty():
+		return null
+	var hole_entrants: Array[Node3D] = _collect_lineup_hole_entrants(contenders)
+	if hole_entrants.size() == 1:
+		return hole_entrants[0]
+	if hole_entrants.size() > 1:
+		hole_entrants.sort_custom(Callable(self, "_sort_marbles_by_lineup_distance"))
+		return hole_entrants[0]
+	contenders.sort_custom(Callable(self, "_sort_marbles_by_lineup_distance"))
+	return contenders[0]
 
 
 func _settle_lineup_hole_owner(first_marble: Node3D) -> void:
@@ -2476,7 +2511,7 @@ func _online_client_should_ignore_prediction_sample(marble_name: String, sample_
 
 
 func _smooth_lan_client_marbles(delta: float) -> void:
-	var smoothing_speed: float = lan_state_lerp_speed * 0.7 if online_enabled else lan_state_lerp_speed
+	var smoothing_speed: float = lan_state_lerp_speed * 1.05 if online_enabled else lan_state_lerp_speed
 	var weight: float = clampf(delta * smoothing_speed, 0.0, 1.0)
 	var snap_distance: float = ONLINE_CLIENT_STATE_SNAP_DISTANCE if online_enabled else LAN_CLIENT_STATE_SNAP_DISTANCE
 	for marble_name in lan_client_targets.keys():
@@ -3328,6 +3363,7 @@ func _normalize_marble_lists() -> void:
 
 func _assign_ai_player_names() -> void:
 	ai_display_names.clear()
+	ai_banner_presets_by_marble_name.clear()
 	var available_names: Array = AI_PLAYER_NAME_POOL.duplicate()
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
@@ -3399,17 +3435,18 @@ func _ensure_marble_name_tag(marble: Node3D) -> Label3D:
 	var label := Label3D.new()
 	label.name = "NameTag"
 	label.top_level = true
-	label.global_position = marble.global_position + Vector3.UP * 0.52
+	label.global_position = marble.global_position + Vector3.UP * 0.62
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.fixed_size = true
-	label.pixel_size = 0.0026
-	label.font_size = 18
-	label.outline_size = 5
+	label.pixel_size = 0.0019
+	label.font_size = 14
+	label.outline_size = 4
 	label.modulate = Color(0.96, 0.99, 1.0, 0.92)
 	label.outline_modulate = Color(0.02, 0.03, 0.08, 0.88)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.set("render_priority", 20)
 	marble.add_child(label)
 	marble_name_tags[marble.get_instance_id()] = label
 	return label
@@ -3420,19 +3457,51 @@ func _ensure_marble_name_banner(marble: Node3D) -> MeshInstance3D:
 		return null
 	var existing: MeshInstance3D = marble.get_node_or_null("NameTagBanner") as MeshInstance3D
 	if existing != null:
+		if not existing.mesh is QuadMesh:
+			var upgraded_mesh := QuadMesh.new()
+			upgraded_mesh.size = Vector2(1.55, 0.38)
+			existing.mesh = upgraded_mesh
+		existing.extra_cull_margin = 4.0
 		marble_name_banners[marble.get_instance_id()] = existing
 		return existing
 
 	var banner := MeshInstance3D.new()
 	banner.name = "NameTagBanner"
 	banner.top_level = true
-	var mesh := PlaneMesh.new()
-	mesh.size = Vector2(1.35, 0.34)
+	var mesh := QuadMesh.new()
+	mesh.size = Vector2(1.55, 0.38)
 	banner.mesh = mesh
 	banner.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	banner.extra_cull_margin = 4.0
 	marble.add_child(banner)
 	marble_name_banners[marble.get_instance_id()] = banner
 	return banner
+
+
+func _ensure_marble_name_banner_border(marble: Node3D) -> MeshInstance3D:
+	if marble == null:
+		return null
+	var existing: MeshInstance3D = marble.get_node_or_null("NameTagBannerBorder") as MeshInstance3D
+	if existing != null:
+		if not existing.mesh is QuadMesh:
+			var upgraded_mesh := QuadMesh.new()
+			upgraded_mesh.size = Vector2(1.68, 0.48)
+			existing.mesh = upgraded_mesh
+		existing.extra_cull_margin = 4.0
+		marble_name_banner_borders[marble.get_instance_id()] = existing
+		return existing
+
+	var border := MeshInstance3D.new()
+	border.name = "NameTagBannerBorder"
+	border.top_level = true
+	var mesh := QuadMesh.new()
+	mesh.size = Vector2(1.68, 0.48)
+	border.mesh = mesh
+	border.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	border.extra_cull_margin = 4.0
+	marble.add_child(border)
+	marble_name_banner_borders[marble.get_instance_id()] = border
+	return border
 
 
 func _refresh_marble_name_tags() -> void:
@@ -3452,7 +3521,10 @@ func _refresh_marble_name_tags() -> void:
 		else:
 			is_active_turn = get_active_marble() == marble
 		label.text = display_text
-		label.global_position = marble.global_position + Vector3.UP * 0.52
+		label.font_size = 12 if display_text.length() > 10 else 14
+		label.pixel_size = 0.0018 if display_text.length() > 10 else 0.0019
+		label.global_position = marble.global_position + Vector3.UP * 0.62
+		label.set("render_priority", 20)
 		label.visible = marble.visible and active_marbles.has(marble)
 		_apply_name_tag_banner_style(marble, label, banner)
 
@@ -3461,32 +3533,161 @@ func _apply_name_tag_banner_style(marble: Node3D, label: Label3D, banner: MeshIn
 	var preset := _get_banner_preset_for_marble(marble)
 	label.modulate = preset.get("text", Color(0.96, 0.99, 1.0, 0.92))
 	label.outline_modulate = preset.get("outline", Color(0.02, 0.03, 0.08, 0.88))
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	if banner == null:
 		return
 	var visible := label.visible
 	banner.visible = visible
 	if not visible:
+		var existing_border: MeshInstance3D = marble.get_node_or_null("NameTagBannerBorder") as MeshInstance3D
+		if existing_border != null:
+			existing_border.visible = false
 		return
-	banner.global_position = label.global_position + Vector3(0.0, -0.01, -0.012)
-	var material: StandardMaterial3D = _get_cached_banner_material(preset)
+	var border: MeshInstance3D = _ensure_marble_name_banner_border(marble)
+	if border != null:
+		border.visible = visible and str(preset.get("texture_path", "")).strip_edges() == ""
+		border.global_position = label.global_position + Vector3(0.0, -0.006, -0.03)
+		var border_material: StandardMaterial3D = _get_cached_banner_material(preset, "border")
+		if border.material_override != border_material:
+			border.material_override = border_material
+
+	banner.global_position = label.global_position + Vector3(0.0, -0.006, -0.022)
+	var material: StandardMaterial3D = _get_cached_banner_material(preset, "fill")
 	if banner.material_override != material:
 		banner.material_override = material
-	var text_width := clampf(float(label.text.length()) * 0.078 + 0.46, 1.05, 2.15)
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	var text_width := clampf(float(label.text.length()) * 0.065 + 0.54, 0.72, 1.58)
 	var shape := str(preset.get("shape", "banner"))
 	var height := 0.34
 	if shape == "bubble":
-		height = 0.42
+		height = 0.3
 	elif shape == "burner":
-		height = 0.38
-	var plane := banner.mesh as PlaneMesh
+		height = 0.28
+	elif shape == "plate":
+		height = 0.27
+	if texture_path != "":
+		var texture_aspect: float = maxf(float(preset.get("texture_aspect", 3.16)), 0.2)
+		if _is_royal_wings_banner(preset):
+			text_width = _get_texture_name_banner_min_width(preset)
+			label.font_size = _get_royal_wings_name_font_size(label.text)
+			label.outline_size = maxi(1, int(round(float(label.font_size) * 0.18)))
+		else:
+			text_width = maxf(text_width, _get_texture_name_banner_min_width(preset))
+			label.outline_size = maxi(1, int(round(float(label.font_size) * 0.2)))
+			text_width = _expand_texture_name_banner_width_for_text(preset, text_width, label)
+			text_width = maxf(text_width, _get_texture_name_banner_min_width(preset))
+		height = text_width / texture_aspect
+		var safe_text_width: float = _get_texture_name_banner_text_width(preset, text_width)
+		label.font_size = mini(label.font_size, maxi(8, int(floor(_get_name_banner_fit_font_size(label.text, safe_text_width, label.pixel_size)))))
+		label.outline_size = maxi(1, int(round(float(label.font_size) * 0.2)))
+		label.global_position += _get_texture_name_banner_text_offset(preset)
+		_reset_name_tag_label_box(label)
+	else:
+		label.outline_size = maxi(2, int(round(float(label.font_size) * 0.26)))
+		text_width = _expand_generated_name_banner_width_for_text(preset, text_width, label)
+		_reset_name_tag_label_box(label)
+	var plane := banner.mesh as QuadMesh
 	var size_signature: String = "%.3f|%.3f" % [text_width, height]
 	if plane != null and str(banner.get_meta("size_signature", "")) != size_signature:
 		plane.size = Vector2(text_width, height)
 		banner.set_meta("size_signature", size_signature)
+	var border_plane: QuadMesh = null
+	if border != null:
+		border_plane = border.mesh as QuadMesh
+	var border_width: float = text_width + 0.16
+	var border_height: float = height + 0.12
+	var border_size_signature: String = "%.3f|%.3f" % [border_width, border_height]
+	if border_plane != null and str(border.get_meta("size_signature", "")) != border_size_signature:
+		border_plane.size = Vector2(border_width, border_height)
+		border.set_meta("size_signature", border_size_signature)
 
 
-func _get_cached_banner_material(preset: Dictionary) -> StandardMaterial3D:
-	var signature: String = _get_banner_material_signature(preset)
+func _get_name_banner_fit_font_size(text_value: String, safe_width: float, pixel_size: float) -> float:
+	var character_count: float = maxf(float(text_value.length()), 1.0)
+	return safe_width / maxf(character_count * pixel_size * 0.92, 0.001)
+
+
+func _get_texture_name_banner_text_width(preset: Dictionary, displayed_width: float) -> float:
+	var ratio: float = clampf(float(preset.get("text_area_ratio", 0.68)), 0.18, 0.96)
+	var padding: float = float(preset.get("text_padding_3d", 0.10))
+	return maxf(displayed_width * ratio - padding, 0.14)
+
+
+func _get_generated_name_banner_text_width(preset: Dictionary, displayed_width: float) -> float:
+	var style_name: String = str(preset.get("style", preset.get("shape", "banner")))
+	if style_name == "royal_scroll":
+		return maxf(displayed_width - 0.42, 0.28)
+	if style_name == "cyber_diamond":
+		return maxf(displayed_width - 0.52, 0.26)
+	return maxf(displayed_width - 0.24, 0.34)
+
+
+func _expand_texture_name_banner_width_for_text(preset: Dictionary, current_width: float, label: Label3D) -> float:
+	var ratio: float = clampf(float(preset.get("text_area_ratio", 0.68)), 0.18, 0.96)
+	var padding: float = float(preset.get("text_padding_3d", 0.10))
+	var required_text_width: float = _get_name_banner_required_text_width(label)
+	return maxf(current_width, (required_text_width + padding) / ratio)
+
+
+func _get_texture_name_banner_min_width(preset: Dictionary) -> float:
+	var texture_path: String = str(preset.get("texture_path", "")).to_lower()
+	if texture_path.find("royal_wings") != -1:
+		return 0.86
+	if texture_path.find("red_flame_frame") != -1:
+		return 1.05
+	if texture_path.find("neon_stitch") != -1:
+		return 1.58
+	if texture_path.find("bd_strip") != -1:
+		return 1.20
+	if texture_path.find("red_shadow") != -1:
+		return 1.22
+	return 0.82
+
+
+func _get_texture_name_banner_text_offset(preset: Dictionary) -> Vector3:
+	var texture_path: String = str(preset.get("texture_path", "")).to_lower()
+	if texture_path.find("royal_wings") != -1:
+		return Vector3(0.0, -0.035, 0.0)
+	if texture_path.find("red_flame_frame") != -1:
+		return Vector3(0.08, -0.055, 0.0)
+	return Vector3(float(preset.get("text_x_offset_3d", 0.0)), float(preset.get("text_y_offset_3d", 0.0)), 0.0)
+
+
+func _is_royal_wings_banner(preset: Dictionary) -> bool:
+	return str(preset.get("texture_path", "")).to_lower().find("royal_wings") != -1
+
+
+func _get_royal_wings_name_font_size(text_value: String) -> int:
+	var length: int = text_value.length()
+	if length >= 8:
+		return 6
+	if length >= 6:
+		return 7
+	if length >= 4:
+		return 8
+	return 8
+
+
+func _expand_generated_name_banner_width_for_text(preset: Dictionary, current_width: float, label: Label3D) -> float:
+	var required_text_width: float = _get_name_banner_required_text_width(label)
+	var style_name: String = str(preset.get("style", preset.get("shape", "banner")))
+	var decoration_width: float = 0.42 if style_name == "royal_scroll" else 0.52 if style_name == "cyber_diamond" else 0.24
+	return maxf(current_width, required_text_width + decoration_width)
+
+
+func _get_name_banner_required_text_width(label: Label3D) -> float:
+	var character_count: float = maxf(float(label.text.length()), 1.0)
+	return character_count * 0.105 + 0.34
+
+
+func _reset_name_tag_label_box(label: Label3D) -> void:
+	label.width = 0.0
+	label.offset = Vector2.ZERO
+
+
+func _get_cached_banner_material(preset: Dictionary, role: String = "fill") -> StandardMaterial3D:
+	var signature: String = "|".join(PackedStringArray([role, _get_banner_material_signature(preset)]))
 	var cached: StandardMaterial3D = banner_material_cache.get(signature, null) as StandardMaterial3D
 	if cached != null:
 		return cached
@@ -3495,26 +3696,141 @@ func _get_cached_banner_material(preset: Dictionary) -> StandardMaterial3D:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	material.no_depth_test = true
-	material.albedo_color = preset.get("fill", Color(0.02, 0.07, 0.10, 0.58))
-	material.emission_enabled = true
-	material.emission = preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))
-	material.emission_energy_multiplier = 0.22
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.render_priority = -2 if role == "fill" else -3
+	var fill_color: Color = preset.get("fill", Color(0.02, 0.07, 0.10, 0.82))
+	var accent_color: Color = preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))
+	var texture_path: String = str(preset.get("texture_path", "")).strip_edges()
+	var video_path: String = str(preset.get("video_path", "")).strip_edges()
+	if video_path != "":
+		if role == "fill":
+			var video_texture: Texture2D = _get_banner_video_texture(video_path)
+			if video_texture != null:
+				material.albedo_texture = video_texture
+			elif texture_path != "":
+				var fallback_texture: Texture2D = _load_trail_texture(texture_path)
+				if fallback_texture != null:
+					material.albedo_texture = fallback_texture
+			material.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
+			material.emission_enabled = false
+		else:
+			material.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
+			material.emission_enabled = false
+	elif texture_path != "":
+		if role == "fill":
+			var texture: Texture2D = _load_trail_texture(texture_path)
+			if texture != null:
+				material.albedo_texture = texture
+			material.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
+			material.emission_enabled = false
+		else:
+			material.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
+			material.emission_enabled = false
+	elif role == "border":
+		accent_color.a = maxf(accent_color.a, 0.9)
+		material.albedo_color = accent_color
+		material.emission_enabled = true
+		material.emission = accent_color
+		material.emission_energy_multiplier = 0.65
+	else:
+		fill_color.a = maxf(fill_color.a, 0.82)
+		material.albedo_color = fill_color
+		material.emission_enabled = true
+		material.emission = accent_color
+		material.emission_energy_multiplier = 0.16
 	banner_material_cache[signature] = material
 	return material
 
 
+func _get_banner_video_texture(video_path: String) -> Texture2D:
+	var key: String = "banner_video_texture|%s" % video_path
+	var cached: Texture2D = banner_material_cache.get(key, null) as Texture2D
+	if cached != null:
+		return cached
+	var stream: VideoStream = _load_banner_video(video_path)
+	if stream == null:
+		return null
+
+	var viewport := SubViewport.new()
+	viewport.name = "NameTagBannerVideoViewport"
+	viewport.size = Vector2i(650, 260)
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(viewport)
+
+	var video_player := VideoStreamPlayer.new()
+	video_player.name = "NameTagBannerVideo"
+	video_player.set_anchors_preset(Control.PRESET_FULL_RECT)
+	video_player.expand = true
+	video_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	video_player.stream = stream
+	video_player.material = _make_banner_video_key_material()
+	viewport.add_child(video_player)
+	video_player.play()
+	video_player.finished.connect(func() -> void:
+		if is_instance_valid(video_player):
+			video_player.play()
+	)
+
+	var texture: Texture2D = viewport.get_texture()
+	banner_material_cache[key] = texture
+	return texture
+
+
+func _load_banner_video(video_path: String) -> VideoStream:
+	if video_path == "":
+		return null
+	if ResourceLoader.exists(video_path):
+		var video_resource: Resource = ResourceLoader.load(video_path)
+		return video_resource as VideoStream
+	push_warning("Could not load banner video: %s" % video_path)
+	return null
+
+
+func _make_banner_video_key_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = """
+shader_type canvas_item;
+uniform float threshold = 0.16;
+uniform float softness = 0.18;
+
+void fragment() {
+	vec4 color = texture(TEXTURE, UV);
+	float brightness = max(max(color.r, color.g), color.b);
+	float red_energy = max(color.r - max(color.g, color.b) * 0.42, 0.0);
+	float alpha = smoothstep(threshold, threshold + softness, max(brightness * 0.72, red_energy));
+	COLOR = vec4(color.rgb, color.a * alpha);
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	return material
+
+
 func _get_banner_material_signature(preset: Dictionary) -> String:
-	return PackedStringArray([
+	return "|".join(PackedStringArray([
 		str(preset.get("fill", Color(0.02, 0.07, 0.10, 0.58))),
-		str(preset.get("accent", Color(0.42, 0.92, 1.0, 1.0)))
-	]).join("|")
+		str(preset.get("accent", Color(0.42, 0.92, 1.0, 1.0))),
+		str(preset.get("texture_path", "")),
+		str(preset.get("video_path", ""))
+	]))
 
 
 func _get_banner_preset_for_marble(marble: Node3D) -> Dictionary:
+	var marble_name: String = String(marble.name)
+	if online_enabled and online_remote_banner_presets_by_marble_name.has(marble_name):
+		var remote_preset = online_remote_banner_presets_by_marble_name.get(marble_name, {})
+		if typeof(remote_preset) == TYPE_DICTIONARY:
+			return (remote_preset as Dictionary).duplicate(true)
+
 	var customization: Node = get_node_or_null("/root/CustomizationState")
-	if customization != null and customization.has_method("get_selected_banner_preset"):
-		if marble == player_marble or (online_enabled and marble == online_local_player_marble):
-			return customization.call("get_selected_banner_preset")
+	if _is_ai_marble(marble):
+		var ai_preset: Dictionary = _get_ai_banner_preset_for_marble(marble)
+		if not ai_preset.is_empty():
+			return ai_preset
+
+	if (marble == player_marble or (online_enabled and marble == online_local_player_marble)) and customization != null and customization.has_method("get_selected_banner_preset"):
+		return customization.call("get_selected_banner_preset")
 	if customization != null and customization.has_method("get_banner_preset"):
 		return customization.call("get_banner_preset", "crystal")
 	return {
@@ -3524,6 +3840,40 @@ func _get_banner_preset_for_marble(marble: Node3D) -> Dictionary:
 		"outline": Color(0.0, 0.02, 0.06, 0.92),
 		"shape": "banner"
 	}
+
+
+func _is_ai_marble(marble: Node3D) -> bool:
+	if marble == null:
+		return false
+	var internal_name: String = String(marble.name)
+	return internal_name.begins_with("AI MARBLE") or ai_display_names.has(internal_name)
+
+
+func _get_ai_banner_preset_for_marble(marble: Node3D) -> Dictionary:
+	var marble_name: String = String(marble.name)
+	if ai_banner_presets_by_marble_name.has(marble_name):
+		var stored_preset = ai_banner_presets_by_marble_name.get(marble_name, {})
+		if typeof(stored_preset) == TYPE_DICTIONARY:
+			return (stored_preset as Dictionary).duplicate(true)
+
+	var customization: Node = get_node_or_null("/root/CustomizationState")
+	if customization == null or not customization.has_method("get_banner_ids") or not customization.has_method("get_banner_preset"):
+		return {}
+	var banner_ids_value = customization.call("get_banner_ids")
+	var banner_ids: PackedStringArray = PackedStringArray()
+	if typeof(banner_ids_value) == TYPE_PACKED_STRING_ARRAY:
+		banner_ids = banner_ids_value
+	elif typeof(banner_ids_value) == TYPE_ARRAY:
+		banner_ids = PackedStringArray(banner_ids_value)
+	if banner_ids.is_empty():
+		return {}
+
+	var banner_index: int = absi(marble_name.hash()) % banner_ids.size()
+	var preset: Dictionary = customization.call("get_banner_preset", banner_ids[banner_index])
+	if preset.is_empty():
+		return {}
+	ai_banner_presets_by_marble_name[marble_name] = preset.duplicate(true)
+	return preset.duplicate(true)
 
 
 func _discover_scene_marbles() -> Array[Node3D]:
@@ -5350,7 +5700,7 @@ func _configure_gpu_world_trail(trail: GPUParticles3D, preset: Dictionary) -> vo
 
 
 func _get_trail_preset_signature(preset: Dictionary) -> String:
-	return PackedStringArray([
+	return "|".join(PackedStringArray([
 		str(preset.get("color", Color.WHITE)),
 		str(preset.get("secondary_color", Color.WHITE)),
 		str(preset.get("emission", Color.WHITE)),
@@ -5359,7 +5709,7 @@ func _get_trail_preset_signature(preset: Dictionary) -> String:
 		str(preset.get("texture_path", "")),
 		str(preset.get("id", "")),
 		str(preset.get("shape", ""))
-	]).join("|")
+	]))
 
 
 func _make_gpu_world_trail_color_ramp(preset: Dictionary) -> GradientTexture1D:

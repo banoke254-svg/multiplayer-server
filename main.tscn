@@ -171,11 +171,11 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 25.045914)
 mesh = SubResource("BoxMesh_ground_south")
 
 [node name="GroundLeft" type="MeshInstance3D" parent="Ground" unique_id=602117695]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.975, 0, 14.6135)
+transform = Transform3D(0.95844877, 0, 0, 0, 1, 0, 0, 0, 1, -11.35, 0, 14.6135)
 mesh = SubResource("BoxMesh_ground_side")
 
 [node name="GroundRight" type="MeshInstance3D" parent="Ground" unique_id=465250014]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.975, 0, 14.6135)
+transform = Transform3D(1.0415512, 0, 0, 0, 1, 0, 0, 0, 1, 10.6, 0, 14.6135)
 mesh = SubResource("BoxMesh_ground_side")
 
 [node name="GroundVisual" parent="Ground" unique_id=1364702408 instance=ExtResource("13_6s4w0")]
@@ -254,11 +254,11 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0585818, 25.045914)
 shape = SubResource("BoxShape3D_ground_south")
 
 [node name="CollisionShape3D3" type="CollisionShape3D" parent="Ground" unique_id=1875560429]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.975, 0.0585818, 14.6135)
+transform = Transform3D(0.95844877, 0, 0, 0, 1, 0, 0, 0, 1, -11.35, 0.0585818, 14.6135)
 shape = SubResource("BoxShape3D_ground_side")
 
 [node name="CollisionShape3D4" type="CollisionShape3D" parent="Ground" unique_id=741567857]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.975, 0.0585818, 14.6135)
+transform = Transform3D(1.0415512, 0, 0, 0, 1, 0, 0, 0, 1, 10.6, 0.0585818, 14.6135)
 shape = SubResource("BoxShape3D_ground_side")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="Ground" unique_id=1761786849]
@@ -327,7 +327,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0198698, 0.9, -10.2447)
 shape = SubResource("BoxShape3D_0xm2m")
 
 [node name="Hole" type="StaticBody3D" parent="." unique_id=580702977]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.039440155, 14.6135)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.75, 0.039440155, 14.6135)
 physics_material_override = SubResource("PhysicsMaterial_ycdy4")
 script = ExtResource("12_0ce7u")
 ground_blend_color = Color(0.34117648, 0.6117647, 0.30980393, 0)

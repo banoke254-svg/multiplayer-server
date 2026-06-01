@@ -45,6 +45,17 @@ var arrow_tip: MeshInstance3D = null
 var _segment_mesh: CylinderMesh = null
 var _tip_mesh: CylinderMesh = null
 var _glass_material: StandardMaterial3D = null
+var aim_effect_root: Node3D = null
+var aim_line_glow: MeshInstance3D = null
+var aim_line_core: MeshInstance3D = null
+var aim_line_tip: MeshInstance3D = null
+var aim_beam_particles: GPUParticles3D = null
+var aim_tip_particles: GPUParticles3D = null
+var _aim_glow_material: ShaderMaterial = null
+var _aim_core_material: ShaderMaterial = null
+var _aim_tip_mesh_material: ShaderMaterial = null
+var _aim_beam_material: ParticleProcessMaterial = null
+var _aim_tip_material: ParticleProcessMaterial = null
 var power_bar: ProgressBar = null
 var power_label: Label = null
 var power_glass: Control = null
@@ -336,6 +347,128 @@ func _create_shot_indicator() -> void:
 
 	_hide_indicator()
 	add_child(arrow_tip)
+	_create_gpu_aim_effect()
+
+
+func _create_gpu_aim_effect() -> void:
+	if aim_effect_root != null and is_instance_valid(aim_effect_root):
+		return
+
+	aim_effect_root = Node3D.new()
+	aim_effect_root.name = "MarbleAimGPUStream"
+	aim_effect_root.top_level = true
+	add_child(aim_effect_root)
+
+	_aim_glow_material = _make_aim_extension_material(Color(0.28, 0.95, 1.0, 0.14), 1.0)
+	_aim_core_material = _make_aim_extension_material(Color(0.84, 1.0, 0.98, 0.56), 1.65)
+	_aim_tip_mesh_material = _make_aim_extension_material(Color(0.48, 1.0, 0.9, 0.42), 1.35)
+
+	aim_line_glow = _make_aim_line_instance("AimExtensionGlow", _aim_glow_material)
+	aim_effect_root.add_child(aim_line_glow)
+
+	aim_line_core = _make_aim_line_instance("AimExtensionCore", _aim_core_material)
+	aim_effect_root.add_child(aim_line_core)
+
+	aim_line_tip = MeshInstance3D.new()
+	aim_line_tip.name = "AimExtensionTip"
+	var tip_mesh: SphereMesh = SphereMesh.new()
+	tip_mesh.radius = 0.08
+	tip_mesh.height = 0.16
+	tip_mesh.radial_segments = 12
+	tip_mesh.rings = 6
+	aim_line_tip.mesh = tip_mesh
+	aim_line_tip.material_override = _aim_tip_mesh_material
+	aim_effect_root.add_child(aim_line_tip)
+
+	_hide_gpu_aim_effect()
+
+
+func _make_aim_line_instance(node_name: String, material: Material) -> MeshInstance3D:
+	var mesh_instance: MeshInstance3D = MeshInstance3D.new()
+	mesh_instance.name = node_name
+	var mesh: CylinderMesh = CylinderMesh.new()
+	mesh.top_radius = 1.0
+	mesh.bottom_radius = 1.0
+	mesh.height = 1.0
+	mesh.radial_segments = 16
+	mesh.rings = 1
+	mesh_instance.mesh = mesh
+	mesh_instance.material_override = material
+	return mesh_instance
+
+
+func _make_aim_extension_material(color: Color, energy: float) -> ShaderMaterial:
+	var material: ShaderMaterial = ShaderMaterial.new()
+	material.shader = _get_aim_extension_shader()
+	material.set_shader_parameter("beam_color", color)
+	material.set_shader_parameter("emission_energy", energy)
+	return material
+
+
+func _get_aim_extension_shader() -> Shader:
+	var shader: Shader = Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
+
+uniform vec4 beam_color : source_color = vec4(0.5, 1.0, 0.95, 0.7);
+uniform float emission_energy = 2.0;
+
+void fragment() {
+	ALBEDO = beam_color.rgb;
+	ALPHA = beam_color.a;
+	EMISSION = beam_color.rgb * emission_energy;
+}
+"""
+	return shader
+
+
+func _make_aim_particle_mesh(is_tip: bool) -> Mesh:
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.no_depth_test = true
+	material.albedo_color = Color(0.52, 1.0, 0.96, 0.78)
+	material.emission_enabled = true
+	material.emission = Color(0.38, 1.0, 0.9, 1.0)
+	material.emission_energy_multiplier = 2.2 if is_tip else 1.55
+
+	var mesh: SphereMesh = SphereMesh.new()
+	mesh.radius = 0.038 if is_tip else 0.024
+	mesh.height = mesh.radius * 2.0
+	mesh.radial_segments = 8
+	mesh.rings = 4
+	mesh.material = material
+	return mesh
+
+
+func _make_aim_particle_process_material(is_tip: bool) -> ParticleProcessMaterial:
+	var material: ParticleProcessMaterial = ParticleProcessMaterial.new()
+	material.direction = Vector3(0.0, 0.0, -1.0)
+	material.spread = 58.0 if is_tip else 10.0
+	material.initial_velocity_min = 0.42 if is_tip else 5.8
+	material.initial_velocity_max = 1.6 if is_tip else 10.8
+	material.gravity = Vector3.ZERO
+	material.damping_min = 0.08 if is_tip else 0.2
+	material.damping_max = 0.7 if is_tip else 0.9
+	material.scale_min = 0.38 if is_tip else 0.42
+	material.scale_max = 1.35 if is_tip else 1.75
+	material.color_ramp = _make_aim_particle_color_ramp(is_tip)
+	return material
+
+
+func _make_aim_particle_color_ramp(is_tip: bool) -> GradientTexture1D:
+	var gradient: Gradient = Gradient.new()
+	var head: Color = Color(0.72, 1.0, 0.96, 0.92 if is_tip else 0.82)
+	var core: Color = Color(0.18, 0.92, 1.0, 0.72 if is_tip else 0.5)
+	var tail: Color = Color(0.04, 0.34, 0.55, 0.0)
+	gradient.set_color(0, head)
+	gradient.set_color(1, tail)
+	gradient.add_point(0.38 if is_tip else 0.52, core)
+	var texture: GradientTexture1D = GradientTexture1D.new()
+	texture.gradient = gradient
+	return texture
 
 
 func start_turn(tm_ref: Node = null) -> void:
@@ -848,10 +981,26 @@ func _hide_indicator() -> void:
 		segment.visible = false
 	if arrow_tip:
 		arrow_tip.visible = false
+	_hide_gpu_aim_effect()
 	current_aim_direction = Vector3.ZERO
 	current_shot_ratio = 0.0
 	current_shot_impulse = 0.0
 	current_shot_lift = 0.0
+
+
+func _hide_gpu_aim_effect() -> void:
+	if aim_effect_root != null and is_instance_valid(aim_effect_root):
+		aim_effect_root.visible = false
+	if aim_line_glow != null and is_instance_valid(aim_line_glow):
+		aim_line_glow.visible = false
+	if aim_line_core != null and is_instance_valid(aim_line_core):
+		aim_line_core.visible = false
+	if aim_line_tip != null and is_instance_valid(aim_line_tip):
+		aim_line_tip.visible = false
+	if aim_beam_particles != null and is_instance_valid(aim_beam_particles):
+		aim_beam_particles.emitting = false
+	if aim_tip_particles != null and is_instance_valid(aim_tip_particles):
+		aim_tip_particles.emitting = false
 
 
 func update_path_indicator(current_pos: Vector2) -> void:
@@ -885,11 +1034,6 @@ func _render_current_shot_preview(show_power_meter: bool) -> void:
 		_update_power_meter(0.0, show_power_meter)
 		return
 
-	for segment in indicator_segments:
-		segment.visible = true
-	if arrow_tip:
-		arrow_tip.visible = true
-
 	_update_power_meter(current_shot_ratio, show_power_meter)
 	var impulse_ratio: float = clampf(planar_impulse.length() / maxf(max_shot_impulse, 0.001), 0.0, 1.35)
 	var path_length: float = clampf(lerpf(1.05, 5.9, current_shot_ratio) * lerpf(0.85, 1.12, impulse_ratio), 0.85, 6.6)
@@ -900,45 +1044,93 @@ func _render_current_shot_preview(show_power_meter: bool) -> void:
 
 	var start: Vector3 = global_position + Vector3.UP * 0.12
 	var end: Vector3 = start + preview_direction * path_length
-	var control: Vector3 = start.lerp(end, 0.5) + Vector3.UP * arc_height
+	_update_gpu_aim_effect(start, end, preview_direction, path_length, arc_height, current_shot_ratio, impulse_ratio)
 
-	var points: Array[Vector3] = []
-	for index in range(indicator_segment_count + 1):
-		var t: float = float(index) / float(indicator_segment_count)
-		points.append(_quadratic_bezier(start, control, end, t))
 
-	for index in range(indicator_segment_count):
-		var segment := indicator_segments[index]
-		var segment_start: Vector3 = points[index]
-		var segment_end: Vector3 = points[index + 1]
-		var segment_vector: Vector3 = segment_end - segment_start
-		var segment_length: float = segment_vector.length()
-		if segment_length <= 0.001:
-			segment.visible = false
-			continue
+func _update_gpu_aim_effect(start: Vector3, end: Vector3, direction: Vector3, path_length: float, arc_height: float, shot_ratio: float, impulse_ratio: float) -> void:
+	if aim_effect_root == null or not is_instance_valid(aim_effect_root):
+		_create_gpu_aim_effect()
+	if aim_effect_root == null:
+		return
 
-		segment.visible = true
-		segment.mesh = _segment_mesh
-		segment.global_transform = Transform3D(
-			_basis_from_y(segment_vector.normalized()),
-			segment_start.lerp(segment_end, 0.5)
-		)
-
-		var thickness: float = lerpf(0.17, 0.06, float(index) / float(max(indicator_segment_count - 1, 1)))
-		segment.scale = Vector3(thickness, segment_length, thickness)
-
-	var tip_vector: Vector3 = end - points[indicator_segment_count - 1]
-	if tip_vector.length_squared() == 0.0:
-		tip_vector = preview_direction
+	for segment in indicator_segments:
+		segment.visible = false
 	if arrow_tip:
-		arrow_tip.visible = true
-		arrow_tip.mesh = _tip_mesh
-		arrow_tip.global_transform = Transform3D(
-			_basis_from_y(tip_vector.normalized()),
-			end
-		)
-		var tip_scale: float = lerpf(0.18, 0.28, current_shot_ratio)
-		arrow_tip.scale = Vector3(tip_scale, _tip_mesh.height, tip_scale)
+		arrow_tip.visible = false
+
+	var safe_direction: Vector3 = direction.normalized()
+	if safe_direction.length_squared() <= 0.0001:
+		safe_direction = Vector3.FORWARD
+
+	aim_effect_root.visible = true
+	aim_effect_root.global_transform = Transform3D.IDENTITY
+
+	var line_start: Vector3 = start + safe_direction * 0.26
+	var line_end: Vector3 = end + Vector3.UP * minf(arc_height * 0.1, 0.08)
+	var side_sway: Vector3 = Vector3(-safe_direction.z, 0.0, safe_direction.x)
+	if side_sway.length_squared() > 0.0001:
+		side_sway = side_sway.normalized()
+		var sway_amount: float = sin(float(Time.get_ticks_msec()) * 0.006 + shot_ratio * 4.0) * lerpf(0.01, 0.035, clampf(shot_ratio, 0.0, 1.0))
+		line_end += side_sway * sway_amount
+	var line_vector: Vector3 = line_end - line_start
+	var line_length: float = maxf(line_vector.length(), 0.1)
+	var line_direction: Vector3 = line_vector.normalized()
+	var line_center: Vector3 = line_start.lerp(line_end, 0.5)
+	var beam_basis: Basis = _basis_from_y(line_direction)
+	var power_width: float = lerpf(0.7, 1.25, clampf(shot_ratio, 0.0, 1.0))
+	var core_radius: float = lerpf(0.014, 0.026, clampf(impulse_ratio, 0.0, 1.0)) * power_width
+	var glow_radius: float = core_radius * 2.15
+
+	_update_aim_extension_materials(shot_ratio)
+	_position_aim_line(aim_line_glow, beam_basis, line_center, line_length, glow_radius)
+	_position_aim_line(aim_line_core, beam_basis, line_center, line_length, core_radius)
+
+	if aim_line_tip != null and is_instance_valid(aim_line_tip):
+		aim_line_tip.visible = true
+		aim_line_tip.global_position = line_end
+		var tip_scale: float = lerpf(0.28, 0.48, clampf(shot_ratio, 0.0, 1.0))
+		aim_line_tip.scale = Vector3.ONE * tip_scale
+
+	if aim_beam_particles != null and is_instance_valid(aim_beam_particles):
+		aim_beam_particles.emitting = false
+	if aim_tip_particles != null and is_instance_valid(aim_tip_particles):
+		aim_tip_particles.emitting = false
+
+
+func _position_aim_line(line: MeshInstance3D, basis: Basis, center: Vector3, length: float, radius: float) -> void:
+	if line == null or not is_instance_valid(line):
+		return
+	line.visible = true
+	line.global_transform = Transform3D(basis, center)
+	line.scale = Vector3(radius, length, radius)
+
+
+func _update_aim_extension_materials(shot_ratio: float) -> void:
+	var trail_color: Color = _get_aim_extension_color()
+	var core_color: Color = trail_color.lerp(Color(1.0, 1.0, 1.0, 1.0), 0.42)
+	core_color.a = lerpf(0.32, 0.58, clampf(shot_ratio, 0.0, 1.0))
+	var glow_color: Color = trail_color
+	glow_color.a = lerpf(0.08, 0.18, clampf(shot_ratio, 0.0, 1.0))
+	var tip_color: Color = trail_color.lerp(Color(1.0, 1.0, 1.0, 1.0), 0.2)
+	tip_color.a = lerpf(0.28, 0.46, clampf(shot_ratio, 0.0, 1.0))
+
+	if _aim_core_material != null:
+		_aim_core_material.set_shader_parameter("beam_color", core_color)
+	if _aim_glow_material != null:
+		_aim_glow_material.set_shader_parameter("beam_color", glow_color)
+	if _aim_tip_mesh_material != null:
+		_aim_tip_mesh_material.set_shader_parameter("beam_color", tip_color)
+
+
+func _get_aim_extension_color() -> Color:
+	var customization: Node = get_node_or_null("/root/CustomizationState")
+	if customization != null and customization.has_method("get_selected_trail_preset"):
+		var selected_preset: Dictionary = customization.call("get_selected_trail_preset")
+		if selected_preset.has("emission"):
+			return selected_preset.get("emission", Color(0.42, 1.0, 0.94, 1.0))
+		if selected_preset.has("color"):
+			return selected_preset.get("color", Color(0.42, 1.0, 0.94, 1.0))
+	return Color(0.42, 1.0, 0.94, 1.0)
 
 
 func handle_shot(start: Vector2, end: Vector2) -> void:

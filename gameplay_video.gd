@@ -1,6 +1,7 @@
 extends Node3D
 
 const MENU_SCENE_PATH: String = "res://Start_Menu.tscn"
+const INTRO_VIDEO_PATH: String = "res://ui/intro_video.ogv"
 const MARBLE_SCENE: PackedScene = preload("res://marble.tscn")
 const HOLE_SCRIPT: Script = preload("res://hole_bowl.gd")
 
@@ -18,6 +19,8 @@ var target_ring: MeshInstance3D
 var lesson_label: Label3D
 var detail_label: Label3D
 var back_label: Label3D
+var video_layer: CanvasLayer
+var video_player: VideoStreamPlayer
 var hand_pointer: Node3D
 var elapsed: float = 0.0
 var segment_index: int = -1
@@ -25,6 +28,9 @@ var segment_time: float = 0.0
 
 
 func _ready() -> void:
+	if _try_build_intro_video_player():
+		set_process(false)
+		return
 	_build_world()
 	_apply_segment(0)
 	set_process(true)
@@ -54,6 +60,56 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _go_back_to_menu() -> void:
 	get_tree().change_scene_to_file(MENU_SCENE_PATH)
+
+
+func _try_build_intro_video_player() -> bool:
+	if not ResourceLoader.exists(INTRO_VIDEO_PATH):
+		push_warning("Intro video not found at: %s" % INTRO_VIDEO_PATH)
+		return false
+	var stream := ResourceLoader.load(INTRO_VIDEO_PATH) as VideoStream
+	if stream == null:
+		push_warning("Intro video could not be loaded: %s" % INTRO_VIDEO_PATH)
+		return false
+
+	video_layer = CanvasLayer.new()
+	video_layer.name = "IntroVideoLayer"
+	add_child(video_layer)
+
+	var background := ColorRect.new()
+	background.name = "VideoBackground"
+	background.color = Color.BLACK
+	background.set_anchors_preset(Control.PRESET_FULL_RECT)
+	video_layer.add_child(background)
+
+	video_player = VideoStreamPlayer.new()
+	video_player.name = "IntroVideoPlayer"
+	video_player.set_anchors_preset(Control.PRESET_FULL_RECT)
+	video_player.expand = true
+	video_player.stream = stream
+	video_layer.add_child(video_player)
+	video_player.finished.connect(_on_intro_video_finished)
+	video_player.play()
+
+	var back_button := Button.new()
+	back_button.name = "BackButton"
+	back_button.text = "BACK"
+	back_button.focus_mode = Control.FOCUS_NONE
+	back_button.anchor_left = 0.0
+	back_button.anchor_top = 0.0
+	back_button.anchor_right = 0.0
+	back_button.anchor_bottom = 0.0
+	back_button.offset_left = 18.0
+	back_button.offset_top = 16.0
+	back_button.offset_right = 126.0
+	back_button.offset_bottom = 58.0
+	back_button.pressed.connect(_go_back_to_menu)
+	video_layer.add_child(back_button)
+	return true
+
+
+func _on_intro_video_finished() -> void:
+	if video_player != null:
+		video_player.play()
 
 
 func _is_back_corner(screen_position: Vector2) -> bool:
@@ -420,7 +476,7 @@ func _make_ring(color_value: Color) -> MeshInstance3D:
 	torus.inner_radius = 0.48
 	torus.outer_radius = 0.54
 	torus.ring_segments = 48
-	torus.sides = 8
+	torus.rings = 8
 	torus.material = _make_emissive_material(color_value, 1.3)
 	ring.mesh = torus
 	return ring

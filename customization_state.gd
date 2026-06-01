@@ -36,7 +36,9 @@ const PREMIUM_IMPORTED_MARBLE_IDS := [
 	"cannonbolt_ball",
 	"little_robot_ball",
 	"pool_ball",
-	"rainbow_galaxy_ball"
+	"rainbow_galaxy_ball",
+	"anime_red_black_ball",
+	"marble_ball_3_import"
 ]
 
 var selected_marble_id: String = DEFAULT_MARBLE_ID
@@ -487,6 +489,52 @@ var marble_presets: Dictionary = {
 			"emission_energy": 0.0
 		}
 	},
+	"anime_red_black_ball": {
+		"name": "Anime VFX Red Black",
+		"description": "Red and black anime energy marble.",
+		"type": "premium",
+		"pattern": "glass",
+		"colors": [Color(1.0, 0.08, 0.04, 1.0), Color(0.08, 0.02, 0.02, 1.0), Color(0.42, 0.0, 0.0, 1.0)],
+		"effects": {"emission_enabled": true, "emission_color": Color(1, 0.08, 0.04, 1), "emission_energy": 0.55},
+		"palette": {
+			"marble_type": "premium",
+			"pattern_name": "glass",
+			"marble_scene_path": "res://marbles/new_anime_vfx_red_black_ball_model.tscn",
+			"finish": "standard",
+			"preserve_imported_look": true,
+			"shell_is_solid": true,
+			"shell_base_color": Color(0.08, 0.02, 0.02, 0.96),
+			"shell_swirl_orange": Color(1.0, 0.08, 0.04, 1.0),
+			"shell_swirl_green": Color(0.42, 0.0, 0.0, 1.0),
+			"shell_swirl_blue": Color(0.0, 0.0, 0.0, 1.0),
+			"emission_enabled": true,
+			"emission_color": Color(1, 0.08, 0.04, 1),
+			"emission_energy": 0.55
+		}
+	},
+	"marble_ball_3_import": {
+		"name": "Marble Ball III",
+		"description": "Imported marble ball variant.",
+		"type": "premium",
+		"pattern": "glass",
+		"colors": [Color(0.92, 0.94, 1.0, 1.0), Color(0.34, 0.44, 0.72, 1.0), Color(0.08, 0.10, 0.18, 1.0)],
+		"effects": {"emission_enabled": false, "emission_color": Color(1, 1, 1, 1), "emission_energy": 0.0},
+		"palette": {
+			"marble_type": "premium",
+			"pattern_name": "glass",
+			"marble_scene_path": "res://marbles/marble_ball_3_import_model.tscn",
+			"finish": "standard",
+			"preserve_imported_look": true,
+			"shell_is_solid": true,
+			"shell_base_color": Color(0.92, 0.94, 1.0, 0.96),
+			"shell_swirl_orange": Color(0.92, 0.94, 1.0, 1.0),
+			"shell_swirl_green": Color(0.34, 0.44, 0.72, 1.0),
+			"shell_swirl_blue": Color(0.08, 0.10, 0.18, 1.0),
+			"emission_enabled": false,
+			"emission_color": Color(1, 1, 1, 1),
+			"emission_energy": 0.0
+		}
+	},
 }
 
 var trail_presets: Dictionary = {
@@ -631,6 +679,7 @@ var banner_presets: Dictionary = {
 		"text": Color(0.96, 0.99, 1.0, 1.0),
 		"outline": Color(0.0, 0.02, 0.06, 0.92),
 		"shape": "banner",
+		"style": "crystal",
 		"cost": 0
 	},
 	"inferno": {
@@ -641,6 +690,7 @@ var banner_presets: Dictionary = {
 		"text": Color(1.0, 0.94, 0.78, 1.0),
 		"outline": Color(0.18, 0.02, 0.0, 0.96),
 		"shape": "burner",
+		"style": "flame",
 		"cost": 160
 	},
 	"royal_bubble": {
@@ -651,6 +701,7 @@ var banner_presets: Dictionary = {
 		"text": Color(0.98, 0.94, 1.0, 1.0),
 		"outline": Color(0.02, 0.0, 0.08, 0.96),
 		"shape": "bubble",
+		"style": "glow",
 		"cost": 140
 	},
 	"gold_plate": {
@@ -661,6 +712,7 @@ var banner_presets: Dictionary = {
 		"text": Color(1.0, 0.94, 0.72, 1.0),
 		"outline": Color(0.10, 0.06, 0.0, 0.98),
 		"shape": "plate",
+		"style": "plate",
 		"cost": 180
 	},
 	"lagoon_pop": {
@@ -671,7 +723,161 @@ var banner_presets: Dictionary = {
 		"text": Color(0.86, 1.0, 0.96, 1.0),
 		"outline": Color(0.0, 0.08, 0.07, 0.96),
 		"shape": "bubble",
+		"style": "aqua_glow",
 		"cost": 120
+	},
+	"cyber_diamond": {
+		"name": "Cyber Diamond",
+		"description": "Sharp black-cyan esports banner with a diamond badge.",
+		"fill": Color(0.005, 0.012, 0.016, 0.94),
+		"accent": Color(0.08, 0.78, 1.0, 1.0),
+		"text": Color(0.9, 0.98, 1.0, 1.0),
+		"outline": Color(0.0, 0.02, 0.04, 0.98),
+		"shape": "plate",
+		"style": "cyber_diamond",
+		"cost": 220
+	},
+	"royal_scroll": {
+		"name": "Royal Scroll",
+		"description": "Elegant violet scroll banner with soft gold details.",
+		"fill": Color(0.48, 0.34, 0.96, 0.92),
+		"accent": Color(1.0, 0.74, 0.28, 1.0),
+		"text": Color(1.0, 0.95, 0.78, 1.0),
+		"outline": Color(0.20, 0.08, 0.34, 0.98),
+		"shape": "bubble",
+		"style": "royal_scroll",
+		"cost": 240
+	},
+	"antique_scroll": {
+		"name": "Antique Scroll",
+		"description": "Classic parchment banner artwork with the white background removed.",
+		"fill": Color(0.75, 0.62, 0.38, 0.92),
+		"accent": Color(0.17, 0.13, 0.08, 1.0),
+		"text": Color(0.18, 0.11, 0.05, 1.0),
+		"outline": Color(0.92, 0.78, 0.48, 0.78),
+		"shape": "plate",
+		"style": "texture",
+		"texture_path": "res://ui/banners/antique_scroll_banner.png",
+		"texture_aspect": 3.1579,
+		"text_area_ratio": 0.74,
+		"text_font_scale": 0.76,
+		"cost": 0
+	},
+	"royal_wings": {
+		"name": "Royal Wings",
+		"description": "Gold and purple winged banner artwork with the dark background removed.",
+		"fill": Color(0.96, 0.68, 0.06, 0.94),
+		"accent": Color(0.82, 0.12, 1.0, 1.0),
+		"text": Color(0.34, 0.16, 0.02, 1.0),
+		"outline": Color(1.0, 0.94, 0.66, 0.88),
+		"shape": "plate",
+		"style": "texture",
+		"texture_path": "res://ui/banners/royal_wings_banner.png",
+		"texture_aspect": 2.3,
+		"text_area_ratio": 0.50,
+		"text_font_scale": 0.62,
+		"cost": 0
+	},
+	"red_flame_frame": {
+		"name": "Red Flame Frame",
+		"description": "Red fantasy frame banner artwork with the dark background removed.",
+		"fill": Color(0.72, 0.20, 0.16, 0.94),
+		"accent": Color(1.0, 0.86, 0.46, 1.0),
+		"text": Color(1.0, 0.92, 0.72, 1.0),
+		"outline": Color(0.32, 0.05, 0.02, 0.92),
+		"shape": "plate",
+		"style": "texture",
+		"texture_path": "res://ui/banners/red_flame_frame_banner.png",
+		"texture_aspect": 2.8235,
+		"text_area_ratio": 0.64,
+		"text_font_scale": 0.72,
+		"text_x_offset_3d": 0.08,
+		"text_y_offset_3d": 0.0,
+		"text_y_offset_2d": 0.0,
+		"cost": 0
+	},
+	"koi_gold": {
+		"name": "Koi Gold",
+		"description": "Golden koi banner artwork with the black background removed.",
+		"fill": Color(0.95, 0.66, 0.08, 0.94),
+		"accent": Color(1.0, 0.36, 0.04, 1.0),
+		"text": Color(0.30, 0.10, 0.01, 1.0),
+		"outline": Color(1.0, 0.86, 0.30, 0.88),
+		"shape": "plate",
+		"style": "texture",
+		"texture_path": "res://ui/banners/koi_gold_banner.png",
+		"texture_aspect": 2.7692,
+		"text_area_ratio": 0.50,
+		"text_font_scale": 0.62,
+		"cost": 0
+	},
+	"neon_stitch": {
+		"name": "Neon Stitch",
+		"description": "Red neon video banner frame with the dark background removed.",
+		"fill": Color(0.34, 0.04, 0.08, 0.90),
+		"accent": Color(1.0, 0.22, 0.28, 1.0),
+		"text": Color(1.0, 0.88, 0.90, 1.0),
+		"outline": Color(0.20, 0.0, 0.03, 0.95),
+		"shape": "plate",
+		"style": "texture",
+		"texture_path": "res://ui/banners/neon_stitch_banner.png",
+		"video_path": "res://ui/banners/neon_stitch_banner.ogv",
+		"texture_aspect": 2.5,
+		"text_area_ratio": 0.96,
+		"text_font_scale": 0.72,
+		"text_y_offset_2d": 12.0,
+		"text_y_offset_3d": -0.065,
+		"cost": 0
+	},
+	"bd_strip": {
+		"name": "BD Strip",
+		"description": "Silver and blue badge strip banner with the white background removed.",
+		"fill": Color(0.12, 0.25, 0.35, 0.94),
+		"accent": Color(0.78, 0.90, 1.0, 1.0),
+		"text": Color(0.88, 0.96, 1.0, 1.0),
+		"outline": Color(0.02, 0.08, 0.13, 0.95),
+		"shape": "plate",
+		"style": "texture",
+		"texture_path": "res://ui/banners/bd_strip_banner.png",
+		"texture_aspect": 3.098,
+		"text_area_ratio": 0.54,
+		"text_font_scale": 0.74,
+		"text_x_offset_2d": 58.0,
+		"text_x_offset_3d": 0.16,
+		"text_y_offset_3d": -0.015,
+		"cost": 0
+	},
+	"red_shadow": {
+		"name": "Red Shadow",
+		"description": "Dark red jagged banner artwork with the checker background removed.",
+		"fill": Color(0.10, 0.0, 0.0, 0.94),
+		"accent": Color(1.0, 0.05, 0.08, 1.0),
+		"text": Color(1.0, 0.86, 0.90, 1.0),
+		"outline": Color(0.08, 0.0, 0.0, 0.96),
+		"shape": "plate",
+		"style": "texture",
+		"texture_path": "res://ui/banners/red_shadow_banner.png",
+		"texture_aspect": 1.6782,
+		"text_area_ratio": 0.66,
+		"text_font_scale": 0.72,
+		"text_y_offset_2d": -10.0,
+		"text_y_offset_3d": 0.035,
+		"cost": 0
+	},
+	"black_gold_pill": {
+		"name": "Black Gold Pill",
+		"description": "Clean black and gold rounded banner artwork with the dark background removed.",
+		"fill": Color(0.09, 0.09, 0.08, 0.94),
+		"accent": Color(1.0, 0.78, 0.24, 1.0),
+		"text": Color(1.0, 0.90, 0.56, 1.0),
+		"outline": Color(0.0, 0.0, 0.0, 0.9),
+		"shape": "plate",
+		"style": "texture",
+		"texture_path": "res://ui/banners/black_gold_pill_banner.png",
+		"texture_aspect": 4.8438,
+		"text_area_ratio": 0.80,
+		"text_font_scale": 0.78,
+		"cost": 0
 	}
 }
 
@@ -1042,11 +1248,9 @@ func get_currency_display_name(currency: String) -> String:
 
 
 func get_marble_unlock_cost(id: String) -> int:
-	if id == DEFAULT_MARBLE_ID:
-		return 0
 	if not marble_presets.has(id) or _is_marble_hidden(id):
 		return 0
-	return SPECIAL_MARBLE_GOLD_COST if _is_special_marble(id) else STANDARD_MARBLE_S_COIN_COST
+	return 0
 
 
 func get_marble_unlock_currency(id: String) -> String:
@@ -1078,9 +1282,7 @@ func is_marble_unlocked(id: String) -> bool:
 		return false
 	if _is_marble_hidden(id):
 		return false
-	if get_marble_unlock_cost(id) <= 0:
-		return true
-	return unlocked_marble_ids.has(id)
+	return true
 
 
 func can_unlock_marble(id: String) -> bool:
