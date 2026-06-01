@@ -2389,13 +2389,17 @@ function sanitizeProfileProgress(progress) {
   copyCleanString(progress, cleanProgress, 'selected_marble_id', 80);
   copyCleanString(progress, cleanProgress, 'selected_trail_id', 80);
   copyCleanString(progress, cleanProgress, 'selected_field_id', 80);
+  copyCleanString(progress, cleanProgress, 'selected_banner_id', 80);
   copyCleanNumber(progress, cleanProgress, 'shoot_sensitivity', 0.5, 1.5);
+  copyCleanNumber(progress, cleanProgress, 'coins', 0, 1000000000);
+  copyCleanNumber(progress, cleanProgress, 'gold', 0, 1000000000);
   if (typeof progress.aim_inverted === 'boolean') {
     cleanProgress.aim_inverted = progress.aim_inverted;
   }
   copyCleanString(progress, cleanProgress, 'shooting_mechanic', 24);
   cleanProgress.unlocked_marble_ids = sanitizeStringArray(progress.unlocked_marble_ids, 220, 80);
   cleanProgress.unlocked_field_ids = sanitizeStringArray(progress.unlocked_field_ids, 120, 80);
+  cleanProgress.unlocked_banner_ids = sanitizeStringArray(progress.unlocked_banner_ids, 120, 80);
   cleanProgress.leaderboard_wins = sanitizeWinsDictionary(progress.leaderboard_wins);
   cleanProgress.leaderboard_names = sanitizeNamesDictionary(progress.leaderboard_names);
   return cleanProgress;
@@ -2407,6 +2411,13 @@ function mergeProfileProgress(existingProgress, nextProgress) {
   const merged = Object.assign({}, existing, next);
   merged.unlocked_marble_ids = Array.from(new Set([].concat(existing.unlocked_marble_ids || [], next.unlocked_marble_ids || [])));
   merged.unlocked_field_ids = Array.from(new Set([].concat(existing.unlocked_field_ids || [], next.unlocked_field_ids || [])));
+  merged.unlocked_banner_ids = Array.from(new Set([].concat(existing.unlocked_banner_ids || [], next.unlocked_banner_ids || [])));
+  if (Object.prototype.hasOwnProperty.call(next, 'coins')) {
+    merged.coins = Math.max(Number(existing.coins || 0), Number(next.coins || 0));
+  }
+  if (Object.prototype.hasOwnProperty.call(next, 'gold')) {
+    merged.gold = Math.max(Number(existing.gold || 0), Number(next.gold || 0));
+  }
   merged.leaderboard_wins = Object.assign({}, existing.leaderboard_wins || {});
   Object.entries(next.leaderboard_wins || {}).forEach(([key, wins]) => {
     merged.leaderboard_wins[key] = Math.max(Number(merged.leaderboard_wins[key] || 0), Number(wins || 0));

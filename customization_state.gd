@@ -1607,6 +1607,8 @@ func _get_remote_progress_payload() -> Dictionary:
 		"shoot_sensitivity": get_shoot_sensitivity(),
 		"aim_inverted": is_aim_inverted(),
 		"shooting_mechanic": get_shooting_mechanic(),
+		"coins": get_coin_balance(),
+		"gold": get_gold_balance(),
 		"unlocked_marble_ids": _packed_string_array_to_array(unlocked_marble_ids),
 		"unlocked_field_ids": _packed_string_array_to_array(unlocked_field_ids),
 		"unlocked_banner_ids": _packed_string_array_to_array(unlocked_banner_ids),
@@ -1661,6 +1663,13 @@ func _apply_remote_progress(progress: Dictionary) -> void:
 	var remote_mechanic: String = str(progress.get("shooting_mechanic", "")).strip_edges()
 	if _is_valid_shooting_mechanic(remote_mechanic):
 		shooting_mechanic = remote_mechanic
+	var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
+	if currency_manager != null and currency_manager.has_method("set_balances"):
+		var remote_coins: int = int(progress.get("coins", -1))
+		var remote_gold: int = int(progress.get("gold", -1))
+		var next_coins: int = maxi(get_coin_balance(), remote_coins) if remote_coins >= 0 else get_coin_balance()
+		var next_gold: int = maxi(get_gold_balance(), remote_gold) if remote_gold >= 0 else get_gold_balance()
+		currency_manager.call("set_balances", next_coins, next_gold)
 
 	var remote_wins: Dictionary = progress.get("leaderboard_wins", {}) if typeof(progress.get("leaderboard_wins", {})) == TYPE_DICTIONARY else {}
 	var remote_names: Dictionary = progress.get("leaderboard_names", {}) if typeof(progress.get("leaderboard_names", {})) == TYPE_DICTIONARY else {}

@@ -32,6 +32,12 @@ func add_purchased_gold(amount: int) -> int:
 	return get_gold()
 
 
+func set_balances(next_coins: int, next_gold: int) -> void:
+	coins = max(next_coins, 0)
+	gold = max(next_gold, 0)
+	_save_and_emit()
+
+
 func spend_coins(amount: int) -> bool:
 	if amount < 0 or coins < amount:
 		return false
