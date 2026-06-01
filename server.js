@@ -1220,12 +1220,24 @@ function buildAdminSnapshot() {
   const now = Date.now();
   const allClients = Array.from(clientsById.values());
   const connectedClients = allClients.filter((client) => client.connected === true);
-  const registeredClients = allClients.filter((client) => String(client.login_id || '').trim() !== '');
+  const registeredLoginIds = new Set(Array.from(playerProfilesByLoginId.keys()).map((loginId) => String(loginId || '').trim()).filter(Boolean));
+  allClients.forEach((client) => {
+    const loginId = String(client.login_id || '').trim();
+    if (loginId) {
+      registeredLoginIds.add(loginId);
+    }
+  });
   const joinedClients = allClients.filter((client) => {
     return Boolean(client.room_id) || Number(client.rooms_joined || 0) > 0;
   });
   const openParties = Array.from(rooms.values()).filter((room) => !room.started);
   const runningParties = Array.from(rooms.values()).filter((room) => room.started);
+  const clientPlayers = allClients.map(serializeAdminPlayer);
+  const clientLoginIds = new Set(clientPlayers.map((player) => String(player.login_id || '').trim()).filter(Boolean));
+  const storedProfilePlayers = Array.from(playerProfilesByLoginId.values())
+    .map(serializeAdminStoredProfile)
+    .filter((player) => !clientLoginIds.has(String(player.login_id || '').trim()));
+  const adminPlayers = clientPlayers.concat(storedProfilePlayers);
 
   return {
     ok: true,
@@ -1235,14 +1247,13 @@ function buildAdminSnapshot() {
     totals: {
       sessions: allClients.length,
       online_players: connectedClients.length,
-      registered_players: registeredClients.length,
+      registered_players: registeredLoginIds.size,
       joined_players: joinedClients.length,
       open_parties: openParties.length,
       running_parties: runningParties.length,
       rooms: rooms.size
     },
-    players: allClients
-      .map(serializeAdminPlayer)
+    players: adminPlayers
       .sort((first, second) => {
         if (first.connected !== second.connected) {
           return first.connected ? -1 : 1;
@@ -1260,23 +1271,63 @@ function buildAdminSnapshot() {
   };
 }
 
+function serializeAdminStoredProfile(profile) {
+  const loginId = String(profile && profile.login_id || '').trim();
+  const progress = sanitizeProfileProgress(profile && profile.progress || {});
+
+  return {
+    id: `profile:${loginId}`,
+    client_id: '',
+    name: profile.name || 'Player',
+    login_id: loginId,
+    registered: loginId !== '',
+    age: profile.player_age || 0,
+    coin_balance: Number(progress.coins || 0),
+    gold_balance: Number(progress.gold || 0),
+    country: profile.country || 'Unknown',
+    points: Number(profile.ranking_points || 0),
+    wins: Number(profile.ranking_wins || 0),
+    eliminations: Number(profile.ranking_eliminations || 0),
+    purchases: summarizePaymentsForProfile(profile),
+    connected: false,
+    ip: '',
+    in_room: false,
+    room_id: '',
+    room_code: '',
+    room_name: '',
+    party_state: 'offline',
+    room_capacity: 0,
+    is_host: false,
+    rooms_joined: 0,
+    created_at: profile.created_at || 0,
+    connected_at: 0,
+    registered_at: profile.created_at || 0,
+    last_seen_at: profile.last_seen_at || profile.updated_at || profile.created_at || 0,
+    last_room_joined_at: 0,
+    friends_count: 0,
+    dropped_messages: 0
+  };
+}
+
 function serializeAdminPlayer(client) {
   const room = rooms.get(client.room_id || '');
   const loginId = String(client.login_id || '').trim();
+  const storedProfile = loginId ? playerProfilesByLoginId.get(loginId) : null;
+  const storedProgress = sanitizeProfileProgress(storedProfile && storedProfile.progress || {});
 
   return {
     id: client.id,
     client_id: client.id,
-    name: client.name || 'Player',
+    name: client.name || storedProfile && storedProfile.name || 'Player',
     login_id: loginId,
     registered: loginId !== '',
-    age: client.age || 0,
-    coin_balance: client.coin_balance || 0,
-    gold_balance: client.gold_balance || 0,
-    country: client.country || 'Unknown',
-    points: Number(client.ranking_points || 0),
-    wins: Number(client.ranking_wins || 0),
-    eliminations: Number(client.ranking_eliminations || 0),
+    age: client.age || storedProfile && storedProfile.player_age || 0,
+    coin_balance: Math.max(Number(client.coin_balance || 0), Number(storedProgress.coins || 0)),
+    gold_balance: Math.max(Number(client.gold_balance || 0), Number(storedProgress.gold || 0)),
+    country: client.country || storedProfile && storedProfile.country || 'Unknown',
+    points: Math.max(Number(client.ranking_points || 0), Number(storedProfile && storedProfile.ranking_points || 0)),
+    wins: Math.max(Number(client.ranking_wins || 0), Number(storedProfile && storedProfile.ranking_wins || 0)),
+    eliminations: Math.max(Number(client.ranking_eliminations || 0), Number(storedProfile && storedProfile.ranking_eliminations || 0)),
     purchases: summarizePaymentsForClient(client),
     connected: client.connected === true,
     ip: client.ip || 'unknown',
@@ -1290,12 +1341,19 @@ function serializeAdminPlayer(client) {
     rooms_joined: Number(client.rooms_joined || 0),
     created_at: client.created_at || 0,
     connected_at: client.connected_at || 0,
-    registered_at: client.registered_at || 0,
-    last_seen_at: client.last_seen_at || client.connected_at || client.created_at || 0,
+    registered_at: client.registered_at || storedProfile && storedProfile.created_at || 0,
+    last_seen_at: client.last_seen_at || storedProfile && storedProfile.last_seen_at || storedProfile && storedProfile.updated_at || client.connected_at || client.created_at || 0,
     last_room_joined_at: client.last_room_joined_at || 0,
     friends_count: client.friends ? client.friends.size : 0,
     dropped_messages: Number(client.dropped_messages || 0)
   };
+}
+
+function summarizePaymentsForProfile(profile) {
+  return summarizePaymentsForClient({
+    login_id: profile && profile.login_id || '',
+    name: profile && profile.name || ''
+  });
 }
 
 function summarizePaymentsForClient(client) {
@@ -2973,10 +3031,10 @@ function handleMessage(client, data, socket) {
   if (typeof message.country === 'string' && message.country.trim() !== '') {
     client.country = sanitizeCountry(message.country);
   }
-  updateClientProfileNumbers(client, message);
+  const profileNumbersChanged = updateClientProfileNumbers(client, message);
   const identityChanged = client.name !== previousName || client.login_id !== previousLoginId || client.age !== previousAge;
 
-  if (identityChanged) {
+  if (identityChanged || profileNumbersChanged) {
     persistClientPlayerInfo(client);
   }
 
@@ -3062,7 +3120,7 @@ function handleMessage(client, data, socket) {
       break;
   }
 
-  if (identityChanged && message.type !== 'resume_session') {
+  if ((identityChanged || profileNumbersChanged) && message.type !== 'resume_session') {
     broadcastOnlineDirectory();
   }
 }
@@ -3136,23 +3194,45 @@ function resumeSession(tempClient, socket, sessionToken, name, loginId, profileP
 
 function updateClientProfileNumbers(client, source) {
   if (!client || !source || typeof source !== 'object') {
-    return;
+    return false;
   }
 
+  let changed = false;
   const age = Number.parseInt(source.age || source.player_age || 0, 10);
   if (Number.isFinite(age) && age > 0) {
-    client.age = Math.min(Math.max(age, 1), 120);
+    const nextAge = Math.min(Math.max(age, 1), 120);
+    changed = changed || client.age !== nextAge;
+    client.age = nextAge;
   }
 
-  const coinBalance = Number.parseInt(source.coin_balance || source.coins || source.s_coins || 0, 10);
-  if (Number.isFinite(coinBalance) && coinBalance >= 0) {
-    client.coin_balance = coinBalance;
+  const coinBalanceValue = getFirstPresentValue(source, ['coin_balance', 'coins', 's_coins']);
+  if (coinBalanceValue !== undefined) {
+    const coinBalance = Number.parseInt(coinBalanceValue, 10);
+    if (Number.isFinite(coinBalance) && coinBalance >= 0) {
+      changed = changed || client.coin_balance !== coinBalance;
+      client.coin_balance = coinBalance;
+    }
   }
 
-  const goldBalance = Number.parseInt(source.gold_balance || source.gold || 0, 10);
-  if (Number.isFinite(goldBalance) && goldBalance >= 0) {
-    client.gold_balance = goldBalance;
+  const goldBalanceValue = getFirstPresentValue(source, ['gold_balance', 'gold']);
+  if (goldBalanceValue !== undefined) {
+    const goldBalance = Number.parseInt(goldBalanceValue, 10);
+    if (Number.isFinite(goldBalance) && goldBalance >= 0) {
+      changed = changed || client.gold_balance !== goldBalance;
+      client.gold_balance = goldBalance;
+    }
   }
+
+  return changed;
+}
+
+function getFirstPresentValue(source, keys) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      return source[key];
+    }
+  }
+  return undefined;
 }
 
 function persistClientPlayerInfo(client) {
@@ -3190,6 +3270,10 @@ function persistClientPlayerInfo(client) {
   existing.ranking_points = Math.max(Number(existing.ranking_points || 0), Number(client.ranking_points || 0));
   existing.ranking_wins = Math.max(Number(existing.ranking_wins || 0), Number(client.ranking_wins || 0));
   existing.ranking_eliminations = Math.max(Number(existing.ranking_eliminations || 0), Number(client.ranking_eliminations || 0));
+  const progress = sanitizeProfileProgress(existing.progress || {});
+  progress.coins = Math.max(Number(progress.coins || 0), Number(client.coin_balance || 0));
+  progress.gold = Math.max(Number(progress.gold || 0), Number(client.gold_balance || 0));
+  existing.progress = progress;
   existing.updated_at = now;
   existing.last_seen_at = now;
 
@@ -3204,6 +3288,7 @@ function handleDisconnect(client, socket, code, reason) {
 
   client.connected = false;
   client.last_seen_at = Date.now();
+  persistClientPlayerInfo(client);
   const cleanReason = reason ? reason.toString() : '';
   console.log(`[disconnect] ${client.id} code=${code} reason=${cleanReason}`);
 

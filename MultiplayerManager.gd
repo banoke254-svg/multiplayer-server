@@ -648,20 +648,20 @@ func _on_socket_opened() -> void:
 	_set_status("Connected to online server.")
 
 	if session_token != "":
-		_send_now({
+		_send_now(_with_local_player_profile({
 			"type": "resume_session",
 			"session_token": session_token,
 			"name": get_local_player_name(),
 			"login_id": get_local_player_login_id()
-		})
+		}))
 
 	if request_rooms_after_connect:
 		request_rooms_after_connect = false
-		_send_now({
+		_send_now(_with_local_player_profile({
 			"type": "list_rooms",
 			"name": get_local_player_name(),
 			"login_id": get_local_player_login_id()
-		})
+		}))
 
 	_flush_pending_messages()
 
