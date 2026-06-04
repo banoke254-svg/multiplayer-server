@@ -9,6 +9,8 @@ const LOCAL_GAME_FONT_PATHS: Array[String] = [
 	"res://fonts/bangers.otf",
 	"res://fonts/Bangers-Regular.ttf",
 	"res://fonts/Bangers-Regular.otf",
+	"res://fonts/RAVIE.TTF",
+	"res://fonts/Ravie.ttf",
 	"res://fonts/bank_gothic.ttf",
 	"res://fonts/bank_gothic.otf",
 	"res://fonts/BankGothic.ttf",

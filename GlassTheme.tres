@@ -1,9 +1,6 @@
 [gd_resource type="Theme" format=3 uid="uid://m6ecx767s4a5"]
 
-[sub_resource type="SystemFont" id="SystemFont_bank_gothic"]
-font_names = PackedStringArray("BANGOKZ", "Bangokz", "Bangers", "Showcard Gothic", "Ravie", "Snap ITC", "Jokerman", "Impact", "Algerian", "Stencil", "Bank Gothic", "BankGothic Md BT", "Bank Gothic Medium", "BankGothic", "Copperplate Gothic Bold", "Copperplate Gothic Light", "Century Gothic", "Bahnschrift", "Arial")
-font_weight = 700
-subpixel_positioning = 0
+[ext_resource type="FontFile" path="res://fonts/RAVIE.TTF" id="1_ravie"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disabled"]
 content_margin_left = 16.0
@@ -135,30 +132,30 @@ shadow_size = 8
 shadow_offset = Vector2(0, 2)
 
 [resource]
-default_font = SubResource("SystemFont_bank_gothic")
+default_font = ExtResource("1_ravie")
 default_font_size = 16
 Button/colors/font_color = Color(0.97, 0.985, 1, 1)
 Button/colors/font_disabled_color = Color(0.9, 0.93, 0.98, 0.45)
 Button/colors/font_hover_color = Color(1, 1, 1, 1)
 Button/colors/font_pressed_color = Color(0.95, 0.98, 1, 1)
 Button/constants/h_separation = 8
-Button/fonts/font = SubResource("SystemFont_bank_gothic")
+Button/fonts/font = ExtResource("1_ravie")
 Button/styles/disabled = SubResource("StyleBoxFlat_disabled")
 Button/styles/focus = SubResource("StyleBoxFlat_hover")
 Button/styles/hover = SubResource("StyleBoxFlat_hover")
 Button/styles/normal = SubResource("StyleBoxFlat_normal")
 Button/styles/pressed = SubResource("StyleBoxFlat_pressed")
-CheckBox/fonts/font = SubResource("SystemFont_bank_gothic")
-CheckButton/fonts/font = SubResource("SystemFont_bank_gothic")
-ItemList/fonts/font = SubResource("SystemFont_bank_gothic")
-Label/fonts/font = SubResource("SystemFont_bank_gothic")
-LineEdit/fonts/font = SubResource("SystemFont_bank_gothic")
+CheckBox/fonts/font = ExtResource("1_ravie")
+CheckButton/fonts/font = ExtResource("1_ravie")
+ItemList/fonts/font = ExtResource("1_ravie")
+Label/fonts/font = ExtResource("1_ravie")
+LineEdit/fonts/font = ExtResource("1_ravie")
 MenuButton/colors/font_color = Color(0.97, 0.985, 1, 1)
 MenuButton/colors/font_disabled_color = Color(0.9, 0.93, 0.98, 0.45)
 MenuButton/colors/font_hover_color = Color(1, 1, 1, 1)
 MenuButton/colors/font_pressed_color = Color(0.95, 0.98, 1, 1)
 MenuButton/constants/h_separation = 8
-MenuButton/fonts/font = SubResource("SystemFont_bank_gothic")
+MenuButton/fonts/font = ExtResource("1_ravie")
 MenuButton/styles/disabled = SubResource("StyleBoxFlat_disabled")
 MenuButton/styles/focus = SubResource("StyleBoxFlat_hover")
 MenuButton/styles/hover = SubResource("StyleBoxFlat_hover")
@@ -169,7 +166,7 @@ OptionButton/colors/font_disabled_color = Color(0.9, 0.93, 0.98, 0.45)
 OptionButton/colors/font_hover_color = Color(1, 1, 1, 1)
 OptionButton/colors/font_pressed_color = Color(0.95, 0.98, 1, 1)
 OptionButton/constants/h_separation = 8
-OptionButton/fonts/font = SubResource("SystemFont_bank_gothic")
+OptionButton/fonts/font = ExtResource("1_ravie")
 OptionButton/styles/disabled = SubResource("StyleBoxFlat_disabled")
 OptionButton/styles/focus = SubResource("StyleBoxFlat_hover")
 OptionButton/styles/hover = SubResource("StyleBoxFlat_hover")
@@ -177,19 +174,19 @@ OptionButton/styles/normal = SubResource("StyleBoxFlat_normal")
 OptionButton/styles/pressed = SubResource("StyleBoxFlat_pressed")
 Panel/styles/panel = SubResource("StyleBoxFlat_panel")
 PanelContainer/styles/panel = SubResource("StyleBoxFlat_panel")
-PopupMenu/fonts/font = SubResource("SystemFont_bank_gothic")
+PopupMenu/fonts/font = ExtResource("1_ravie")
 ProgressBar/colors/font_color = Color(0.97, 0.985, 1, 1)
 ProgressBar/colors/font_outline_color = Color(0.04, 0.08, 0.14, 0.55)
 ProgressBar/constants/outline_size = 1
-ProgressBar/fonts/font = SubResource("SystemFont_bank_gothic")
+ProgressBar/fonts/font = ExtResource("1_ravie")
 ProgressBar/styles/background = SubResource("StyleBoxFlat_progress_bg")
 ProgressBar/styles/fill = SubResource("StyleBoxFlat_progress_fill")
-RichTextLabel/fonts/bold_font = SubResource("SystemFont_bank_gothic")
-RichTextLabel/fonts/bold_italics_font = SubResource("SystemFont_bank_gothic")
-RichTextLabel/fonts/italics_font = SubResource("SystemFont_bank_gothic")
-RichTextLabel/fonts/mono_font = SubResource("SystemFont_bank_gothic")
-RichTextLabel/fonts/normal_font = SubResource("SystemFont_bank_gothic")
-TabBar/fonts/font = SubResource("SystemFont_bank_gothic")
-TabContainer/fonts/font = SubResource("SystemFont_bank_gothic")
-TextEdit/fonts/font = SubResource("SystemFont_bank_gothic")
-Tree/fonts/font = SubResource("SystemFont_bank_gothic")
+RichTextLabel/fonts/bold_font = ExtResource("1_ravie")
+RichTextLabel/fonts/bold_italics_font = ExtResource("1_ravie")
+RichTextLabel/fonts/italics_font = ExtResource("1_ravie")
+RichTextLabel/fonts/mono_font = ExtResource("1_ravie")
+RichTextLabel/fonts/normal_font = ExtResource("1_ravie")
+TabBar/fonts/font = ExtResource("1_ravie")
+TabContainer/fonts/font = ExtResource("1_ravie")
+TextEdit/fonts/font = ExtResource("1_ravie")
+Tree/fonts/font = ExtResource("1_ravie")

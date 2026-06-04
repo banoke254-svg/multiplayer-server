@@ -513,7 +513,7 @@ var marble_presets: Dictionary = {
 		}
 	},
 	"marble_ball_3_import": {
-		"name": "Marble Ball III",
+		"name": "90s Marble",
 		"description": "Imported marble ball variant.",
 		"type": "premium",
 		"pattern": "glass",

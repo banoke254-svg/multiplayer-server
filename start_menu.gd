@@ -17,6 +17,22 @@ const ONLINE_ROOMS_BACKGROUND_PATH: String = "res://ui/bano_online_rooms.png"
 const ONLINE_ROOMS_BACKGROUND_FALLBACK_PATH: String = "C:/Users/LENOVO/Downloads/ChatGPT Image May 5, 2026, 07_42_00 AM.png"
 const ONLINE_LOADING_SCREEN_PATH: String = "res://ui/bano_match_loading.png"
 const ONLINE_LOADING_VIDEO_PATH: String = "res://ui/online_loading.ogv"
+const LOCAL_MENU_FONT_PATHS: Array[String] = [
+	"res://fonts/bangokz.ttf",
+	"res://fonts/bangokz.otf",
+	"res://fonts/BANGOKZ.ttf",
+	"res://fonts/BANGOKZ.otf",
+	"res://fonts/bangers.ttf",
+	"res://fonts/bangers.otf",
+	"res://fonts/Bangers-Regular.ttf",
+	"res://fonts/Bangers-Regular.otf",
+	"res://fonts/RAVIE.TTF",
+	"res://fonts/Ravie.ttf",
+	"res://fonts/bank_gothic.ttf",
+	"res://fonts/bank_gothic.otf",
+	"res://fonts/BankGothic.ttf",
+	"res://fonts/BankGothic.otf"
+]
 const ONLINE_PAGE_MARGIN_X: int = 18
 const ONLINE_BODY_GAP: int = 14
 const ONLINE_MATCHMAKING_PANEL_MIN_WIDTH: float = 350.0
@@ -707,6 +723,13 @@ func _make_menu_font(weight: int) -> Font:
 		var managed_font: Font = font_manager.call("get_bank_gothic_font", weight) as Font
 		if managed_font != null:
 			return managed_font
+
+	for font_path in LOCAL_MENU_FONT_PATHS:
+		if not ResourceLoader.exists(font_path):
+			continue
+		var loaded_font: Font = load(font_path) as Font
+		if loaded_font != null:
+			return loaded_font
 
 	var system_font := SystemFont.new()
 	system_font.font_names = PackedStringArray([

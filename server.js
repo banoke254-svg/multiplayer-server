@@ -26,6 +26,7 @@ const GOOGLE_TOKEN_PATH = '/token';
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const PROFILE_STORE_PATH = process.env.PROFILE_STORE_PATH || path.join(__dirname, 'player_profiles.json');
 const EVENTS_STORE_PATH = process.env.EVENTS_STORE_PATH || path.join(__dirname, 'game_events.json');
+const PAYMENT_STORE_PATH = process.env.PAYMENT_STORE_PATH || path.join(__dirname, 'payment_records.json');
 const GOLD_PACK_TIERS = new Map([
   [100, 10],
   [175, 30],
@@ -74,6 +75,7 @@ let profileDbReady = false;
 let gameEvents = loadGameEvents();
 
 loadPlayerProfiles();
+loadPaymentRecords();
 
 function createProfileDbPool() {
   if (!DATABASE_URL) {
@@ -2706,12 +2708,27 @@ async function initializeProfileDatabase() {
         updated_at BIGINT NOT NULL DEFAULT 0
       )
     `);
+    await profileDbPool.query(`
+      CREATE TABLE IF NOT EXISTS payment_records (
+        invoice_id TEXT PRIMARY KEY,
+        record JSONB NOT NULL,
+        updated_at BIGINT NOT NULL DEFAULT 0
+      )
+    `);
 
     const result = await profileDbPool.query('SELECT profile FROM player_profiles');
     result.rows.forEach((row) => {
       const profile = sanitizeStoredPlayerProfile(row.profile);
       if (profile && profile.login_id) {
         playerProfilesByLoginId.set(profile.login_id, profile);
+      }
+    });
+
+    const paymentsResult = await profileDbPool.query('SELECT record FROM payment_records ORDER BY updated_at ASC LIMIT 500');
+    paymentsResult.rows.forEach((row) => {
+      const paymentRecord = sanitizeStoredPaymentRecord(row.record);
+      if (paymentRecord) {
+        addPaymentRecordToMemory(paymentRecord);
       }
     });
 
@@ -2780,6 +2797,130 @@ function savePlayerProfiles() {
   }
 }
 
+function loadPaymentRecords() {
+  if (!PAYMENT_STORE_PATH || !fs.existsSync(PAYMENT_STORE_PATH)) {
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(PAYMENT_STORE_PATH, 'utf8'));
+    const records = Array.isArray(parsed.records) ? parsed.records : (Array.isArray(parsed.payments) ? parsed.payments : []);
+    records.forEach((record) => {
+      const cleanRecord = sanitizeStoredPaymentRecord(record);
+      if (cleanRecord) {
+        addPaymentRecordToMemory(cleanRecord);
+      }
+    });
+  } catch (error) {
+    console.warn(`[payments] could not load ${PAYMENT_STORE_PATH}: ${error.message}`);
+  }
+}
+
+function savePaymentRecords() {
+  try {
+    const paymentStoreDirectory = path.dirname(PAYMENT_STORE_PATH);
+    if (paymentStoreDirectory && paymentStoreDirectory !== '.') {
+      fs.mkdirSync(paymentStoreDirectory, { recursive: true });
+    }
+    fs.writeFileSync(PAYMENT_STORE_PATH, JSON.stringify({
+      version: 1,
+      updated_at: Date.now(),
+      records: paymentRecords.slice(-500)
+    }, null, 2));
+  } catch (error) {
+    console.warn(`[payments] could not save ${PAYMENT_STORE_PATH}: ${error.message}`);
+  }
+
+  if (profileDbReady) {
+    savePaymentRecordsToDatabase().catch((error) => {
+      console.warn(`[payments] could not save PostgreSQL payment records: ${error.message}`);
+    });
+  }
+}
+
+async function savePaymentRecordsToDatabase() {
+  if (!profileDbReady) {
+    return;
+  }
+
+  const records = paymentRecords.slice(-500);
+  if (records.length === 0) {
+    return;
+  }
+
+  const client = await profileDbPool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const record of records) {
+      const invoiceId = sanitizeAdminText(record.invoice_id || record.api_ref || crypto.randomUUID(), 80);
+      await client.query(
+        `INSERT INTO payment_records (invoice_id, record, updated_at)
+         VALUES ($1, $2::jsonb, $3)
+         ON CONFLICT (invoice_id)
+         DO UPDATE SET record = EXCLUDED.record, updated_at = EXCLUDED.updated_at`,
+        [invoiceId, JSON.stringify(record), Number(record.updated_at || Date.now())]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function sanitizeStoredPaymentRecord(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return null;
+  }
+
+  const invoiceId = sanitizeAdminText(record.invoice_id || record.api_ref || '', 80);
+  if (!invoiceId) {
+    return null;
+  }
+
+  return {
+    invoice_id: invoiceId,
+    api_ref: sanitizeAdminText(record.api_ref, 80),
+    player_name: sanitizeAdminText(record.player_name, 40),
+    player_login_id: sanitizeAdminText(record.player_login_id, 40),
+    player_age: sanitizePositiveInt(record.player_age, 120),
+    phone_number: sanitizeAdminText(record.phone_number, 20),
+    email: normalizePaymentEmail(record.email),
+    purpose: sanitizePaymentPurpose(record.purpose),
+    amount: Math.max(Math.trunc(Number(record.amount || 0)), 0),
+    gold_amount: Math.max(Math.trunc(Number(record.gold_amount || 0)), 0),
+    terms_accepted: Boolean(record.terms_accepted),
+    communication_consent: Boolean(record.communication_consent),
+    state: sanitizeAdminText(record.state || 'PENDING', 30).toUpperCase(),
+    created_at: Number(record.created_at || Date.now()),
+    updated_at: Number(record.updated_at || Date.now())
+  };
+}
+
+function addPaymentRecordToMemory(record) {
+  if (!record || !record.invoice_id) {
+    return null;
+  }
+
+  const existing = paymentRecordsByInvoiceId.get(record.invoice_id);
+  if (existing) {
+    Object.assign(existing, record);
+    return existing;
+  }
+
+  paymentRecords.push(record);
+  paymentRecordsByInvoiceId.set(record.invoice_id, record);
+  while (paymentRecords.length > 500) {
+    const removed = paymentRecords.shift();
+    if (removed && removed.invoice_id) {
+      paymentRecordsByInvoiceId.delete(removed.invoice_id);
+    }
+  }
+  return record;
+}
+
 async function savePlayerProfilesToDatabase() {
   if (!profileDbReady) {
     return;
@@ -2831,16 +2972,8 @@ function recordPayment(record) {
     updated_at: now
   };
 
-  paymentRecords.push(cleanRecord);
-  while (paymentRecords.length > 500) {
-    const removed = paymentRecords.shift();
-    if (removed && removed.invoice_id) {
-      paymentRecordsByInvoiceId.delete(removed.invoice_id);
-    }
-  }
-  if (cleanRecord.invoice_id) {
-    paymentRecordsByInvoiceId.set(cleanRecord.invoice_id, cleanRecord);
-  }
+  addPaymentRecordToMemory(cleanRecord);
+  savePaymentRecords();
   return cleanRecord;
 }
 
@@ -2863,6 +2996,7 @@ function updatePaymentRecord(invoiceId, updates) {
     record.state = sanitizeAdminText(updates.state, 30).toUpperCase();
   }
   record.updated_at = Date.now();
+  savePaymentRecords();
   return record;
 }
 

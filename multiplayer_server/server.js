@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
+const { Pool } = require('pg');
 
 loadEnvFile(path.join(__dirname, '.env'));
 
@@ -22,8 +23,10 @@ const GOOGLE_DEVICE_SCOPE = String(process.env.GOOGLE_DEVICE_SCOPE || 'email pro
 const GOOGLE_API_HOST = 'oauth2.googleapis.com';
 const GOOGLE_DEVICE_CODE_PATH = '/device/code';
 const GOOGLE_TOKEN_PATH = '/token';
+const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 const PROFILE_STORE_PATH = process.env.PROFILE_STORE_PATH || path.join(__dirname, 'player_profiles.json');
 const EVENTS_STORE_PATH = process.env.EVENTS_STORE_PATH || path.join(__dirname, 'game_events.json');
+const PAYMENT_STORE_PATH = process.env.PAYMENT_STORE_PATH || path.join(__dirname, 'payment_records.json');
 const GOLD_PACK_TIERS = new Map([
   [100, 10],
   [175, 30],
@@ -67,9 +70,26 @@ const paymentRecordsByInvoiceId = new Map();
 const paymentRecords = [];
 const playerProfilesByLoginId = new Map();
 const authSessionsByToken = new Map();
+const profileDbPool = createProfileDbPool();
+let profileDbReady = false;
 let gameEvents = loadGameEvents();
 
 loadPlayerProfiles();
+loadPaymentRecords();
+
+function createProfileDbPool() {
+  if (!DATABASE_URL) {
+    return null;
+  }
+
+  const shouldUseSsl = !/^postgres(?:ql)?:\/\/[^@]*@?(?:localhost|127\.0\.0\.1)(?::|\/)/i.test(DATABASE_URL)
+    && String(process.env.PGSSLMODE || '').toLowerCase() !== 'disable';
+
+  return new Pool({
+    connectionString: DATABASE_URL,
+    ssl: shouldUseSsl ? { rejectUnauthorized: false } : false
+  });
+}
 
 function createSocialSets() {
   return {
@@ -1202,12 +1222,24 @@ function buildAdminSnapshot() {
   const now = Date.now();
   const allClients = Array.from(clientsById.values());
   const connectedClients = allClients.filter((client) => client.connected === true);
-  const registeredClients = allClients.filter((client) => String(client.login_id || '').trim() !== '');
+  const registeredLoginIds = new Set(Array.from(playerProfilesByLoginId.keys()).map((loginId) => String(loginId || '').trim()).filter(Boolean));
+  allClients.forEach((client) => {
+    const loginId = String(client.login_id || '').trim();
+    if (loginId) {
+      registeredLoginIds.add(loginId);
+    }
+  });
   const joinedClients = allClients.filter((client) => {
     return Boolean(client.room_id) || Number(client.rooms_joined || 0) > 0;
   });
   const openParties = Array.from(rooms.values()).filter((room) => !room.started);
   const runningParties = Array.from(rooms.values()).filter((room) => room.started);
+  const clientPlayers = allClients.map(serializeAdminPlayer);
+  const clientLoginIds = new Set(clientPlayers.map((player) => String(player.login_id || '').trim()).filter(Boolean));
+  const storedProfilePlayers = Array.from(playerProfilesByLoginId.values())
+    .map(serializeAdminStoredProfile)
+    .filter((player) => !clientLoginIds.has(String(player.login_id || '').trim()));
+  const adminPlayers = clientPlayers.concat(storedProfilePlayers);
 
   return {
     ok: true,
@@ -1217,14 +1249,13 @@ function buildAdminSnapshot() {
     totals: {
       sessions: allClients.length,
       online_players: connectedClients.length,
-      registered_players: registeredClients.length,
+      registered_players: registeredLoginIds.size,
       joined_players: joinedClients.length,
       open_parties: openParties.length,
       running_parties: runningParties.length,
       rooms: rooms.size
     },
-    players: allClients
-      .map(serializeAdminPlayer)
+    players: adminPlayers
       .sort((first, second) => {
         if (first.connected !== second.connected) {
           return first.connected ? -1 : 1;
@@ -1242,23 +1273,63 @@ function buildAdminSnapshot() {
   };
 }
 
+function serializeAdminStoredProfile(profile) {
+  const loginId = String(profile && profile.login_id || '').trim();
+  const progress = sanitizeProfileProgress(profile && profile.progress || {});
+
+  return {
+    id: `profile:${loginId}`,
+    client_id: '',
+    name: profile.name || 'Player',
+    login_id: loginId,
+    registered: loginId !== '',
+    age: profile.player_age || 0,
+    coin_balance: Number(progress.coins || 0),
+    gold_balance: Number(progress.gold || 0),
+    country: profile.country || 'Unknown',
+    points: Number(profile.ranking_points || 0),
+    wins: Number(profile.ranking_wins || 0),
+    eliminations: Number(profile.ranking_eliminations || 0),
+    purchases: summarizePaymentsForProfile(profile),
+    connected: false,
+    ip: '',
+    in_room: false,
+    room_id: '',
+    room_code: '',
+    room_name: '',
+    party_state: 'offline',
+    room_capacity: 0,
+    is_host: false,
+    rooms_joined: 0,
+    created_at: profile.created_at || 0,
+    connected_at: 0,
+    registered_at: profile.created_at || 0,
+    last_seen_at: profile.last_seen_at || profile.updated_at || profile.created_at || 0,
+    last_room_joined_at: 0,
+    friends_count: 0,
+    dropped_messages: 0
+  };
+}
+
 function serializeAdminPlayer(client) {
   const room = rooms.get(client.room_id || '');
   const loginId = String(client.login_id || '').trim();
+  const storedProfile = loginId ? playerProfilesByLoginId.get(loginId) : null;
+  const storedProgress = sanitizeProfileProgress(storedProfile && storedProfile.progress || {});
 
   return {
     id: client.id,
     client_id: client.id,
-    name: client.name || 'Player',
+    name: client.name || storedProfile && storedProfile.name || 'Player',
     login_id: loginId,
     registered: loginId !== '',
-    age: client.age || 0,
-    coin_balance: client.coin_balance || 0,
-    gold_balance: client.gold_balance || 0,
-    country: client.country || 'Unknown',
-    points: Number(client.ranking_points || 0),
-    wins: Number(client.ranking_wins || 0),
-    eliminations: Number(client.ranking_eliminations || 0),
+    age: client.age || storedProfile && storedProfile.player_age || 0,
+    coin_balance: Math.max(Number(client.coin_balance || 0), Number(storedProgress.coins || 0)),
+    gold_balance: Math.max(Number(client.gold_balance || 0), Number(storedProgress.gold || 0)),
+    country: client.country || storedProfile && storedProfile.country || 'Unknown',
+    points: Math.max(Number(client.ranking_points || 0), Number(storedProfile && storedProfile.ranking_points || 0)),
+    wins: Math.max(Number(client.ranking_wins || 0), Number(storedProfile && storedProfile.ranking_wins || 0)),
+    eliminations: Math.max(Number(client.ranking_eliminations || 0), Number(storedProfile && storedProfile.ranking_eliminations || 0)),
     purchases: summarizePaymentsForClient(client),
     connected: client.connected === true,
     ip: client.ip || 'unknown',
@@ -1272,12 +1343,19 @@ function serializeAdminPlayer(client) {
     rooms_joined: Number(client.rooms_joined || 0),
     created_at: client.created_at || 0,
     connected_at: client.connected_at || 0,
-    registered_at: client.registered_at || 0,
-    last_seen_at: client.last_seen_at || client.connected_at || client.created_at || 0,
+    registered_at: client.registered_at || storedProfile && storedProfile.created_at || 0,
+    last_seen_at: client.last_seen_at || storedProfile && storedProfile.last_seen_at || storedProfile && storedProfile.updated_at || client.connected_at || client.created_at || 0,
     last_room_joined_at: client.last_room_joined_at || 0,
     friends_count: client.friends ? client.friends.size : 0,
     dropped_messages: Number(client.dropped_messages || 0)
   };
+}
+
+function summarizePaymentsForProfile(profile) {
+  return summarizePaymentsForClient({
+    login_id: profile && profile.login_id || '',
+    name: profile && profile.name || ''
+  });
 }
 
 function summarizePaymentsForClient(client) {
@@ -2605,6 +2683,87 @@ function loadPlayerProfiles() {
   }
 }
 
+async function initializeProfileDatabase() {
+  if (!profileDbPool) {
+    console.log('[profiles] DATABASE_URL not set; using local JSON profile store.');
+    return;
+  }
+
+  try {
+    await profileDbPool.query(`
+      CREATE TABLE IF NOT EXISTS player_profiles (
+        login_id TEXT PRIMARY KEY,
+        profile JSONB NOT NULL,
+        updated_at BIGINT NOT NULL DEFAULT 0
+      )
+    `);
+    await profileDbPool.query(`
+      CREATE TABLE IF NOT EXISTS payment_records (
+        invoice_id TEXT PRIMARY KEY,
+        record JSONB NOT NULL,
+        updated_at BIGINT NOT NULL DEFAULT 0
+      )
+    `);
+
+    const result = await profileDbPool.query('SELECT profile FROM player_profiles');
+    result.rows.forEach((row) => {
+      const profile = sanitizeStoredPlayerProfile(row.profile);
+      if (profile && profile.login_id) {
+        playerProfilesByLoginId.set(profile.login_id, profile);
+      }
+    });
+
+    const paymentsResult = await profileDbPool.query('SELECT record FROM payment_records ORDER BY updated_at ASC LIMIT 500');
+    paymentsResult.rows.forEach((row) => {
+      const paymentRecord = sanitizeStoredPaymentRecord(row.record);
+      if (paymentRecord) {
+        addPaymentRecordToMemory(paymentRecord);
+      }
+    });
+
+    profileDbReady = true;
+
+    if (playerProfilesByLoginId.size > 0) {
+      await savePlayerProfilesToDatabase();
+    }
+
+    console.log(`[profiles] PostgreSQL profile store ready (${playerProfilesByLoginId.size} profiles loaded).`);
+  } catch (error) {
+    console.warn(`[profiles] PostgreSQL profile store unavailable: ${error.message}`);
+    console.warn('[profiles] Falling back to local JSON profile store for this run.');
+  }
+}
+
+function sanitizeStoredPlayerProfile(profile) {
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+    return null;
+  }
+
+  const loginId = sanitizeAdminText(profile.login_id, 40);
+  if (!loginId) {
+    return null;
+  }
+
+  return {
+    login_id: loginId,
+    provider: sanitizeAdminText(profile.provider || (loginId.startsWith('google:') ? 'google' : 'guest'), 24),
+    google_sub: sanitizeAdminText(profile.google_sub, 64),
+    name: sanitizeAdminText(profile.name || 'Player', 40),
+    email: sanitizeAdminText(profile.email, 120),
+    email_verified: Boolean(profile.email_verified),
+    picture: sanitizeAdminText(profile.picture, 240),
+    country: sanitizeCountry(profile.country || ''),
+    ranking_points: sanitizePositiveInt(profile.ranking_points || profile.points, 1000000000),
+    ranking_wins: sanitizePositiveInt(profile.ranking_wins || profile.wins, 1000000),
+    ranking_eliminations: sanitizePositiveInt(profile.ranking_eliminations || profile.eliminations, 1000000),
+    player_age: sanitizePositiveInt(profile.player_age, 120),
+    progress: sanitizeProfileProgress(profile.progress || {}),
+    created_at: Number(profile.created_at || Date.now()),
+    updated_at: Number(profile.updated_at || Date.now()),
+    last_seen_at: Number(profile.last_seen_at || 0)
+  };
+}
+
 function savePlayerProfiles() {
   try {
     const profileStoreDirectory = path.dirname(PROFILE_STORE_PATH);
@@ -2619,6 +2778,167 @@ function savePlayerProfiles() {
   } catch (error) {
     console.warn(`[profiles] could not save ${PROFILE_STORE_PATH}: ${error.message}`);
   }
+
+  if (profileDbReady) {
+    savePlayerProfilesToDatabase().catch((error) => {
+      console.warn(`[profiles] could not save PostgreSQL profiles: ${error.message}`);
+    });
+  }
+}
+
+async function savePlayerProfilesToDatabase() {
+  if (!profileDbReady) {
+    return;
+  }
+
+  const profiles = Array.from(playerProfilesByLoginId.values()).map(serializePlayerProfile);
+  if (profiles.length === 0) {
+    return;
+  }
+
+  const client = await profileDbPool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const profile of profiles) {
+      await client.query(
+        `INSERT INTO player_profiles (login_id, profile, updated_at)
+         VALUES ($1, $2::jsonb, $3)
+         ON CONFLICT (login_id)
+         DO UPDATE SET profile = EXCLUDED.profile, updated_at = EXCLUDED.updated_at`,
+        [profile.login_id, JSON.stringify(profile), Number(profile.updated_at || Date.now())]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function loadPaymentRecords() {
+  if (!PAYMENT_STORE_PATH || !fs.existsSync(PAYMENT_STORE_PATH)) {
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(PAYMENT_STORE_PATH, 'utf8'));
+    const records = Array.isArray(parsed.records) ? parsed.records : (Array.isArray(parsed.payments) ? parsed.payments : []);
+    records.forEach((record) => {
+      const cleanRecord = sanitizeStoredPaymentRecord(record);
+      if (cleanRecord) {
+        addPaymentRecordToMemory(cleanRecord);
+      }
+    });
+  } catch (error) {
+    console.warn(`[payments] could not load ${PAYMENT_STORE_PATH}: ${error.message}`);
+  }
+}
+
+function savePaymentRecords() {
+  try {
+    const paymentStoreDirectory = path.dirname(PAYMENT_STORE_PATH);
+    if (paymentStoreDirectory && paymentStoreDirectory !== '.') {
+      fs.mkdirSync(paymentStoreDirectory, { recursive: true });
+    }
+    fs.writeFileSync(PAYMENT_STORE_PATH, JSON.stringify({
+      version: 1,
+      updated_at: Date.now(),
+      records: paymentRecords.slice(-500)
+    }, null, 2));
+  } catch (error) {
+    console.warn(`[payments] could not save ${PAYMENT_STORE_PATH}: ${error.message}`);
+  }
+
+  if (profileDbReady) {
+    savePaymentRecordsToDatabase().catch((error) => {
+      console.warn(`[payments] could not save PostgreSQL payment records: ${error.message}`);
+    });
+  }
+}
+
+async function savePaymentRecordsToDatabase() {
+  if (!profileDbReady) {
+    return;
+  }
+
+  const records = paymentRecords.slice(-500);
+  if (records.length === 0) {
+    return;
+  }
+
+  const client = await profileDbPool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const record of records) {
+      const invoiceId = sanitizeAdminText(record.invoice_id || record.api_ref || crypto.randomUUID(), 80);
+      await client.query(
+        `INSERT INTO payment_records (invoice_id, record, updated_at)
+         VALUES ($1, $2::jsonb, $3)
+         ON CONFLICT (invoice_id)
+         DO UPDATE SET record = EXCLUDED.record, updated_at = EXCLUDED.updated_at`,
+        [invoiceId, JSON.stringify(record), Number(record.updated_at || Date.now())]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function sanitizeStoredPaymentRecord(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return null;
+  }
+
+  const invoiceId = sanitizeAdminText(record.invoice_id || record.api_ref || '', 80);
+  if (!invoiceId) {
+    return null;
+  }
+
+  return {
+    invoice_id: invoiceId,
+    api_ref: sanitizeAdminText(record.api_ref, 80),
+    player_name: sanitizeAdminText(record.player_name, 40),
+    player_login_id: sanitizeAdminText(record.player_login_id, 40),
+    player_age: sanitizePositiveInt(record.player_age, 120),
+    phone_number: sanitizeAdminText(record.phone_number, 20),
+    email: normalizePaymentEmail(record.email),
+    purpose: sanitizePaymentPurpose(record.purpose),
+    amount: Math.max(Math.trunc(Number(record.amount || 0)), 0),
+    gold_amount: Math.max(Math.trunc(Number(record.gold_amount || 0)), 0),
+    terms_accepted: Boolean(record.terms_accepted),
+    communication_consent: Boolean(record.communication_consent),
+    state: sanitizeAdminText(record.state || 'PENDING', 30).toUpperCase(),
+    created_at: Number(record.created_at || Date.now()),
+    updated_at: Number(record.updated_at || Date.now())
+  };
+}
+
+function addPaymentRecordToMemory(record) {
+  if (!record || !record.invoice_id) {
+    return null;
+  }
+
+  const existing = paymentRecordsByInvoiceId.get(record.invoice_id);
+  if (existing) {
+    Object.assign(existing, record);
+    return existing;
+  }
+
+  paymentRecords.push(record);
+  paymentRecordsByInvoiceId.set(record.invoice_id, record);
+  while (paymentRecords.length > 500) {
+    const removed = paymentRecords.shift();
+    if (removed && removed.invoice_id) {
+      paymentRecordsByInvoiceId.delete(removed.invoice_id);
+    }
+  }
+  return record;
 }
 
 function recordPayment(record) {
@@ -2641,16 +2961,8 @@ function recordPayment(record) {
     updated_at: now
   };
 
-  paymentRecords.push(cleanRecord);
-  while (paymentRecords.length > 500) {
-    const removed = paymentRecords.shift();
-    if (removed && removed.invoice_id) {
-      paymentRecordsByInvoiceId.delete(removed.invoice_id);
-    }
-  }
-  if (cleanRecord.invoice_id) {
-    paymentRecordsByInvoiceId.set(cleanRecord.invoice_id, cleanRecord);
-  }
+  addPaymentRecordToMemory(cleanRecord);
+  savePaymentRecords();
   return cleanRecord;
 }
 
@@ -2673,6 +2985,7 @@ function updatePaymentRecord(invoiceId, updates) {
     record.state = sanitizeAdminText(updates.state, 30).toUpperCase();
   }
   record.updated_at = Date.now();
+  savePaymentRecords();
   return record;
 }
 
@@ -2767,9 +3080,7 @@ const outboundFlushTimer = setInterval(() => {
 
 const profileAuthCleanupTimer = setInterval(cleanupProfileAuthSessions, PROFILE_AUTH_CLEANUP_INTERVAL_MS);
 
-httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`[server] Bano ke WebSocket server running on port ${PORT}`);
-});
+startServer();
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
@@ -3313,6 +3624,13 @@ function sanitizeCountry(value) {
   return cleanValue.slice(0, 40);
 }
 
+async function startServer() {
+  await initializeProfileDatabase();
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`[server] Bano ke WebSocket server running on port ${PORT}`);
+  });
+}
+
 function shutdown() {
   console.log('[server] shutting down');
   clearInterval(heartbeatTimer);
@@ -3327,7 +3645,18 @@ function shutdown() {
   });
 
   httpServer.close(() => {
-    process.exit(0);
+    if (!profileDbPool) {
+      process.exit(0);
+      return;
+    }
+
+    profileDbPool.end()
+      .catch((error) => {
+        console.warn(`[profiles] could not close PostgreSQL pool: ${error.message}`);
+      })
+      .finally(() => {
+        process.exit(0);
+      });
   });
 
   setTimeout(() => {

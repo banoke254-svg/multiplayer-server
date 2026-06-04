@@ -47,7 +47,7 @@ res://fireworks_celebration.tscn::d7464a037a9e57586b6684dbafedd65e::1778832937::
 res://GlassTheme.tres::553e8d115d64d24eaf3cb79803add505::1779867967::res://.godot/exported/133200997/export-f45802c63cbdb08b4bf3fd7ea4b0c86d-GlassTheme.res
 res://glass_marble_model.tscn::44b7b24569f8550beabd762a46a11dce::1778832937::res://.godot/exported/133200997/export-c72cd3d014028e15ae3e6ddb680b21d9-glass_marble_model.scn
 res://lake_ring.tscn::2eda7e9a4395c4ba0019353bd40b6327::1778832938::res://.godot/exported/133200997/export-cc1a6bcc7ef56a0e1196b0da236555b7-lake_ring.scn
-res://main.tscn::cb2d89a51eb104b8832d943975136d35::1779868082::res://.godot/exported/133200997/export-3070c538c03ee49b7677ff960a3f5195-main.scn
+res://main.tscn::eabb7942a77a9910efe216b09ba5c742::1780208784::res://.godot/exported/133200997/export-3070c538c03ee49b7677ff960a3f5195-main.scn
 res://marble.tscn::b1a558a7cdca56f6df4c1cfab22dc527::1779482027::res://.godot/exported/133200997/export-e0f0ed28f44173f5d9427041d4205695-marble.scn
 res://online_relay_server.tscn::4937680b4e4403c307e8083c32b0af41::1778832939::res://.godot/exported/133200997/export-f432b1db541addfeb7b339e8024f55d1-online_relay_server.scn
 res://path_indicator.tscn::22a57a32d6066ec0638357f7eb13c8dc::1778832939::res://.godot/exported/133200997/export-fd07966a12a2b149f8ffc37a283271d8-path_indicator.scn
@@ -72,3 +72,5 @@ res://tools/perf_smoke_simulation.tscn::969e03ece01f0b2026278b8f24ab3696::178006
 res://ui/name_tag_banner_preview.tscn::4041448e392c60845490235d4d4550de::1780044383::res://.godot/exported/133200997/export-5ee671a5909f81d9f4058007b7589a9c-name_tag_banner_preview.scn
 res://gameplay_video.tscn::e74f02a6841370b883fd9912f9c090ab::1780033874::res://.godot/exported/133200997/export-7e130d5fd582930c693a1943c7c1f441-gameplay_video.scn
 res://Player.tscn::8daaa01c2ecc6b254e443307326948bc::1780032783::res://.godot/exported/133200997/export-90e1ff3baa03524a506ff0f7a9d78dcf-Player.scn
+res://marbles/marble_ball_3_import_model.tscn::3cebfbeb1cf0365f7cdb7c81b0766d12::1780211801::res://.godot/exported/133200997/export-ef5d1220bec074c4557c182dd76a07c3-marble_ball_3_import_model.scn
+res://marbles/new_anime_vfx_red_black_ball_model.tscn::5aa64237e3649f3f22410fb48794cd9b::1780212888::res://.godot/exported/133200997/export-4adfcb07efe07c7e078c046c15272d53-new_anime_vfx_red_black_ball_model.scn

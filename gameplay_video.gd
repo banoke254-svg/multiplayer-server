@@ -4,6 +4,7 @@ const MENU_SCENE_PATH: String = "res://Start_Menu.tscn"
 const INTRO_VIDEO_PATH: String = "res://ui/intro_video.ogv"
 const MARBLE_SCENE: PackedScene = preload("res://marble.tscn")
 const HOLE_SCRIPT: Script = preload("res://hole_bowl.gd")
+const TUTORIAL_HAND_TEXTURE: Texture2D = preload("res://ui/tutorial_hand.png")
 
 const SEGMENT_SECONDS: float = 5.2
 const FIELD_SIZE: float = 28.0
@@ -289,24 +290,15 @@ func _build_hand_pointer() -> void:
 	hand_pointer.name = "HandPointer"
 	add_child(hand_pointer)
 
-	var palm := MeshInstance3D.new()
-	var palm_mesh := SphereMesh.new()
-	palm_mesh.radius = 0.24
-	palm_mesh.height = 0.28
-	palm_mesh.material = _make_emissive_material(Color(0.97, 0.9, 0.74, 1.0), 0.45)
-	palm.mesh = palm_mesh
-	hand_pointer.add_child(palm)
-
-	var finger := MeshInstance3D.new()
-	var finger_mesh := CylinderMesh.new()
-	finger_mesh.top_radius = 0.07
-	finger_mesh.bottom_radius = 0.09
-	finger_mesh.height = 0.62
-	finger_mesh.radial_segments = 16
-	finger_mesh.material = _make_emissive_material(Color(1.0, 0.95, 0.8, 1.0), 0.5)
-	finger.mesh = finger_mesh
-	finger.position = Vector3(0.0, -0.38, 0.0)
-	hand_pointer.add_child(finger)
+	var hand_sprite := Sprite3D.new()
+	hand_sprite.name = "TutorialHandSprite"
+	hand_sprite.texture = TUTORIAL_HAND_TEXTURE
+	hand_sprite.pixel_size = 0.006
+	hand_sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	hand_sprite.no_depth_test = true
+	hand_sprite.shaded = false
+	hand_sprite.modulate = Color(1.0, 1.0, 1.0, 0.92)
+	hand_pointer.add_child(hand_sprite)
 
 
 func _apply_segment(index: int) -> void:
