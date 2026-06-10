@@ -45,6 +45,8 @@ func _spawn_marble_scene() -> void:
 
 	active_marble_instance.name = "MarbleVisual"
 	_prepare_marble_visual(active_marble_instance)
+	if _uses_ribbon_marble_scene():
+		_apply_export_safe_ribbon_material(active_marble_instance)
 	add_child(active_marble_instance)
 	_force_configure_imported_marble_models(active_marble_instance)
 
@@ -248,3 +250,51 @@ func _uses_flame_marble_scene() -> bool:
 	var marble_type: String = str(active_palette.get("marble_type", "")).to_lower()
 	var pattern_name: String = str(active_palette.get("pattern_name", "")).to_lower()
 	return scene_path.find("flame") != -1 or marble_type == "flame" or pattern_name == "flame"
+
+
+func _uses_ribbon_marble_scene() -> bool:
+	var scene_path: String = str(active_palette.get("marble_scene_path", "")).to_lower()
+	var marble_type: String = str(active_palette.get("marble_type", "")).to_lower()
+	var pattern_name: String = str(active_palette.get("pattern_name", "")).to_lower()
+	return scene_path.find("ribbon") != -1 or marble_type == "stripe" or pattern_name == "stripe"
+
+
+func _apply_export_safe_ribbon_material(root: Node) -> void:
+	var base_color: Color = active_palette.get("shell_base_color", Color(0.94, 0.96, 1.0, 1.0))
+	var ribbon_color: Color = active_palette.get("shell_swirl_orange", Color(0.22, 0.64, 1.0, 1.0))
+	var shadow_color: Color = active_palette.get("shell_swirl_blue", ribbon_color.darkened(0.48))
+	var texture: Texture2D = _make_ribbon_texture(base_color, ribbon_color, shadow_color)
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var current: Node = stack.pop_back()
+		for child in current.get_children():
+			stack.append(child)
+
+		var mesh_instance := current as MeshInstance3D
+		if mesh_instance == null:
+			continue
+		var material := StandardMaterial3D.new()
+		material.albedo_color = Color.WHITE
+		material.albedo_texture = texture
+		material.roughness = 0.12
+		material.metallic = 0.0
+		material.set("metallic_specular", 0.82)
+		material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+		mesh_instance.material_override = material
+
+
+func _make_ribbon_texture(base_color: Color, ribbon_color: Color, shadow_color: Color) -> Texture2D:
+	var width: int = 160
+	var height: int = 96
+	var image: Image = Image.create(width, height, false, Image.FORMAT_RGBA8)
+	for y in range(height):
+		for x in range(width):
+			var uv: Vector2 = Vector2(float(x) / float(width - 1), float(y) / float(height - 1))
+			var ribbon_wave: float = sin((uv.y + uv.x * 0.42) * TAU * 6.0)
+			var ribbon_mask: float = smoothstep(-0.18, 0.20, ribbon_wave)
+			var fine_mask: float = smoothstep(0.55, 0.88, sin((uv.y - uv.x * 0.18) * TAU * 12.0))
+			var color: Color = base_color.lerp(ribbon_color, ribbon_mask * 0.88)
+			color = color.lerp(shadow_color, (1.0 - ribbon_mask) * 0.18)
+			color = color.lerp(ribbon_color.lightened(0.18), fine_mask * 0.18)
+			image.set_pixel(x, y, Color(color.r, color.g, color.b, 1.0))
+	return ImageTexture.create_from_image(image)

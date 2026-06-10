@@ -9,6 +9,7 @@ const MENU_SCENE_FALLBACKS: PackedStringArray = ["res://Start_Menu.tscn", "res:/
 const GLASS_BUTTON_EFFECTS = preload("res://glass_button_effects.gd")
 const SHOWROOM_HALO_SHADER: Shader = preload("res://shaders/showroom_halo.gdshader")
 const GPU_TRAIL_SCRIPT: Script = preload("res://addons/GPUTrail/GPUTrail3D.gd")
+const BUTTON_CLICK_AUDIO_SCRIPT_PATH: String = "res://button_click_audio.gd"
 const SHOWROOM_MENU_LOGO_PATH: String = "res://ui/bano_header_wordmark.png"
 const SHOWROOM_BACKGROUND_TEXTURE_PATH: String = "res://showroom/showroom_neon_background.png"
 const SHOWROOM_MODE_MARBLES: String = "marbles"
@@ -55,13 +56,13 @@ var gold_payment_status_label: Label
 var gold_payment_buy_button: Button
 var gold_payment_cancel_button: Button
 var gold_payment_http_request: HTTPRequest
-var ui_sound_player: AudioStreamPlayer
 var gold_payment_pending_invoice_id: String = ""
 var gold_payment_selected_amount: int = 10
 var gold_payment_selected_price: int = 100
 var gold_payment_status_timer: float = -1.0
 var gold_payment_status_poll_count: int = 0
 var gold_payment_request_kind: String = ""
+var applied_prompt_overlay: Control
 var mode_buttons: Dictionary = {}
 var marble_frame_panel: Panel
 var trail_frame_panel: Panel
@@ -184,7 +185,7 @@ const PAYMENT_TERMS_REQUIRED_STATUS: String = "Tick the payment and message cons
 const STORE_GOLD_POUCH_TEXTURE_PATH: String = "res://ui/store/gold_pouch.png"
 const STORE_GOLD_BOX_TEXTURE_PATH: String = "res://ui/store/gold_box.png"
 const STORE_GOLD_CHEST_TEXTURE_PATH: String = "res://ui/store/gold_chest.png"
-const PREMIUM_UI_SOUND_PATH: String = "res://audiomass-output.mp3"
+const SFX_BUS_NAME: String = "SFX"
 const GOLD_PACK_AMOUNT: int = 10
 const GOLD_PACK_PRICE_KES: int = 100
 const GOLD_PACK_MID_AMOUNT: int = 30
@@ -203,6 +204,7 @@ var showroom_trail_sim_time: float = 0.0
 
 
 func _ready() -> void:
+	_ensure_button_click_audio_runtime()
 	customization = get_node_or_null("/root/CustomizationState")
 
 	_setup_3d()
@@ -215,22 +217,32 @@ func _ready() -> void:
 	# GLASS_BUTTON_EFFECTS.apply_to_tree(self)
 
 
-func _setup_ui_sounds() -> void:
-	ui_sound_player = AudioStreamPlayer.new()
-	ui_sound_player.name = "PremiumUISound"
-	ui_sound_player.bus = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
-	ui_sound_player.stream = load(PREMIUM_UI_SOUND_PATH) as AudioStream
-	ui_sound_player.volume_db = -15.0
-	ui_sound_player.pitch_scale = 1.45
-	add_child(ui_sound_player)
-
-
-func _play_ui_sound(pitch: float = 1.45) -> void:
-	if ui_sound_player == null or ui_sound_player.stream == null:
+func _ensure_button_click_audio_runtime() -> void:
+	if get_node_or_null("/root/ButtonClickAudio") != null:
 		return
-	ui_sound_player.stop()
-	ui_sound_player.pitch_scale = pitch
-	ui_sound_player.play()
+	if get_tree() == null or get_tree().root == null:
+		return
+	var script_resource: Script = load(BUTTON_CLICK_AUDIO_SCRIPT_PATH) as Script
+	if script_resource == null:
+		return
+	var click_audio: Node = Node.new()
+	click_audio.name = "ButtonClickAudio"
+	click_audio.set_script(script_resource)
+	get_tree().root.add_child.call_deferred(click_audio)
+
+
+func _setup_ui_sounds() -> void:
+	_ensure_audio_bus(SFX_BUS_NAME)
+
+
+func _ensure_audio_bus(bus_name: String, send_bus_name: String = "Master") -> void:
+	if bus_name == "" or AudioServer.get_bus_index(bus_name) != -1:
+		return
+	var bus_index: int = AudioServer.bus_count
+	AudioServer.add_bus(bus_index)
+	AudioServer.set_bus_name(bus_index, bus_name)
+	if AudioServer.get_bus_index(send_bus_name) != -1:
+		AudioServer.set_bus_send(bus_index, send_bus_name)
 
 
 func _process(delta: float) -> void:
@@ -1240,10 +1252,10 @@ func _build_reference_showroom_ui() -> void:
 	left_modes.anchor_top = 0.5
 	left_modes.anchor_right = 0.0
 	left_modes.anchor_bottom = 0.5
-	left_modes.offset_left = 22.0
-	left_modes.offset_top = -176.0
-	left_modes.offset_right = 148.0
-	left_modes.offset_bottom = 176.0
+	left_modes.offset_left = 8.0
+	left_modes.offset_top = -204.0
+	left_modes.offset_right = 136.0
+	left_modes.offset_bottom = 116.0
 	left_modes.add_theme_constant_override("separation", 8)
 	root.add_child(left_modes)
 
@@ -1262,7 +1274,7 @@ func _build_reference_showroom_ui() -> void:
 	left_modes.add_child(trails_button)
 	left_modes.add_child(banners_button)
 	left_modes.add_child(store_button)
-	store_button.add_child(_make_badge("3", Vector2(86.0, -8.0)))
+	store_button.add_child(_make_badge("3", Vector2(90.0, 6.0)))
 
 	var left_plus: Button = _make_hex_plus_button("<")
 	left_plus.anchor_left = 0.28
@@ -1535,11 +1547,11 @@ func _rebuild_gold_store_page() -> void:
 	gold_store_page.add_child(title)
 
 	var content: HBoxContainer = HBoxContainer.new()
-	content.anchor_left = 0.06
-	content.anchor_top = 0.25
-	content.anchor_right = 0.94
-	content.anchor_bottom = 0.86
-	content.add_theme_constant_override("separation", 30)
+	content.anchor_left = 0.05
+	content.anchor_top = 0.22
+	content.anchor_right = 0.95
+	content.anchor_bottom = 0.88
+	content.add_theme_constant_override("separation", 24)
 	gold_store_page.add_child(content)
 
 	var packs: Array = [
@@ -1565,6 +1577,7 @@ func _make_gold_store_card(title_text: String, gold_amount: int, price_kes: int,
 	card.focus_mode = Control.FOCUS_NONE
 	card.text = ""
 	card.clip_contents = true
+	card.custom_minimum_size = Vector2(260, 340)
 	card.add_theme_stylebox_override("normal", _make_showroom_style(Color(0.035, 0.008, 0.08, 0.86), Color(0.82, 0.18, 1.0, 0.92), 16, 2, 18))
 	card.add_theme_stylebox_override("hover", _make_showroom_style(Color(0.055, 0.012, 0.12, 0.94), Color(1.0, 0.36, 1.0, 1.0), 16, 2, 24))
 	card.add_theme_stylebox_override("pressed", _make_showroom_style(Color(0.02, 0.004, 0.055, 0.98), Color(0.62, 0.08, 0.9, 1.0), 16, 2, 12))
@@ -1573,37 +1586,43 @@ func _make_gold_store_card(title_text: String, gold_amount: int, price_kes: int,
 	var stack: VBoxContainer = VBoxContainer.new()
 	stack.set_anchors_preset(Control.PRESET_FULL_RECT)
 	stack.offset_left = 20
-	stack.offset_top = 26
+	stack.offset_top = 22
 	stack.offset_right = -20
-	stack.offset_bottom = -20
+	stack.offset_bottom = -18
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	stack.add_theme_constant_override("separation", 14)
+	stack.add_theme_constant_override("separation", 12)
 	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(stack)
 
 	var title: Label = _make_showroom_label(title_text, 24, Color(0.98, 0.95, 1.0, 1.0))
 	title.add_theme_font_size_override("font_size", 24)
+	title.custom_minimum_size = Vector2(0, 48)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stack.add_child(title)
 
 	var art: TextureRect = TextureRect.new()
-	art.custom_minimum_size = Vector2(300, 230)
+	art.custom_minimum_size = Vector2(0, 190)
+	art.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	art.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	art.texture = _get_gold_pack_texture(tier)
-	art.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stack.add_child(art)
 
 	var price_panel: Panel = Panel.new()
-	price_panel.custom_minimum_size = Vector2(0, 74)
+	price_panel.custom_minimum_size = Vector2(0, 64)
 	price_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	price_panel.add_theme_stylebox_override("panel", _make_showroom_style(Color(0.06, 0.01, 0.12, 0.9), Color(0.82, 0.18, 1.0, 0.96), 14, 2, 10))
 	price_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stack.add_child(price_panel)
 
-	var price_label: Label = _make_showroom_label("%d GOLD   %d KSH" % [gold_amount, price_kes], 27, Color(1.0, 0.86, 0.2, 1.0))
+	var price_label: Label = _make_showroom_label("BUY %d GOLD   %d KSH" % [gold_amount, price_kes], 23, Color(1.0, 0.86, 0.2, 1.0))
 	price_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	price_label.add_theme_font_size_override("font_size", 23)
 	price_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	price_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	price_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	price_panel.add_child(price_label)
 	return card
@@ -2089,8 +2108,12 @@ func _make_stat_card(label_text: String, value_text: String, value_color: Color)
 
 
 func _make_mode_rail_button(label_text: String, icon_text: String) -> Button:
-	var button: Button = _make_reference_button("%s\n%s" % [icon_text, label_text], Vector2(118, 82), Color(0.03, 0.04, 0.12, 0.76), Color(0.34, 0.23, 0.85, 0.42), 9)
-	button.add_theme_font_size_override("font_size", 14)
+	var button: Button = _make_reference_button("%s\n%s" % [icon_text, label_text], Vector2(126, 68), Color(0.03, 0.04, 0.12, 0.76), Color(0.34, 0.23, 0.85, 0.42), 8)
+	button.custom_minimum_size = Vector2(126, 68)
+	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	button.add_theme_font_size_override("font_size", 12)
+	button.add_theme_constant_override("h_separation", 0)
+	button.clip_text = true
 	return button
 
 
@@ -2338,6 +2361,9 @@ func _refresh_display() -> void:
 	var banner_unlocked: bool = true
 	if customization.has_method("is_banner_unlocked") and selected_banner_id != "":
 		banner_unlocked = bool(customization.call("is_banner_unlocked", selected_banner_id))
+	var trail_unlocked: bool = true
+	if customization.has_method("is_trail_unlocked") and selected_trail_id != "":
+		trail_unlocked = bool(customization.call("is_trail_unlocked", selected_trail_id))
 
 	var coin_balance: int = int(customization.call("get_coin_balance")) if customization.has_method("get_coin_balance") else 0
 	var gold_balance: int = int(customization.call("get_gold_balance")) if customization.has_method("get_gold_balance") else 0
@@ -2350,12 +2376,18 @@ func _refresh_display() -> void:
 
 	if showroom_mode == SHOWROOM_MODE_BANNERS and not banner_unlocked:
 		var banner_unlock_cost: int = int(customization.call("get_banner_unlock_cost", selected_banner_id)) if customization.has_method("get_banner_unlock_cost") else 0
-		var banner_unlock_currency: String = str(customization.call("get_banner_unlock_currency", selected_banner_id)) if customization.has_method("get_banner_unlock_currency") else "coins"
-		var banner_currency_name: String = str(customization.call("get_currency_display_name", banner_unlock_currency)) if customization.has_method("get_currency_display_name") else banner_unlock_currency.capitalize()
+		var banner_gold_cost: int = int(customization.call("get_banner_unlock_gold_cost", selected_banner_id)) if customization.has_method("get_banner_unlock_gold_cost") else 0
 		var can_unlock_banner: bool = customization.has_method("can_unlock_banner") and bool(customization.call("can_unlock_banner", selected_banner_id))
 		apply_button.text = "UNLOCK"
-		status_label.text = "Unlock banner for %d %s. Balance: %d S coins | %d Gold" % [banner_unlock_cost, banner_currency_name.to_lower(), coin_balance, gold_balance]
+		status_label.text = "Unlock banner for %s. Balance: %d S coins | %d Gold" % [_format_unlock_price_text(banner_unlock_cost, banner_gold_cost, false), coin_balance, gold_balance]
 		apply_button.disabled = not can_unlock_banner
+	elif showroom_mode == SHOWROOM_MODE_TRAILS and not trail_unlocked:
+		var trail_unlock_cost: int = int(customization.call("get_trail_unlock_cost", selected_trail_id)) if customization.has_method("get_trail_unlock_cost") else 0
+		var trail_gold_cost: int = int(customization.call("get_trail_unlock_gold_cost", selected_trail_id)) if customization.has_method("get_trail_unlock_gold_cost") else 0
+		var can_unlock_trail: bool = customization.has_method("can_unlock_trail") and bool(customization.call("can_unlock_trail", selected_trail_id))
+		apply_button.text = "UNLOCK"
+		status_label.text = "Unlock trail for %s. Balance: %d S coins | %d Gold" % [_format_unlock_price_text(trail_unlock_cost, trail_gold_cost, false), coin_balance, gold_balance]
+		apply_button.disabled = not can_unlock_trail
 	elif showroom_mode == SHOWROOM_MODE_FIELDS and not field_unlocked:
 		var field_unlock_cost: int = int(customization.call("get_field_unlock_cost", selected_field_id)) if customization.has_method("get_field_unlock_cost") else 0
 		var field_unlock_currency: String = str(customization.call("get_field_unlock_currency", selected_field_id)) if customization.has_method("get_field_unlock_currency") else "coins"
@@ -2366,11 +2398,10 @@ func _refresh_display() -> void:
 		apply_button.disabled = not can_unlock_field
 	elif showroom_mode == SHOWROOM_MODE_MARBLES and not is_unlocked:
 		var unlock_cost: int = int(customization.call("get_marble_unlock_cost", selected_marble_id)) if customization.has_method("get_marble_unlock_cost") else 0
-		var unlock_currency: String = str(customization.call("get_marble_unlock_currency", selected_marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
-		var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
+		var gold_cost: int = int(customization.call("get_marble_unlock_gold_cost", selected_marble_id)) if customization.has_method("get_marble_unlock_gold_cost") else 0
 		var can_unlock: bool = customization.has_method("can_unlock_marble") and bool(customization.call("can_unlock_marble", selected_marble_id))
 		apply_button.text = "UNLOCK"
-		status_label.text = "Unlock marble for %d %s. Balance: %d S coins | %d Gold" % [unlock_cost, currency_name.to_lower(), coin_balance, gold_balance]
+		status_label.text = "Unlock marble for %s. Balance: %d S coins | %d Gold" % [_format_unlock_price_text(unlock_cost, gold_cost, false), coin_balance, gold_balance]
 		apply_button.disabled = not can_unlock
 	else:
 		match showroom_mode:
@@ -2403,7 +2434,12 @@ func _refresh_display() -> void:
 		var trail_button: Button = trail_buttons[trail_id] as Button
 		if trail_button == null:
 			continue
-		_style_belt_item_button(trail_button, str(trail_id) == selected_trail_id, false)
+		var trail_selected: bool = str(trail_id) == selected_trail_id
+		var trail_affordable: bool = true
+		if customization != null and customization.has_method("is_trail_unlocked") and not bool(customization.call("is_trail_unlocked", str(trail_id))):
+			trail_affordable = customization.has_method("can_unlock_trail") and bool(customization.call("can_unlock_trail", str(trail_id)))
+		_style_belt_item_button(trail_button, trail_selected, not trail_affordable)
+		_update_trail_belt_price_label(trail_button, str(trail_id))
 
 	for banner_id in banner_buttons.keys():
 		var banner_button: Button = banner_buttons[banner_id] as Button
@@ -2477,9 +2513,8 @@ func _create_belt_button(marble_id: String, preset: Dictionary) -> Button:
 	if customization != null and customization.has_method("is_marble_unlocked") and not bool(customization.call("is_marble_unlocked", marble_id)):
 		var lock_label: Label = Label.new()
 		var unlock_cost: int = int(customization.call("get_marble_unlock_cost", marble_id)) if customization.has_method("get_marble_unlock_cost") else 0
-		var unlock_currency: String = str(customization.call("get_marble_unlock_currency", marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
-		var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
-		lock_label.text = "%d %s" % [unlock_cost, currency_name.to_upper()]
+		var gold_cost: int = int(customization.call("get_marble_unlock_gold_cost", marble_id)) if customization.has_method("get_marble_unlock_gold_cost") else 0
+		lock_label.text = _format_unlock_price_text(unlock_cost, gold_cost, true)
 		lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lock_label.add_theme_font_size_override("font_size", 10)
 		lock_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.48, 0.98))
@@ -2526,6 +2561,17 @@ func _create_trail_belt_button(trail_id: String, preset: Dictionary) -> Button:
 	label.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0, 1.0))
 	box.add_child(label)
 
+	if customization != null and customization.has_method("is_trail_unlocked") and not bool(customization.call("is_trail_unlocked", trail_id)):
+		var lock_label: Label = Label.new()
+		var unlock_cost: int = int(customization.call("get_trail_unlock_cost", trail_id)) if customization.has_method("get_trail_unlock_cost") else 0
+		var gold_cost: int = int(customization.call("get_trail_unlock_gold_cost", trail_id)) if customization.has_method("get_trail_unlock_gold_cost") else 0
+		lock_label.text = _format_unlock_price_text(unlock_cost, gold_cost, true)
+		lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lock_label.add_theme_font_size_override("font_size", 10)
+		lock_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.48, 0.98))
+		box.add_child(lock_label)
+		button.set_meta("price_label", lock_label)
+
 	button.pressed.connect(_on_trail_button_pressed.bind(trail_id))
 	return button
 
@@ -2570,9 +2616,8 @@ func _create_banner_belt_button(banner_id: String, preset: Dictionary) -> Button
 	if customization != null and customization.has_method("is_banner_unlocked") and not bool(customization.call("is_banner_unlocked", banner_id)):
 		var lock_label: Label = Label.new()
 		var unlock_cost: int = int(customization.call("get_banner_unlock_cost", banner_id)) if customization.has_method("get_banner_unlock_cost") else 0
-		var unlock_currency: String = str(customization.call("get_banner_unlock_currency", banner_id)) if customization.has_method("get_banner_unlock_currency") else "coins"
-		var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
-		lock_label.text = "%d %s" % [unlock_cost, currency_name.to_upper()]
+		var gold_cost: int = int(customization.call("get_banner_unlock_gold_cost", banner_id)) if customization.has_method("get_banner_unlock_gold_cost") else 0
+		lock_label.text = _format_unlock_price_text(unlock_cost, gold_cost, true)
 		lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lock_label.add_theme_font_size_override("font_size", 10)
 		lock_label.add_theme_color_override("font_color", Color(1.0, 0.84, 0.48, 0.98))
@@ -2646,9 +2691,40 @@ func _update_marble_belt_price_label(button: Button, marble_id: String) -> void:
 		return
 
 	var unlock_cost: int = int(customization.call("get_marble_unlock_cost", marble_id)) if customization.has_method("get_marble_unlock_cost") else 0
-	var unlock_currency: String = str(customization.call("get_marble_unlock_currency", marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
-	var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
-	price_label.text = "%d %s" % [unlock_cost, currency_name.to_upper()]
+	var gold_cost: int = int(customization.call("get_marble_unlock_gold_cost", marble_id)) if customization.has_method("get_marble_unlock_gold_cost") else 0
+	price_label.text = _format_unlock_price_text(unlock_cost, gold_cost, true)
+
+
+func _format_unlock_price_text(coin_cost: int, gold_cost: int, compact: bool) -> String:
+	if gold_cost > 0:
+		if coin_cost <= 0:
+			if compact:
+				return "%d G" % gold_cost
+			return "%d Gold" % gold_cost
+		if compact:
+			return "%d S / %d G" % [coin_cost, gold_cost]
+		return "%d S coins or %d Gold" % [coin_cost, gold_cost]
+	if compact:
+		return "%d S" % coin_cost
+	return "%d S coins" % coin_cost
+
+
+func _update_trail_belt_price_label(button: Button, trail_id: String) -> void:
+	if button == null:
+		return
+	var price_label := button.get_meta("price_label", null) as Label
+	if price_label == null:
+		return
+	if customization == null or not customization.has_method("is_trail_unlocked"):
+		price_label.visible = false
+		return
+	var trail_locked: bool = not bool(customization.call("is_trail_unlocked", trail_id))
+	price_label.visible = trail_locked
+	if not trail_locked:
+		return
+	var unlock_cost: int = int(customization.call("get_trail_unlock_cost", trail_id)) if customization.has_method("get_trail_unlock_cost") else 0
+	var gold_cost: int = int(customization.call("get_trail_unlock_gold_cost", trail_id)) if customization.has_method("get_trail_unlock_gold_cost") else 0
+	price_label.text = _format_unlock_price_text(unlock_cost, gold_cost, true)
 
 
 func _update_banner_belt_price_label(button: Button, banner_id: String) -> void:
@@ -2665,9 +2741,8 @@ func _update_banner_belt_price_label(button: Button, banner_id: String) -> void:
 	if not banner_locked:
 		return
 	var unlock_cost: int = int(customization.call("get_banner_unlock_cost", banner_id)) if customization.has_method("get_banner_unlock_cost") else 0
-	var unlock_currency: String = str(customization.call("get_banner_unlock_currency", banner_id)) if customization.has_method("get_banner_unlock_currency") else "coins"
-	var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
-	price_label.text = "%d %s" % [unlock_cost, currency_name.to_upper()]
+	var gold_cost: int = int(customization.call("get_banner_unlock_gold_cost", banner_id)) if customization.has_method("get_banner_unlock_gold_cost") else 0
+	price_label.text = _format_unlock_price_text(unlock_cost, gold_cost, true)
 
 
 func _make_banner_preview_style(preset: Dictionary) -> StyleBoxFlat:
@@ -3179,21 +3254,18 @@ func _end_belt_drag() -> bool:
 func _on_belt_button_pressed(marble_id: String) -> void:
 	if Time.get_ticks_msec() < belt_drag_ignore_click_until_msec:
 		return
-	_play_ui_sound(1.42)
 	showroom_mode = SHOWROOM_MODE_MARBLES
 	selected_marble_id = marble_id
 	_refresh_display()
 
 
 func _on_trail_button_pressed(trail_id: String) -> void:
-	_play_ui_sound(1.5)
 	showroom_mode = SHOWROOM_MODE_TRAILS
 	selected_trail_id = trail_id
 	_refresh_display()
 
 
 func _on_banner_button_pressed(banner_id: String) -> void:
-	_play_ui_sound(1.58)
 	showroom_mode = SHOWROOM_MODE_BANNERS
 	selected_banner_id = banner_id
 	_refresh_display()
@@ -3206,7 +3278,6 @@ func _on_field_button_pressed(field_id: String) -> void:
 
 
 func _on_showroom_mode_pressed(mode_name: String) -> void:
-	_play_ui_sound(1.36)
 	showroom_mode = mode_name
 	_refresh_display()
 
@@ -3266,7 +3337,6 @@ func _on_next_marble_pressed() -> void:
 func _on_apply_pressed() -> void:
 	if customization == null or selected_marble_id == "":
 		return
-	_play_ui_sound(1.72)
 
 	if showroom_mode == SHOWROOM_MODE_BANNERS:
 		if selected_banner_id != "" and customization.has_method("is_banner_unlocked") and not bool(customization.call("is_banner_unlocked", selected_banner_id)):
@@ -3274,23 +3344,30 @@ func _on_apply_pressed() -> void:
 				customization.call("unlock_banner", selected_banner_id)
 			else:
 				var banner_unlock_cost: int = int(customization.call("get_banner_unlock_cost", selected_banner_id)) if customization.has_method("get_banner_unlock_cost") else 0
-				var banner_unlock_currency: String = str(customization.call("get_banner_unlock_currency", selected_banner_id)) if customization.has_method("get_banner_unlock_currency") else "coins"
-				var banner_currency_name: String = str(customization.call("get_currency_display_name", banner_unlock_currency)) if customization.has_method("get_currency_display_name") else banner_unlock_currency.capitalize()
-				status_label.text = "Banner locked. Need %d %s." % [banner_unlock_cost, banner_currency_name.to_lower()]
+				var banner_gold_cost: int = int(customization.call("get_banner_unlock_gold_cost", selected_banner_id)) if customization.has_method("get_banner_unlock_gold_cost") else 0
+				status_label.text = "Banner locked. Need %s." % _format_unlock_price_text(banner_unlock_cost, banner_gold_cost, false)
 				return
 		if customization.has_method("set_selected_banner") and selected_banner_id != "":
 			customization.call("set_selected_banner", selected_banner_id)
 		_refresh_display()
 		_show_status_message("Banner Applied Successfully")
-		_show_applied_popup()
+		_show_applied_prompt()
 		return
 
 	if showroom_mode == SHOWROOM_MODE_TRAILS:
+		if selected_trail_id != "" and customization.has_method("is_trail_unlocked") and not bool(customization.call("is_trail_unlocked", selected_trail_id)):
+			if customization.has_method("can_unlock_trail") and bool(customization.call("can_unlock_trail", selected_trail_id)):
+				customization.call("unlock_trail", selected_trail_id)
+			else:
+				var trail_unlock_cost: int = int(customization.call("get_trail_unlock_cost", selected_trail_id)) if customization.has_method("get_trail_unlock_cost") else 0
+				var trail_gold_cost: int = int(customization.call("get_trail_unlock_gold_cost", selected_trail_id)) if customization.has_method("get_trail_unlock_gold_cost") else 0
+				status_label.text = "Trail locked. Need %s." % _format_unlock_price_text(trail_unlock_cost, trail_gold_cost, false)
+				return
 		if customization.has_method("set_selected_trail") and selected_trail_id != "":
 			customization.call("set_selected_trail", selected_trail_id)
 		_refresh_display()
 		_show_status_message("Trail Applied Successfully")
-		_show_applied_popup()
+		_show_applied_prompt()
 		return
 
 	if showroom_mode == SHOWROOM_MODE_FIELDS:
@@ -3309,7 +3386,7 @@ func _on_apply_pressed() -> void:
 
 		_refresh_display()
 		_show_status_message("Field Applied Successfully")
-		_show_applied_popup() # ✅ ADDED
+		_show_applied_prompt()
 		return
 
 	if customization.has_method("is_marble_unlocked") and not bool(customization.call("is_marble_unlocked", selected_marble_id)):
@@ -3319,9 +3396,8 @@ func _on_apply_pressed() -> void:
 			var unlock_cost: int = 0
 			if customization.has_method("get_marble_unlock_cost"):
 				unlock_cost = int(customization.call("get_marble_unlock_cost", selected_marble_id))
-			var unlock_currency: String = str(customization.call("get_marble_unlock_currency", selected_marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
-			var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
-			status_label.text = "Locked. Need %d %s." % [unlock_cost, currency_name.to_lower()]
+			var gold_cost: int = int(customization.call("get_marble_unlock_gold_cost", selected_marble_id)) if customization.has_method("get_marble_unlock_gold_cost") else 0
+			status_label.text = "Locked. Need %s." % _format_unlock_price_text(unlock_cost, gold_cost, false)
 			return
 
 	if customization.has_method("set_selected_marble"):
@@ -3332,24 +3408,8 @@ func _on_apply_pressed() -> void:
 
 	_refresh_display()
 	_show_status_message("Marble Applied Successfully")
-	_show_applied_popup() # ✅ ADDED
-
-	if customization.has_method("is_marble_unlocked") and not bool(customization.call("is_marble_unlocked", selected_marble_id)):
-		if customization.has_method("can_unlock_marble") and bool(customization.call("can_unlock_marble", selected_marble_id)):
-			customization.call("unlock_marble", selected_marble_id)
-		else:
-			var unlock_cost: int = 0
-			if customization.has_method("get_marble_unlock_cost"):
-				unlock_cost = int(customization.call("get_marble_unlock_cost", selected_marble_id))
-			var unlock_currency: String = str(customization.call("get_marble_unlock_currency", selected_marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
-			var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
-			status_label.text = "Locked. Need %d %s." % [unlock_cost, currency_name.to_lower()]
-			return
-
-
-
-	_refresh_display()
-	_show_status_message("Marble Applied Successfully")
+	_show_applied_prompt()
+	return
 
 
 func _on_back_pressed() -> void:
@@ -5283,6 +5343,102 @@ func _make_trail_strip_texture(primary: Color, secondary: Color, alpha_scale: fl
 			color.a = edge_fade * tail_fade * alpha_scale
 			image.set_pixel(x, y, color)
 	return ImageTexture.create_from_image(image)
+
+
+func _show_applied_prompt() -> void:
+	if applied_prompt_overlay != null and is_instance_valid(applied_prompt_overlay):
+		applied_prompt_overlay.queue_free()
+
+	applied_prompt_overlay = Control.new()
+	applied_prompt_overlay.name = "AppliedPrompt"
+	applied_prompt_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	applied_prompt_overlay.z_index = 160
+	applied_prompt_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(applied_prompt_overlay)
+
+	var shade: ColorRect = ColorRect.new()
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.0, 0.0, 0.0, 0.52)
+	applied_prompt_overlay.add_child(shade)
+
+	var panel: Panel = Panel.new()
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -250.0
+	panel.offset_top = -122.0
+	panel.offset_right = 250.0
+	panel.offset_bottom = 122.0
+	panel.add_theme_stylebox_override("panel", _make_showroom_style(Color(0.035, 0.01, 0.09, 0.96), Color(0.88, 0.22, 1.0, 0.96), 14, 2, 24))
+	applied_prompt_overlay.add_child(panel)
+
+	var margin: MarginContainer = MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 30)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_right", 30)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	panel.add_child(margin)
+
+	var stack: VBoxContainer = VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 14)
+	margin.add_child(stack)
+
+	var applied_name: String = _get_current_applied_item_name()
+	var applied_kind: String = _get_current_applied_item_kind()
+	var title: Label = _make_showroom_label("%s APPLIED" % applied_kind.to_upper(), 31, Color(1.0, 0.86, 0.28, 1.0))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stack.add_child(title)
+
+	var message: Label = _make_showroom_label("%s is now equipped for your player." % applied_name, 18, Color(0.94, 0.98, 1.0, 0.96))
+	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	message.custom_minimum_size = Vector2(0.0, 58.0)
+	stack.add_child(message)
+
+	var ok_button: Button = _make_reference_button("OK", Vector2(150, 48), Color(0.95, 0.02, 0.05, 0.96), Color(1.0, 0.76, 0.12, 1.0), 9)
+	ok_button.add_theme_font_size_override("font_size", 18)
+	ok_button.pressed.connect(_hide_applied_prompt)
+	stack.add_child(ok_button)
+
+
+func _hide_applied_prompt() -> void:
+	if applied_prompt_overlay != null and is_instance_valid(applied_prompt_overlay):
+		applied_prompt_overlay.queue_free()
+	applied_prompt_overlay = null
+
+
+func _get_current_applied_item_kind() -> String:
+	match showroom_mode:
+		SHOWROOM_MODE_TRAILS:
+			return "Trail"
+		SHOWROOM_MODE_BANNERS:
+			return "Banner"
+		SHOWROOM_MODE_FIELDS:
+			return "Field"
+		_:
+			return "Marble"
+
+
+func _get_current_applied_item_name() -> String:
+	if customization == null:
+		return _get_current_applied_item_kind()
+	match showroom_mode:
+		SHOWROOM_MODE_TRAILS:
+			var trail_preset: Dictionary = customization.call("get_trail_preset", selected_trail_id) if customization.has_method("get_trail_preset") else {}
+			return str(trail_preset.get("name", selected_trail_id))
+		SHOWROOM_MODE_BANNERS:
+			var banner_preset: Dictionary = customization.call("get_banner_preset", selected_banner_id) if customization.has_method("get_banner_preset") else {}
+			return str(banner_preset.get("name", selected_banner_id))
+		SHOWROOM_MODE_FIELDS:
+			var field_preset: Dictionary = customization.call("get_field_preset", selected_field_id) if customization.has_method("get_field_preset") else {}
+			return str(field_preset.get("name", selected_field_id))
+		_:
+			var marble_preset: Dictionary = customization.call("get_marble_preset", selected_marble_id) if customization.has_method("get_marble_preset") else {}
+			return str(marble_preset.get("name", selected_marble_id))
+
 func _show_applied_popup():
 	var popup = Label.new()
 	popup.text = "APPLIED ✅"

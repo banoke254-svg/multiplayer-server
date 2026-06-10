@@ -1,5 +1,5 @@
 72322a848ab928aa5c89f0cb78209805
-::res://::1780567998
+::res://::1781076357
 abstract-texture-deep-blue-black-fluid-marble-effect-perfect-backgrounds-digital-art-graphic-design-397372212 (1).webp::CompressedTexture2D::6177397146517329718::1778832937::1778995038::1::::<><><>0<>0<>f7fc0499838c59ade91536e0f9d91ee6<>res://.godot/imported/abstract-texture-deep-blue-black-fluid-marble-effect-perfect-backgrounds-digital-art-graphic-design-397372212 (1).webp-416b3f9e4a0f09cc7f3c7cf448dbbc82.ctex::
 ai_marble1.gd::GDScript::5378299902966784372::1780122583::0::1::::<>RigidBody3D<><>0<>0<><>::
 ai_marble2.gd::GDScript::6088942848511687167::1780122583::0::1::::<>RigidBody3D<><>0<>0<><>::
@@ -12,16 +12,17 @@ audiomass-output.mp3::AudioStreamMP3::8806612350815380164::1778832937::177899502
 audio_menu_theme.mp3::AudioStreamMP3::387305299378135249::1778832937::1778995024::1::::<><><>0<>0<>5cfd01cdfce3f4d2c6d67cbb4ea89779<>res://.godot/imported/audio_menu_theme.mp3-1db89aaf2b0e65d4c712f7bf740ce49b.mp3str::
 backdrop_environment.gd::GDScript::7950045125836431903::1778832937::0::1::::<>Node3D<><>0<>0<><>::
 ball_-_rocket_league_0.png::CompressedTexture2D::1300327664383207466::1778832937::1778995040::1::::<><><>0<>0<>72a31b18af216fbe57b6796c556e963f<>res://.godot/imported/ball_-_rocket_league_0.png-01c37972a1a8e3172aa6105d8b8a5308.s3tc.ctex<*>res://.godot/imported/ball_-_rocket_league_0.png-01c37972a1a8e3172aa6105d8b8a5308.etc2.ctex::
-Bano ke writing.tscn::PackedScene::1679155542320229808::1779482027::0::1::::<><><>0<>0<><>::
+Bano ke writing.tscn::PackedScene::1679155542320229808::1781033900::0::1::::<><><>0<>0<><>::
 BANO.png::CompressedTexture2D::4134438907484445140::1778832937::1778995043::1::::<><><>0<>0<>528db7205ca338dea9742618531d0fea<>res://.godot/imported/BANO.png-9ac78acbd9f728994bd0b98e70edc6d8.ctex::
+button_click_audio.gd::GDScript::6248459686698494259::1780924284::0::1::::<>Node<><>0<>0<><>::
 camera_3d.gd::GDScript::2113907861665574337::1778832937::0::1::::<>Camera3D<><>0<>0<><>::
 camera_pivot.gd::GDScript::7093659057912934549::1778832937::0::1::::<>Node3D<><>0<>0<><>::
 camera_rig.gd::GDScript::6806662362858157811::1780034412::0::1::::<>Node3D<><>0<>0<><>::
 CurrencyManager.gd::GDScript::4753544734306685066::1780329846::0::1::::<>Node<><>0<>0<><>::
-customization_state.gd::GDScript::8382734205938111044::1780329846::0::1::::<>Node<><>0<>0<><>::
-customize_room.gd::GDScript::2905167975323851879::1780217991::0::1::::<>Node3D<><>0<>0<><>::
+customization_state.gd::GDScript::8382734205938111044::1780901949::0::1::::<>Node<><>0<>0<><>::
+customize_room.gd::GDScript::2905167975323851879::1780923882::0::1::::<>Node3D<><>0<>0<><>::
 customize_room.tscn::PackedScene::3304091487426133179::1779869373::0::1::::<><><>0<>0<><>::uid://bhnjxscop0bdf::::res://customize_room.gd<>uid://bxx46jgao5sit::::res://showroom/customize_showroom_stage.tscn
-export_presets.cfg::TextFile::-1::1780374939::0::1::::<><><>0<>0<><>::
+export_presets.cfg::TextFile::-1::1780982640::0::1::::<><><>0<>0<><>::
 extracted_minecraft_java_editions_stars.glb::PackedScene::5973217083737229154::1778832937::1778995067::1::::<><><>0<>0<>0ef2e1f4eb1359ae714f11bac37ffda1<>res://.godot/imported/extracted_minecraft_java_editions_stars.glb-d9ee23487223040bc4a3dbb75be5a34a.scn::
 fantasy_sky_background.glb::PackedScene::741024574712434681::1778832937::1778995067::1::::<><><>0<>0<>2b983d5ead3f592673d58331f28ad301<>res://.godot/imported/fantasy_sky_background.glb-c42b597ae6eb96ed441afe522db5cb15.scn::
 fantasy_sky_background_0.jpg::CompressedTexture2D::6279249602537625007::1778832937::1778995040::1::::<><><>0<>0<>f5459eed598b1bee3513e545bb89cbdd<>res://.godot/imported/fantasy_sky_background_0.jpg-eeddfc6de37eb8428764230cd7a1d6d9.s3tc.ctex<*>res://.godot/imported/fantasy_sky_background_0.jpg-eeddfc6de37eb8428764230cd7a1d6d9.etc2.ctex::
@@ -33,15 +34,15 @@ fireworks_celebration.gd::GDScript::7899537124497741603::1778832937::0::1::::<>N
 fireworks_celebration.tscn::PackedScene::-1::1778832937::0::1::::<><><>0<>0<><>::res://fireworks_celebration.gd
 follow_camera.gd::GDScript::3380988183779367319::1778832937::0::1::::<>Camera3D<><>0<>0<><>::
 GameManager.gd::GDScript::241880407268339409::1780034955::0::1::::<>Node<><>0<>0<><>::
-gameplay_video.gd::GDScript::5582491033039889972::1780165734::0::1::::<>Node3D<><>0<>0<><>::
+gameplay_video.gd::GDScript::5582491033039889972::1780982185::0::1::::<>Node3D<><>0<>0<><>::
 gameplay_video.tscn::PackedScene::-1::1780033874::0::1::::<><><>0<>0<><>::res://gameplay_video.gd
 game_hud.gd::GDScript::4419201326784887549::1780205791::0::1::::<>Control<><>0<>0<><>::
 gettyimages-1514138928-640x640.jpg::CompressedTexture2D::1043788087248809650::1778832937::1778995038::1::::<><><>0<>0<>3d9e994e194f156bb87724abdd1a5d63<>res://.godot/imported/gettyimages-1514138928-640x640.jpg-95a666dd577e602a590acb987a8faeaf.s3tc.ctex<*>res://.godot/imported/gettyimages-1514138928-640x640.jpg-95a666dd577e602a590acb987a8faeaf.etc2.ctex::
-GlassTheme.tres::Theme::906509532513913858::1779867967::0::1::::<><><>0<>0<><>::
+GlassTheme.tres::Theme::906509532513913858::1781033435::0::1::::<><><>0<>0<><>::res://fonts/LilitaOne-Regular.ttf
 glass_balls_-_3mb.glb::PackedScene::4168676603584385066::1778832937::1778995069::1::::<><><>0<>0<>0df0215c1fa4722ee10405e4e36f27f5<>res://.godot/imported/glass_balls_-_3mb.glb-b39aade78c74cef9f9da08dcd5a1b437.scn::uid://b1f4sokc6psk5::::res://glass_balls_-_3mb_0.jpg
 glass_balls_-_3mb_0.jpg::CompressedTexture2D::4223446195040611682::1778832937::1778995039::1::::<><><>0<>0<>79e793fc9973b2403fda27a091015144<>res://.godot/imported/glass_balls_-_3mb_0.jpg-7b780c0569b0f62d5bab42fe9aee77ce.s3tc.ctex<*>res://.godot/imported/glass_balls_-_3mb_0.jpg-7b780c0569b0f62d5bab42fe9aee77ce.etc2.ctex::
 glass_button_effects.gd::GDScript::4606951027374438194::1778832937::0::1::::GlassButtonEffects<>RefCounted<><>0<>0<><>::
-glass_marble_model.gd::GDScript::51835783903356318::1780211300::0::1::::<>Node3D<><>0<>0<><>::
+glass_marble_model.gd::GDScript::51835783903356318::1780982427::0::1::::<>Node3D<><>0<>0<><>::
 glass_marble_model.tscn::PackedScene::-1::1778832937::0::1::::<><><>0<>0<><>::res://glass_marble_model.gd
 glass_marble_shell.gdshader::Shader::8829860797345869989::1778832937::0::1::::<><><>0<>0<><>::
 glass_marble_swirl.gdshader::Shader::5019653742766574996::1778832937::0::1::::<><><>0<>0<><>::
@@ -131,7 +132,7 @@ pause_ui.gd::GDScript::1965236705339843252::1780213743::0::1::::<>Control<><>0<>
 pause_ui.tscn::PackedScene::-1::1780043093::0::1::::<><><>0<>0<><>::res://pause_ui.gd
 Player.gd::GDScript::2908945147073607974::1778832937::0::1::::<>Node3D<><>0<>0<><>::
 Player.tscn::PackedScene::-1::1780032783::0::1::::<><><>0<>0<><>::res://Player.gd
-playerm.gd::GDScript::8239253147808117824::1780205812::0::1::::<>RigidBody3D<><>0<>0<><>::
+playerm.gd::GDScript::8239253147808117824::1781028803::0::1::::<>RigidBody3D<><>0<>0<><>::
 playermarble.gd::GDScript::5746046557341385482::1778832939::0::1::::<>RefCounted<><>0<>0<><>::
 README.md::TextFile::-1::1779482027::0::1::::<><><>0<>0<><>::
 settings.gd::GDScript::2946132779715694911::1778832939::0::1::::<>PopupPanel<><>0<>0<><>::
@@ -141,9 +142,9 @@ showroom_field_preview.gd::GDScript::6274200328673056651::1778832939::0::1::::<>
 simple_galaxy_simulation.glb::PackedScene::1615424086751225834::1778832940::1778995075::1::::<><><>0<>0<>935a227efba6ceff5979aad58a2e2b69<>res://.godot/imported/simple_galaxy_simulation.glb-75ccf88dad29633aaae6707ae25dc056.scn::
 single_glass_ball.gd::GDScript::2640851071103991835::1778832940::0::1::::<>Node3D<><>0<>1<><>::
 single_glass_ball.tscn::PackedScene::-1::1778832940::0::1::::<><><>0<>0<><>::res://single_glass_ball.gd<>res://glass_balls_-_3mb.glb
-StartMenu.tscn::PackedScene::3816119076040631237::1779868519::0::1::::<><><>0<>0<><>::uid://du88wvkgunfhp::::res://start_menu.gd
-start_menu.gd::GDScript::8633207456689377913::1780214226::0::1::::<>Control<><>0<>0<><>::
-Start_Menu.tscn::PackedScene::1123564324742178450::1779868525::0::1::::<><><>0<>0<><>::uid://du88wvkgunfhp::::res://start_menu.gd<>res://Untitled design (17).png
+StartMenu.tscn::PackedScene::3816119076040631237::1781033900::0::1::::<><><>0<>0<><>::uid://du88wvkgunfhp::::res://start_menu.gd
+start_menu.gd::GDScript::8633207456689377913::1781033899::0::1::::<>Control<><>0<>0<><>::
+Start_Menu.tscn::PackedScene::1123564324742178450::1781033899::0::1::::<><><>0<>0<><>::uid://du88wvkgunfhp::::res://start_menu.gd<>res://Untitled design (17).png
 terrain_test_2.glb::PackedScene::5617420276959124497::1778832940::1778995075::1::::<><><>0<>0<>2f28ce3c59644291df389066b50bbeef<>res://.godot/imported/terrain_test_2.glb-d44375163062ec9fc7e7b0ba0f745e01.scn::uid://bktrrrm7roch7::::res://terrain_test_2_0.jpg<>uid://dr1dab353okrb::::res://terrain_test_2_1.png
 terrain_test_2_0.jpg::CompressedTexture2D::3128595757685783318::1778832940::1778995029::1::::<><><>0<>0<>d379b956b0e5fbe3e28bd7d80a2086b5<>res://.godot/imported/terrain_test_2_0.jpg-5300eaad383700b44a0b7e38214e9de4.s3tc.ctex<*>res://.godot/imported/terrain_test_2_0.jpg-5300eaad383700b44a0b7e38214e9de4.etc2.ctex::
 terrain_test_2_1.png::CompressedTexture2D::8406328462688623579::1778832940::1778995029::1::::<><><>0<>0<>2482c4d14e73fe315708c1d9e2d97733<>res://.godot/imported/terrain_test_2_1.png-df8b46d9b957773ffe4f7e30fd292aa6.s3tc.ctex<*>res://.godot/imported/terrain_test_2_1.png-df8b46d9b957773ffe4f7e30fd292aa6.etc2.ctex::
@@ -153,8 +154,8 @@ trail_1.png::CompressedTexture2D::2546521014217296385::1778832940::1778995029::1
 trail_2.png::CompressedTexture2D::1972154289865817001::1778832940::1778995029::1::::<><><>0<>0<>a1f58d5b4584ad300a6ba20ab6ecead9<>res://.godot/imported/trail_2.png-0a6a4f652a1542271c6e1de985dd4db5.s3tc.ctex<*>res://.godot/imported/trail_2.png-0a6a4f652a1542271c6e1de985dd4db5.etc2.ctex::
 turn_manager.gd::GDScript::6528532875585906302::1780217981::0::1::::<>Node3D<><>0<>0<><>::
 tutorial.tscn::PackedScene::3491138286329740059::1778832940::0::1::::<><><>0<>0<><>::uid://diblofrg83k68::::res://field_ground.gdshader<>uid://b2kuknjkij3sb::::res://tutorial_overlay.gd<>uid://dexw5m4hm8m31::::res://marbles/match_marbles.tscn<>uid://b5bayvf3jkogj::::res://ground_house_in_the_woods_project.glb<>uid://cp3eskkla8poc::::res://grass_clump.gdshader<>uid://4803a6o88ipm::::res://gradient_city.glb<>uid://ce4k7v6vnmbxv::::res://hole_bowl.gd<>res://pause_ui.tscn<>uid://b37xun3hg27sb::::res://game_hud.gd<>uid://c0ap8n6ki0rdm::::res://turn_manager.gd<>res://fireworks_celebration.tscn<>res://lake_ring.tscn<>res://backdrop_environment.gd<>res://field_theme_manager.gd<>res://field_layout_manager.gd<>res://field_variant_manager.gd
-tutorial_overlay.gd::GDScript::4303396134427174685::1779959275::0::1::::<>Node3D<><>0<>0<><>::
-ui_font_manager.gd::GDScript::453673653105188174::1779482053::0::1::::<>Node<><>0<>0<><>::
+tutorial_overlay.gd::GDScript::4303396134427174685::1781028803::0::1::::<>Node3D<><>0<>0<><>::
+ui_font_manager.gd::GDScript::453673653105188174::1781033899::0::1::::<>Node<><>0<>0<><>::
 Untitled2.glb::PackedScene::4470524878033259082::1778832937::1778995064::1::::<><><>0<>0<>e64a6a7145bb6afe0f6ae236c07d83a4<>res://.godot/imported/Untitled2.glb-10c9a48b57997e07d7d532ede2a576c7.scn::
 Untitled3.glb::PackedScene::7843920510287457168::1778832937::1778995063::1::::<><><>0<>0<>f7ed8541573b3fdc36d02383a2b4a214<>res://.godot/imported/Untitled3.glb-203873a5373b234f88c644414b4477e0.scn::
 Untitled design (17).png::CompressedTexture2D::803402316816179213::1778832937::1778995032::1::::<><><>0<>0<>2ae12cdec10bb280a4ffbeef019a0585<>res://.godot/imported/Untitled design (17).png-bc5359ba2e808ab1b60da9019202a057.ctex::
@@ -187,6 +188,12 @@ marble_feedback_fx.tscn::PackedScene::-1::1780043853::0::1::::<><><>0<>0<><>::re
 editable_imported_field.gd::GDScript::1766676088832659103::1778832937::0::1::::<>Node3D<><>0<>0<><>::
 imported_field_runtime.gd::GDScript::6702214436049529636::1778832937::0::1::::<>Node3D<><>0<>0<><>::
 inazuma_eleven_field.tscn::PackedScene::7233273354040275534::1778832937::0::1::::<><><>0<>0<><>::res://fields/editable_imported_field.gd<>uid://8o844wl5x8vj::::res://inazuma_eleven_terrain_commerce.glb<>res://backdrop_environment.gd
+::res://fonts/::1781033419
+Bangers-Regular.ttf::FontFile::6173954332594604925::1781030798::1781076380::1::::<><><>0<>0<>211f32cd5f7ae2ca1067896a8e13abd7<>res://.godot/imported/Bangers-Regular.ttf-002d1040d6acd3ea7ce54fa6e2945de2.fontdata::
+COOPBL.TTF::FontFile::1928109000826057920::1767949972::1781076380::1::::<><><>0<>0<>c20293781691d95640886e191246dd80<>res://.godot/imported/COOPBL.TTF-84fbe1c9b636ffbcb29294bf1edc96d3.fontdata::
+LilitaOne-Regular.ttf::FontFile::2588564509732267931::1781033419::1781076380::1::::<><><>0<>0<>e95a170b8f3c0b7603abf5d084e583c5<>res://.godot/imported/LilitaOne-Regular.ttf-150579ea79b262716ec303b5070fa68e.fontdata::
+LuckiestGuy-Regular.ttf::FontFile::5863243396970770282::1781032963::1781076380::1::::<><><>0<>0<>b5a936bc9edc86db3b6b050b4973cc9a<>res://.godot/imported/LuckiestGuy-Regular.ttf-b789a1aa0a67388e0f080e3a0b767747.fontdata::
+RAVIE.TTF::FontFile::8638980639342386405::1767950001::1780898501::1::::<><><>0<>0<>a10ff7be83490261d7a0e28e2e469902<>res://.godot/imported/RAVIE.TTF-bfc79835bc9d840375f31e7884715515.fontdata::
 ::res://GPUTrail-main/::1780210801
 bounce.svg::CompressedTexture2D::6156999257859519133::1780054487::1780054488::1::::<><><>0<>0<>fb018c29eb997adfe1add9ea51a54a76<>res://.godot/imported/bounce.svg-1c60b713fc682b9c790d587bf0715690.ctex::
 GPUTrail3D.gd::GDScript::5004881446579794658::1780054487::0::1::::GPUTrail3D<>GPUParticles3D<>res://GPUTrail-main/bounce.svg<>0<>1<><>::
@@ -311,12 +318,12 @@ premium.tres::ShaderMaterial::-1::1778832939::0::1::::<><><>0<>0<><>::res://shad
 stripe.tres::ShaderMaterial::-1::1778832939::0::1::::<><><>0<>0<><>::res://shaders/stripe_marble.gdshader
 swirl.tres::ShaderMaterial::-1::1778832939::0::1::::<><><>0<>0<><>::res://shaders/swirl_marble.gdshader
 ::res://multiplayer_server/::1779482027
-package-lock.json::JSON::-1::1779482027::0::1::::<><><>0<>0<><>::
-package.json::JSON::-1::1779482027::0::1::::<><><>0<>0<><>::
+package-lock.json::JSON::-1::1780570113::0::1::::<><><>0<>0<><>::
+package.json::JSON::-1::1780569743::0::1::::<><><>0<>0<><>::
 server.err.log::TextFile::-1::1778832939::0::1::::<><><>0<>0<><>::
 server.out.log::TextFile::-1::1778832939::0::1::::<><><>0<>0<><>::
-::res://multiplayer_server/node_modules/::1778832939
-.package-lock.json::JSON::-1::1778832939::0::1::::<><><>0<>0<><>::
+::res://multiplayer_server/node_modules/::1780570388
+.package-lock.json::JSON::-1::1780570113::0::1::::<><><>0<>0<><>::
 ::res://multiplayer_server/node_modules/ws/::1778832939
 package.json::JSON::-1::1778832939::0::1::::<><><>0<>0<><>::
 README.md::TextFile::-1::1778832939::0::1::::<><><>0<>0<><>::
@@ -4917,7 +4924,7 @@ server.out.log::TextFile::-1::1778832940::0::1::::<><><>0<>0<><>::
 ::res://tools/::1780210354
 perf_smoke_simulation.gd::GDScript::6374948237202331181::1780060315::0::1::::<>Node<><>0<>0<><>::
 perf_smoke_simulation.tscn::PackedScene::-1::1780060315::0::1::::<><><>0<>0<><>::res://tools/perf_smoke_simulation.gd
-::res://ui/::1780166036
+::res://ui/::1780922980
 bano_app_icon.png::CompressedTexture2D::1578772047863255569::1778832940::1778995044::1::::<><><>0<>0<>a9ed72e8f0e4d6b5b4b04e8edec6dd60<>res://.godot/imported/bano_app_icon.png-6f940929e4009061e19b5321e429ca77.ctex::
 bano_app_logo.png::CompressedTexture2D::7743486525974179510::1778832940::1778995047::1::::<><><>0<>0<>ae598ec48edf195a0f93a9faadc40c22<>res://.godot/imported/bano_app_logo.png-1b37fc14709f4b71374d057526b6d00b.ctex::
 bano_header_wordmark.png::CompressedTexture2D::7474687107554383156::1779482053::1778995047::1::::<><><>0<>0<>b7e6f82fb7292cb0296bc7a56b6bf39b<>res://.godot/imported/bano_header_wordmark.png-ccac15962ba0fd68d394019ae0645bad.ctex::
@@ -4945,6 +4952,8 @@ neon_stitch_banner.png::CompressedTexture2D::919737801332285865::1780216340::178
 red_flame_frame_banner.png::CompressedTexture2D::5899766733419268279::1780127749::1780141625::1::::<><><>0<>0<>e4b35215642de5e9d143377bf6f1b035<>res://.godot/imported/red_flame_frame_banner.png-d4b701a9918b67fc0a12d697b5fcd2cd.ctex::
 red_shadow_banner.png::CompressedTexture2D::222315526271886677::1780217888::1780325538::1::::<><><>0<>0<>74f3dddf46d82557f0d2e5568b0e063d<>res://.godot/imported/red_shadow_banner.png-908a00fb4ac5cd8e702aaaa836178559.ctex::
 royal_wings_banner.png::CompressedTexture2D::1265380827777732::1780127749::1780141626::1::::<><><>0<>0<>13a1ef27663cce721dbe7d6624ec7cc7<>res://.godot/imported/royal_wings_banner.png-5066dd3887f56998b15853ddea3c388b.ctex::
+::res://ui/sounds/::1780924971
+button_click.wav::AudioStreamWAV::171385065981654654::1780922857::1780924971::1::::<><><>0<>0<>23286b268cf00139fbdfee247cfdba91<>res://.godot/imported/button_click.wav-1ffc6896c5dec16f1389e64be3ec6b1f.sample::
 ::res://ui/store/::1778995047
 gold_box.png::CompressedTexture2D::3972998277763436806::1778832941::1778995044::1::::<><><>0<>0<>a88e13a54c6323bef6988cf0e003300b<>res://.godot/imported/gold_box.png-7d3ef9072cddfb4ddef3719a16660352.ctex::
 gold_chest.png::CompressedTexture2D::136992518457218426::1778832941::1778995045::1::::<><><>0<>0<>a1d43e94159a0ba8e829e0106d56509f<>res://.godot/imported/gold_chest.png-47d78ba6d0c95e0ed319c8116a3b1a54.ctex::

@@ -731,7 +731,8 @@ func _begin_split_shot(pointer_position: Vector2, touch_index: int) -> void:
 	split_shoot_start = pointer_position
 	split_shoot_position = pointer_position
 	split_shoot_vertical_offset = 0.0
-	_capture_drag_reference_axes()
+	if not split_aiming:
+		_capture_drag_reference_axes()
 	_update_split_shot_preview(true)
 
 

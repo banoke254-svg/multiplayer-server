@@ -947,7 +947,7 @@ function serializePlayerRankings() {
     const wins = Number(profile.ranking_wins || 0);
     const eliminations = Number(profile.ranking_eliminations || 0);
 
-    if (!cleanLoginId || points <= 0 && wins <= 0 && eliminations <= 0) {
+    if (!cleanLoginId || wins <= 0) {
       return;
     }
 
@@ -965,6 +965,9 @@ function serializePlayerRankings() {
 
   Array.from(clientsById.values()).forEach((client) => {
     const ranking = getRankingStatsForClient(client);
+    if (Number(ranking.wins || 0) <= 0) {
+      return;
+    }
     const loginId = String(client.login_id || '').trim();
     const key = loginId ? `login:${loginId}` : `client:${client.id}`;
     const existing = entriesByKey.get(key) || {};
@@ -984,14 +987,8 @@ function serializePlayerRankings() {
 
   return Array.from(entriesByKey.values())
     .sort((first, second) => {
-      if (Number(second.points || 0) !== Number(first.points || 0)) {
-        return Number(second.points || 0) - Number(first.points || 0);
-      }
       if (Number(second.wins || 0) !== Number(first.wins || 0)) {
         return Number(second.wins || 0) - Number(first.wins || 0);
-      }
-      if (Number(second.eliminations || 0) !== Number(first.eliminations || 0)) {
-        return Number(second.eliminations || 0) - Number(first.eliminations || 0);
       }
       return String(first.name || '').localeCompare(String(second.name || ''));
     })
@@ -1727,6 +1724,7 @@ function applyMatchRankingAwards(room, payload) {
     const client = clientsById.get(clientId);
     awardRankingPoints(client, {
       client_id: clientId,
+      login_id: sanitizeAdminText(entry.login_id || '', 80),
       name: sanitizeAdminText(entry.name || '', 40),
       country: sanitizeCountry(entry.country || ''),
       eliminations,
@@ -1738,6 +1736,7 @@ function applyMatchRankingAwards(room, payload) {
   if (awardsApplied <= 0 && winnerClientId && room.players.includes(winnerClientId)) {
     awardRankingPoints(clientsById.get(winnerClientId), {
       client_id: winnerClientId,
+      login_id: sanitizeAdminText(payload.winner_login_id || '', 80),
       name: sanitizeAdminText(payload.winner_name || '', 40),
       country: sanitizeCountry(payload.winner_country || ''),
       eliminations: 0,

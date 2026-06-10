@@ -834,9 +834,10 @@ func _get_player_screen_position(property_name: String, fallback: Vector2) -> Ve
 
 
 func _load_tutorial_hand_texture() -> Texture2D:
-	var image: Image = Image.new()
-	if image.load(TUTORIAL_HAND_TEXTURE_PATH) == OK:
-		return ImageTexture.create_from_image(image)
+	if ResourceLoader.exists(TUTORIAL_HAND_TEXTURE_PATH):
+		var texture: Texture2D = load(TUTORIAL_HAND_TEXTURE_PATH) as Texture2D
+		if texture != null:
+			return texture
 	return _make_hand_texture()
 
 

@@ -4,7 +4,7 @@ const SAVE_PATH: String = "user://customization.json"
 const SAVE_VERSION: int = 9
 
 const DEFAULT_MARBLE_ID: String = "pearl_drift"
-const DEFAULT_TRAIL_ID: String = "comet"
+const DEFAULT_TRAIL_ID: String = "none"
 const DEFAULT_FIELD_ID: String = "glass_garden"
 const DEFAULT_BANNER_ID: String = "crystal"
 const DEFAULT_PLAYER_NAME: String = ""
@@ -14,6 +14,8 @@ const MAX_SHOOT_SENSITIVITY: float = 1.5
 const DEFAULT_AIM_INVERTED: bool = false
 const STANDARD_MARBLE_S_COIN_COST: int = 100
 const SPECIAL_MARBLE_GOLD_COST: int = 100
+const GOLD_ALTERNATE_MIN_COIN_COST: int = 80
+const GOLD_ALTERNATE_COIN_RATIO: float = 5.0
 const SHOOTING_MECHANIC_DRAG: String = "drag"
 const SHOOTING_MECHANIC_SPLIT: String = "split"
 const SHOOTING_MECHANIC_PRESS: String = "press"
@@ -26,6 +28,9 @@ const DEFAULT_UNLOCKED_FIELD_IDS := [
 ]
 const DEFAULT_UNLOCKED_BANNER_IDS := [
 	"crystal"
+]
+const DEFAULT_UNLOCKED_TRAIL_IDS := [
+	"none"
 ]
 const HIDDEN_MARBLE_IDS := []
 const PREMIUM_IMPORTED_MARBLE_IDS := [
@@ -63,11 +68,13 @@ var leaderboard_names: Dictionary = {}
 var unlocked_marble_ids: PackedStringArray = DEFAULT_UNLOCKED_MARBLE_IDS.duplicate()
 var unlocked_field_ids: PackedStringArray = DEFAULT_UNLOCKED_FIELD_IDS.duplicate()
 var unlocked_banner_ids: PackedStringArray = DEFAULT_UNLOCKED_BANNER_IDS.duplicate()
+var unlocked_trail_ids: PackedStringArray = DEFAULT_UNLOCKED_TRAIL_IDS.duplicate()
 
 var marble_presets: Dictionary = {
 	"pearl_drift": {
 		"name": "Pearl Drift",
 		"description": "Soft pearl marble with a pale sky tint.",
+		"cost": 30,
 		"type": "stripe",
 		"colors": [Color(0.94, 0.97, 1.0, 1.0), Color(0.78, 0.86, 0.98, 1.0), Color(0.70, 0.78, 0.92, 1.0)],
 		"palette": {
@@ -85,6 +92,7 @@ var marble_presets: Dictionary = {
 	"obsidian_drop": {
 		"name": "Obsidian Drop",
 		"description": "Dark neutral marble with a cool graphite sheen.",
+		"cost": 30,
 		"type": "stripe",
 		"colors": [Color(0.18, 0.22, 0.28, 1.0), Color(0.10, 0.12, 0.18, 1.0), Color(0.06, 0.09, 0.14, 1.0)],
 		"palette": {
@@ -102,6 +110,7 @@ var marble_presets: Dictionary = {
 	"emerald_ribbon": {
 		"name": "Emerald Ribbon",
 		"description": "Fresh mint body with bright emerald bands.",
+		"cost": 40,
 		"type": "stripe",
 		"pattern": "stripe",
 		"colors": [Color(0.12, 0.72, 0.34, 1.0), Color(0.90, 0.98, 0.94, 1.0), Color(0.08, 0.46, 0.22, 1.0)],
@@ -120,6 +129,7 @@ var marble_presets: Dictionary = {
 	"cobalt_ribbon": {
 		"name": "Cobalt Ribbon",
 		"description": "Icy white shell cut with vivid cobalt bands.",
+		"cost": 45,
 		"type": "stripe",
 		"pattern": "stripe",
 		"colors": [Color(0.14, 0.34, 0.94, 1.0), Color(0.92, 0.96, 1.0, 1.0), Color(0.06, 0.18, 0.62, 1.0)],
@@ -138,6 +148,7 @@ var marble_presets: Dictionary = {
 	"gold_ribbon": {
 		"name": "Gold Ribbon",
 		"description": "Warm ivory marble with bright gold ribbon lines.",
+		"cost": 60,
 		"type": "stripe",
 		"pattern": "stripe",
 		"colors": [Color(0.98, 0.72, 0.14, 1.0), Color(0.98, 0.94, 0.82, 1.0), Color(0.74, 0.48, 0.10, 1.0)],
@@ -156,6 +167,7 @@ var marble_presets: Dictionary = {
 	"violet_ribbon": {
 		"name": "Violet Ribbon",
 		"description": "Lavender marble crossed with vivid violet ribbons.",
+		"cost": 50,
 		"type": "default",
 		"pattern": "stripe",
 		"colors": [Color(0.62, 0.22, 0.92, 1.0), Color(0.96, 0.92, 1.0, 1.0), Color(0.34, 0.10, 0.60, 1.0)],
@@ -174,6 +186,7 @@ var marble_presets: Dictionary = {
 	"aqua_ribbon": {
 		"name": "Aqua Ribbon",
 		"description": "Bright aqua ribbons looping over a frosted shell.",
+		"cost": 50,
 		"type": "default",
 		"pattern": "stripe",
 		"colors": [Color(0.10, 0.84, 0.92, 1.0), Color(0.90, 0.98, 1.0, 1.0), Color(0.06, 0.52, 0.58, 1.0)],
@@ -192,6 +205,7 @@ var marble_presets: Dictionary = {
 	"orange_flame": {
 		"name": "Orange Flame",
 		"description": "Classic orange fire marble with a bright hot aura.",
+		"cost": 65,
 		"type": "flame",
 		"colors": [Color(1.0, 0.74, 0.12, 1.0), Color(1.0, 0.20, 0.02, 1.0), Color(0.22, 0.12, 0.06, 1.0)],
 		"effects": {
@@ -220,6 +234,7 @@ var marble_presets: Dictionary = {
 	"blue_flame": {
 		"name": "Blue Flame",
 		"description": "Electric blue fire marble with a frosty outer burn.",
+		"cost": 70,
 		"type": "flame",
 		"colors": [Color(0.70, 0.96, 1.0, 1.0), Color(0.08, 0.36, 1.0, 1.0), Color(0.06, 0.10, 0.22, 1.0)],
 		"effects": {
@@ -248,6 +263,7 @@ var marble_presets: Dictionary = {
 	"green_flame": {
 		"name": "Green Flame",
 		"description": "Acid green fire marble with a bright toxic-looking aura.",
+		"cost": 70,
 		"type": "flame",
 		"colors": [Color(0.82, 1.0, 0.40, 1.0), Color(0.14, 0.88, 0.28, 1.0), Color(0.06, 0.16, 0.08, 1.0)],
 		"effects": {
@@ -276,6 +292,7 @@ var marble_presets: Dictionary = {
 	"violet_flame": {
 		"name": "Violet Flame",
 		"description": "Arcane violet fire marble with a neon purple aura.",
+		"cost": 75,
 		"type": "flame",
 		"colors": [Color(1.0, 0.76, 1.0, 1.0), Color(0.58, 0.16, 1.0, 1.0), Color(0.12, 0.07, 0.20, 1.0)],
 		"effects": {
@@ -304,6 +321,7 @@ var marble_presets: Dictionary = {
 	"environment_sphere": {
 		"name": "Magic World Marble",
 		"description": "Magic world marble.",
+		"cost": 80,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.50, 0.84, 1.0, 1.0), Color(0.88, 0.96, 1.0, 1.0), Color(0.18, 0.26, 0.44, 1.0)],
@@ -330,6 +348,7 @@ var marble_presets: Dictionary = {
 	"roblox_magic_sphere": {
 		"name": "Aura Marble",
 		"description": "Aura marble.",
+		"cost": 85,
 		"type": "premium",
 		"pattern": "aura",
 		"colors": [Color(0.58, 0.42, 1.0, 1.0), Color(0.86, 0.96, 1.0, 1.0), Color(0.16, 0.12, 0.38, 1.0)],
@@ -356,6 +375,7 @@ var marble_presets: Dictionary = {
 	"poke_ball": {
 		"name": "Poki Ball Marble",
 		"description": "Poki ball marble.",
+		"cost": 90,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.96, 0.22, 0.20, 1.0), Color(0.98, 0.98, 0.98, 1.0), Color(0.18, 0.18, 0.20, 1.0)],
@@ -382,6 +402,7 @@ var marble_presets: Dictionary = {
 	"rocket_league_ball": {
 		"name": "Rocket Ball Marble",
 		"description": "Rocket ball marble.",
+		"cost": 95,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.86, 0.86, 0.86, 1.0), Color(0.22, 0.22, 0.22, 1.0), Color(0.06, 0.06, 0.06, 1.0)],
@@ -404,6 +425,7 @@ var marble_presets: Dictionary = {
 	"cannonbolt_ball": {
 		"name": "Cannonbolt Marble",
 		"description": "Cannonbolt marble.",
+		"cost": 100,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.96, 0.96, 0.84, 1.0), Color(0.42, 0.26, 0.16, 1.0), Color(0.12, 0.10, 0.08, 1.0)],
@@ -426,6 +448,7 @@ var marble_presets: Dictionary = {
 	"little_robot_ball": {
 		"name": "Robot Marble",
 		"description": "Robot marble.",
+		"cost": 105,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.86, 0.9, 0.94, 1.0), Color(0.42, 0.52, 0.64, 1.0), Color(0.12, 0.14, 0.18, 1.0)],
@@ -448,6 +471,7 @@ var marble_presets: Dictionary = {
 	"pool_ball": {
 		"name": "8 Ball Marble",
 		"description": "8 ball marble.",
+		"cost": 110,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.98, 0.94, 0.82, 1.0), Color(0.18, 0.18, 0.22, 1.0), Color(0.04, 0.04, 0.06, 1.0)],
@@ -470,6 +494,7 @@ var marble_presets: Dictionary = {
 	"rainbow_galaxy_ball": {
 		"name": "Aurora Marble",
 		"description": "Aurora marble.",
+		"cost": 115,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.94, 0.86, 1.0, 1.0), Color(0.36, 0.62, 1.0, 1.0), Color(0.14, 0.08, 0.24, 1.0)],
@@ -492,6 +517,7 @@ var marble_presets: Dictionary = {
 	"anime_red_black_ball": {
 		"name": "Anime VFX Red Black",
 		"description": "Red and black anime energy marble.",
+		"cost": 120,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(1.0, 0.08, 0.04, 1.0), Color(0.08, 0.02, 0.02, 1.0), Color(0.42, 0.0, 0.0, 1.0)],
@@ -514,7 +540,9 @@ var marble_presets: Dictionary = {
 	},
 	"marble_ball_3_import": {
 		"name": "90s Marble",
-		"description": "Imported marble ball variant.",
+		"description": "",
+		"cost": 120,
+		"gold_only": true,
 		"type": "premium",
 		"pattern": "glass",
 		"colors": [Color(0.92, 0.94, 1.0, 1.0), Color(0.34, 0.44, 0.72, 1.0), Color(0.08, 0.10, 0.18, 1.0)],
@@ -541,11 +569,13 @@ var trail_presets: Dictionary = {
 	"none": {
 		"name": "No Trail",
 		"description": "No trail effect.",
+		"cost": 0,
 		"enabled": false
 	},
 	"comet": {
 		"name": "Comet",
 		"description": "Bright cyan marble glow trail.",
+		"cost": 30,
 		"enabled": true,
 		"color": Color(0.42, 0.92, 1.0, 0.34),
 		"emission": Color(0.18, 0.8, 1.0, 1.0),
@@ -556,6 +586,7 @@ var trail_presets: Dictionary = {
 	"particle_loop": {
 		"name": "Particle Loop",
 		"description": "Imported looping particle trail.",
+		"cost": 65,
 		"enabled": true,
 		"color": Color(0.5, 0.9, 1.0, 0.38),
 		"secondary_color": Color(0.88, 0.96, 1.0, 0.26),
@@ -569,6 +600,7 @@ var trail_presets: Dictionary = {
 	"ember": {
 		"name": "Ember",
 		"description": "Warm orange sparks trailing behind the marble.",
+		"cost": 35,
 		"enabled": true,
 		"color": Color(1.0, 0.58, 0.18, 0.34),
 		"emission": Color(1.0, 0.34, 0.08, 1.0),
@@ -579,6 +611,7 @@ var trail_presets: Dictionary = {
 	"mint": {
 		"name": "Mint Mist",
 		"description": "Soft green glassy trail.",
+		"cost": 40,
 		"enabled": true,
 		"color": Color(0.54, 1.0, 0.78, 0.28),
 		"emission": Color(0.22, 0.86, 0.54, 1.0),
@@ -589,6 +622,7 @@ var trail_presets: Dictionary = {
 	"violet": {
 		"name": "Violet Arc",
 		"description": "Electric purple neon trail.",
+		"cost": 45,
 		"enabled": true,
 		"color": Color(0.74, 0.56, 1.0, 0.3),
 		"emission": Color(0.52, 0.28, 1.0, 1.0),
@@ -599,6 +633,7 @@ var trail_presets: Dictionary = {
 	"gold": {
 		"name": "Gold Dust",
 		"description": "Short golden shimmer behind the marble.",
+		"cost": 55,
 		"enabled": true,
 		"color": Color(1.0, 0.88, 0.34, 0.28),
 		"emission": Color(0.98, 0.74, 0.18, 1.0),
@@ -611,6 +646,7 @@ var trail_presets: Dictionary = {
 	"kenya_pulse": {
 		"name": "Kenya Pulse",
 		"description": "Fast red, green, and white energy streaks.",
+		"cost": 80,
 		"enabled": true,
 		"color": Color(0.88, 0.16, 0.18, 0.44),
 		"secondary_color": Color(0.14, 0.62, 0.22, 0.32),
@@ -623,6 +659,7 @@ var trail_presets: Dictionary = {
 	"aurora_ribbon": {
 		"name": "Aurora Ribbon",
 		"description": "Soft northern-light trail with cyan and violet layers.",
+		"cost": 120,
 		"enabled": true,
 		"color": Color(0.42, 1.0, 0.9, 0.46),
 		"secondary_color": Color(0.76, 0.5, 1.0, 0.42),
@@ -635,6 +672,7 @@ var trail_presets: Dictionary = {
 	"safari_dust": {
 		"name": "Safari Dust",
 		"description": "Warm sand trail with a dry glowing haze.",
+		"cost": 70,
 		"enabled": true,
 		"color": Color(0.88, 0.62, 0.24, 0.34),
 		"secondary_color": Color(0.44, 0.24, 0.12, 0.2),
@@ -647,6 +685,7 @@ var trail_presets: Dictionary = {
 	"lagoon_comet": {
 		"name": "Lagoon Comet",
 		"description": "Dense tropical blue-green comet tail.",
+		"cost": 85,
 		"enabled": true,
 		"color": Color(0.18, 0.84, 0.98, 0.42),
 		"secondary_color": Color(0.18, 0.98, 0.64, 0.28),
@@ -659,6 +698,7 @@ var trail_presets: Dictionary = {
 	"violet_static": {
 		"name": "Violet Static",
 		"description": "Electric purple trail with sharp bright flickers.",
+		"cost": 100,
 		"enabled": true,
 		"color": Color(0.72, 0.42, 1.0, 0.34),
 		"secondary_color": Color(0.96, 0.76, 1.0, 0.2),
@@ -691,7 +731,7 @@ var banner_presets: Dictionary = {
 		"outline": Color(0.18, 0.02, 0.0, 0.96),
 		"shape": "burner",
 		"style": "flame",
-		"cost": 160
+		"cost": 55
 	},
 	"royal_bubble": {
 		"name": "Royal Bubble",
@@ -702,7 +742,7 @@ var banner_presets: Dictionary = {
 		"outline": Color(0.02, 0.0, 0.08, 0.96),
 		"shape": "bubble",
 		"style": "glow",
-		"cost": 140
+		"cost": 35
 	},
 	"gold_plate": {
 		"name": "Gold Plate",
@@ -713,7 +753,7 @@ var banner_presets: Dictionary = {
 		"outline": Color(0.10, 0.06, 0.0, 0.98),
 		"shape": "plate",
 		"style": "plate",
-		"cost": 180
+		"cost": 65
 	},
 	"lagoon_pop": {
 		"name": "Lagoon Pop",
@@ -724,7 +764,7 @@ var banner_presets: Dictionary = {
 		"outline": Color(0.0, 0.08, 0.07, 0.96),
 		"shape": "bubble",
 		"style": "aqua_glow",
-		"cost": 120
+		"cost": 30
 	},
 	"cyber_diamond": {
 		"name": "Cyber Diamond",
@@ -735,7 +775,7 @@ var banner_presets: Dictionary = {
 		"outline": Color(0.0, 0.02, 0.04, 0.98),
 		"shape": "plate",
 		"style": "cyber_diamond",
-		"cost": 220
+		"cost": 75
 	},
 	"royal_scroll": {
 		"name": "Royal Scroll",
@@ -746,7 +786,7 @@ var banner_presets: Dictionary = {
 		"outline": Color(0.20, 0.08, 0.34, 0.98),
 		"shape": "bubble",
 		"style": "royal_scroll",
-		"cost": 240
+		"cost": 85
 	},
 	"antique_scroll": {
 		"name": "Antique Scroll",
@@ -761,7 +801,7 @@ var banner_presets: Dictionary = {
 		"texture_aspect": 3.1579,
 		"text_area_ratio": 0.74,
 		"text_font_scale": 0.76,
-		"cost": 0
+		"cost": 90
 	},
 	"royal_wings": {
 		"name": "Royal Wings",
@@ -776,7 +816,7 @@ var banner_presets: Dictionary = {
 		"texture_aspect": 2.3,
 		"text_area_ratio": 0.50,
 		"text_font_scale": 0.62,
-		"cost": 0
+		"cost": 120
 	},
 	"red_flame_frame": {
 		"name": "Red Flame Frame",
@@ -794,7 +834,7 @@ var banner_presets: Dictionary = {
 		"text_x_offset_3d": 0.08,
 		"text_y_offset_3d": 0.0,
 		"text_y_offset_2d": 0.0,
-		"cost": 0
+		"cost": 115
 	},
 	"koi_gold": {
 		"name": "Koi Gold",
@@ -809,7 +849,7 @@ var banner_presets: Dictionary = {
 		"texture_aspect": 2.7692,
 		"text_area_ratio": 0.50,
 		"text_font_scale": 0.62,
-		"cost": 0
+		"cost": 100
 	},
 	"neon_stitch": {
 		"name": "Neon Stitch",
@@ -827,7 +867,8 @@ var banner_presets: Dictionary = {
 		"text_font_scale": 0.72,
 		"text_y_offset_2d": 12.0,
 		"text_y_offset_3d": -0.065,
-		"cost": 0
+		"cost": 120,
+		"gold_only": true
 	},
 	"bd_strip": {
 		"name": "BD Strip",
@@ -845,7 +886,7 @@ var banner_presets: Dictionary = {
 		"text_x_offset_2d": 58.0,
 		"text_x_offset_3d": 0.16,
 		"text_y_offset_3d": -0.015,
-		"cost": 0
+		"cost": 95
 	},
 	"red_shadow": {
 		"name": "Red Shadow",
@@ -862,7 +903,7 @@ var banner_presets: Dictionary = {
 		"text_font_scale": 0.72,
 		"text_y_offset_2d": -10.0,
 		"text_y_offset_3d": 0.035,
-		"cost": 0
+		"cost": 105
 	},
 	"black_gold_pill": {
 		"name": "Black Gold Pill",
@@ -877,7 +918,7 @@ var banner_presets: Dictionary = {
 		"texture_aspect": 4.8438,
 		"text_area_ratio": 0.80,
 		"text_font_scale": 0.78,
-		"cost": 0
+		"cost": 110
 	}
 }
 
@@ -924,20 +965,47 @@ func _ready() -> void:
 
 
 func get_marble_ids() -> PackedStringArray:
-	var visible_ids: PackedStringArray = PackedStringArray()
+	var visible_ids: Array[String] = []
 	for marble_id_variant in marble_presets.keys():
 		var marble_id: String = str(marble_id_variant)
 		if not _is_marble_hidden(marble_id):
 			visible_ids.append(marble_id)
-	return visible_ids
+	visible_ids.sort_custom(func(a: String, b: String) -> bool:
+		var cost_a: int = _get_unlock_sort_cost(get_marble_unlock_cost(a), get_marble_unlock_gold_cost(a))
+		var cost_b: int = _get_unlock_sort_cost(get_marble_unlock_cost(b), get_marble_unlock_gold_cost(b))
+		if cost_a == cost_b:
+			return str(marble_presets[a].get("name", a)) < str(marble_presets[b].get("name", b))
+		return cost_a < cost_b
+	)
+	return PackedStringArray(visible_ids)
 
 
 func get_trail_ids() -> PackedStringArray:
-	return PackedStringArray(trail_presets.keys())
+	var trail_ids: Array[String] = []
+	for trail_id_variant in trail_presets.keys():
+		trail_ids.append(str(trail_id_variant))
+	trail_ids.sort_custom(func(a: String, b: String) -> bool:
+		var cost_a: int = _get_unlock_sort_cost(get_trail_unlock_cost(a), get_trail_unlock_gold_cost(a))
+		var cost_b: int = _get_unlock_sort_cost(get_trail_unlock_cost(b), get_trail_unlock_gold_cost(b))
+		if cost_a == cost_b:
+			return str(trail_presets[a].get("name", a)) < str(trail_presets[b].get("name", b))
+		return cost_a < cost_b
+	)
+	return PackedStringArray(trail_ids)
 
 
 func get_banner_ids() -> PackedStringArray:
-	return PackedStringArray(banner_presets.keys())
+	var banner_ids: Array[String] = []
+	for banner_id_variant in banner_presets.keys():
+		banner_ids.append(str(banner_id_variant))
+	banner_ids.sort_custom(func(a: String, b: String) -> bool:
+		var cost_a: int = _get_unlock_sort_cost(get_banner_unlock_cost(a), get_banner_unlock_gold_cost(a))
+		var cost_b: int = _get_unlock_sort_cost(get_banner_unlock_cost(b), get_banner_unlock_gold_cost(b))
+		if cost_a == cost_b:
+			return str(banner_presets[a].get("name", a)) < str(banner_presets[b].get("name", b))
+		return cost_a < cost_b
+	)
+	return PackedStringArray(banner_ids)
 
 
 func get_field_ids() -> PackedStringArray:
@@ -1247,10 +1315,53 @@ func get_currency_display_name(currency: String) -> String:
 	return "Gold" if currency.to_lower() == "gold" else "S coins"
 
 
+func _get_gold_alternate_cost(coin_cost: int) -> int:
+	if coin_cost < GOLD_ALTERNATE_MIN_COIN_COST:
+		return 0
+	return maxi(1, int(ceil(float(coin_cost) / GOLD_ALTERNATE_COIN_RATIO)))
+
+
+func _get_unlock_sort_cost(coin_cost: int, gold_cost: int) -> int:
+	return maxi(coin_cost, int(ceil(float(gold_cost) * GOLD_ALTERNATE_COIN_RATIO)))
+
+
+func _can_pay_unlock_cost(coin_cost: int, gold_cost: int) -> bool:
+	if coin_cost <= 0 and gold_cost <= 0:
+		return true
+	if coin_cost > 0 and get_coin_balance() >= coin_cost:
+		return true
+	return gold_cost > 0 and get_gold_balance() >= gold_cost
+
+
+func _spend_unlock_cost(coin_cost: int, gold_cost: int) -> bool:
+	if coin_cost <= 0 and gold_cost <= 0:
+		return true
+
+	var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
+	if currency_manager == null:
+		return false
+	if coin_cost > 0 and get_coin_balance() >= coin_cost and currency_manager.has_method("spend_coins"):
+		return bool(currency_manager.call("spend_coins", coin_cost))
+	if gold_cost > 0 and get_gold_balance() >= gold_cost and currency_manager.has_method("spend_gold"):
+		return bool(currency_manager.call("spend_gold", gold_cost))
+	return false
+
+
 func get_marble_unlock_cost(id: String) -> int:
 	if not marble_presets.has(id) or _is_marble_hidden(id):
 		return 0
-	return 0
+	if bool(marble_presets[id].get("gold_only", false)):
+		return 0
+	return int(marble_presets[id].get("cost", 0))
+
+
+func get_marble_unlock_gold_cost(id: String) -> int:
+	if not marble_presets.has(id) or _is_marble_hidden(id):
+		return 0
+	var coin_cost: int = int(marble_presets[id].get("cost", 0))
+	if bool(marble_presets[id].get("gold_only", false)):
+		return _get_gold_alternate_cost(coin_cost)
+	return _get_gold_alternate_cost(get_marble_unlock_cost(id))
 
 
 func get_marble_unlock_currency(id: String) -> String:
@@ -1270,10 +1381,35 @@ func get_banner_unlock_cost(id: String) -> int:
 		return 0
 	if not banner_presets.has(id):
 		return 0
+	if bool(banner_presets[id].get("gold_only", false)):
+		return 0
 	return int(banner_presets[id].get("cost", 120))
 
 
+func get_banner_unlock_gold_cost(id: String) -> int:
+	if id == DEFAULT_BANNER_ID or not banner_presets.has(id):
+		return 0
+	var coin_cost: int = int(banner_presets[id].get("cost", 120))
+	if bool(banner_presets[id].get("gold_only", false)):
+		return _get_gold_alternate_cost(coin_cost)
+	return _get_gold_alternate_cost(get_banner_unlock_cost(id))
+
+
 func get_banner_unlock_currency(id: String) -> String:
+	return "coins"
+
+
+func get_trail_unlock_cost(id: String) -> int:
+	if id == DEFAULT_TRAIL_ID or not trail_presets.has(id):
+		return 0
+	return int(trail_presets[id].get("cost", 0))
+
+
+func get_trail_unlock_gold_cost(id: String) -> int:
+	return _get_gold_alternate_cost(get_trail_unlock_cost(id))
+
+
+func get_trail_unlock_currency(id: String) -> String:
 	return "coins"
 
 
@@ -1282,7 +1418,9 @@ func is_marble_unlocked(id: String) -> bool:
 		return false
 	if _is_marble_hidden(id):
 		return false
-	return true
+	if get_marble_unlock_cost(id) <= 0 and get_marble_unlock_gold_cost(id) <= 0:
+		return true
+	return unlocked_marble_ids.has(id)
 
 
 func can_unlock_marble(id: String) -> bool:
@@ -1292,7 +1430,7 @@ func can_unlock_marble(id: String) -> bool:
 		return false
 	if is_marble_unlocked(id):
 		return true
-	return get_currency_balance(get_marble_unlock_currency(id)) >= get_marble_unlock_cost(id)
+	return _can_pay_unlock_cost(get_marble_unlock_cost(id), get_marble_unlock_gold_cost(id))
 
 
 func is_field_unlocked(id: String) -> bool:
@@ -1314,7 +1452,7 @@ func can_unlock_field(id: String) -> bool:
 func is_banner_unlocked(id: String) -> bool:
 	if not banner_presets.has(id):
 		return false
-	if get_banner_unlock_cost(id) <= 0:
+	if get_banner_unlock_cost(id) <= 0 and get_banner_unlock_gold_cost(id) <= 0:
 		return true
 	return unlocked_banner_ids.has(id)
 
@@ -1324,7 +1462,23 @@ func can_unlock_banner(id: String) -> bool:
 		return false
 	if is_banner_unlocked(id):
 		return true
-	return get_currency_balance(get_banner_unlock_currency(id)) >= get_banner_unlock_cost(id)
+	return _can_pay_unlock_cost(get_banner_unlock_cost(id), get_banner_unlock_gold_cost(id))
+
+
+func is_trail_unlocked(id: String) -> bool:
+	if not trail_presets.has(id):
+		return false
+	if get_trail_unlock_cost(id) <= 0 and get_trail_unlock_gold_cost(id) <= 0:
+		return true
+	return unlocked_trail_ids.has(id)
+
+
+func can_unlock_trail(id: String) -> bool:
+	if not trail_presets.has(id):
+		return false
+	if is_trail_unlocked(id):
+		return true
+	return _can_pay_unlock_cost(get_trail_unlock_cost(id), get_trail_unlock_gold_cost(id))
 
 
 func unlock_marble(id: String) -> bool:
@@ -1336,19 +1490,11 @@ func unlock_marble(id: String) -> bool:
 		return true
 
 	var unlock_cost: int = get_marble_unlock_cost(id)
-	var currency: String = get_marble_unlock_currency(id)
-	if get_currency_balance(currency) < unlock_cost:
+	var gold_cost: int = get_marble_unlock_gold_cost(id)
+	if not _can_pay_unlock_cost(unlock_cost, gold_cost):
 		return false
 
-	var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
-	if currency_manager == null:
-		return false
-	var spent: bool = false
-	if currency == "gold" and currency_manager.has_method("spend_gold"):
-		spent = bool(currency_manager.call("spend_gold", unlock_cost))
-	elif currency_manager.has_method("spend_coins"):
-		spent = bool(currency_manager.call("spend_coins", unlock_cost))
-	if not spent:
+	if not _spend_unlock_cost(unlock_cost, gold_cost):
 		return false
 	if not unlocked_marble_ids.has(id):
 		unlocked_marble_ids.append(id)
@@ -1390,22 +1536,33 @@ func unlock_banner(id: String) -> bool:
 		return true
 
 	var unlock_cost: int = get_banner_unlock_cost(id)
-	var currency: String = get_banner_unlock_currency(id)
-	if get_currency_balance(currency) < unlock_cost:
+	var gold_cost: int = get_banner_unlock_gold_cost(id)
+	if not _can_pay_unlock_cost(unlock_cost, gold_cost):
 		return false
 
-	var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
-	if currency_manager == null:
-		return false
-	var spent: bool = false
-	if currency == "gold" and currency_manager.has_method("spend_gold"):
-		spent = bool(currency_manager.call("spend_gold", unlock_cost))
-	elif currency_manager.has_method("spend_coins"):
-		spent = bool(currency_manager.call("spend_coins", unlock_cost))
-	if not spent:
+	if not _spend_unlock_cost(unlock_cost, gold_cost):
 		return false
 	if not unlocked_banner_ids.has(id):
 		unlocked_banner_ids.append(id)
+	save_state()
+	return true
+
+
+func unlock_trail(id: String) -> bool:
+	if not trail_presets.has(id):
+		return false
+	if is_trail_unlocked(id):
+		return true
+
+	var unlock_cost: int = get_trail_unlock_cost(id)
+	var gold_cost: int = get_trail_unlock_gold_cost(id)
+	if not _can_pay_unlock_cost(unlock_cost, gold_cost):
+		return false
+
+	if not _spend_unlock_cost(unlock_cost, gold_cost):
+		return false
+	if not unlocked_trail_ids.has(id):
+		unlocked_trail_ids.append(id)
 	save_state()
 	return true
 
@@ -1522,7 +1679,7 @@ func set_selected_marble(id: String) -> void:
 
 
 func set_selected_trail(id: String) -> void:
-	if trail_presets.has(id):
+	if trail_presets.has(id) and is_trail_unlocked(id):
 		selected_trail_id = id
 		save_state()
 
@@ -1612,6 +1769,7 @@ func _get_remote_progress_payload() -> Dictionary:
 		"unlocked_marble_ids": _packed_string_array_to_array(unlocked_marble_ids),
 		"unlocked_field_ids": _packed_string_array_to_array(unlocked_field_ids),
 		"unlocked_banner_ids": _packed_string_array_to_array(unlocked_banner_ids),
+		"unlocked_trail_ids": _packed_string_array_to_array(unlocked_trail_ids),
 		"leaderboard_wins": leaderboard_wins,
 		"leaderboard_names": leaderboard_names
 	}
@@ -1643,11 +1801,17 @@ func _apply_remote_progress(progress: Dictionary) -> void:
 		if banner_presets.has(banner_id) and not unlocked_banner_ids.has(banner_id):
 			unlocked_banner_ids.append(banner_id)
 
+	var remote_unlocked_trails: Array = progress.get("unlocked_trail_ids", []) if typeof(progress.get("unlocked_trail_ids", [])) == TYPE_ARRAY else []
+	for trail_id_variant in remote_unlocked_trails:
+		var trail_id: String = str(trail_id_variant).strip_edges()
+		if trail_presets.has(trail_id) and not unlocked_trail_ids.has(trail_id):
+			unlocked_trail_ids.append(trail_id)
+
 	var remote_marble_id: String = str(progress.get("selected_marble_id", "")).strip_edges()
 	if remote_marble_id != "" and marble_presets.has(remote_marble_id) and not _is_marble_hidden(remote_marble_id) and is_marble_unlocked(remote_marble_id):
 		selected_marble_id = remote_marble_id
 	var remote_trail_id: String = str(progress.get("selected_trail_id", "")).strip_edges()
-	if remote_trail_id != "" and trail_presets.has(remote_trail_id):
+	if remote_trail_id != "" and trail_presets.has(remote_trail_id) and is_trail_unlocked(remote_trail_id):
 		selected_trail_id = remote_trail_id
 	var remote_field_id: String = str(progress.get("selected_field_id", "")).strip_edges()
 	if remote_field_id != "" and field_presets.has(remote_field_id) and is_field_unlocked(remote_field_id):
@@ -1717,6 +1881,7 @@ func load_state() -> void:
 	var saved_unlocked_marbles: PackedStringArray = PackedStringArray(data.get("unlocked_marble_ids", []))
 	var saved_unlocked_fields: PackedStringArray = PackedStringArray(data.get("unlocked_field_ids", []))
 	var saved_unlocked_banners: PackedStringArray = PackedStringArray(data.get("unlocked_banner_ids", []))
+	var saved_unlocked_trails: PackedStringArray = PackedStringArray(data.get("unlocked_trail_ids", []))
 	if marble_presets.has(marble_id) and not _is_marble_hidden(marble_id):
 		selected_marble_id = marble_id
 	if trail_presets.has(trail_id):
@@ -1759,6 +1924,7 @@ func load_state() -> void:
 	unlocked_marble_ids = DEFAULT_UNLOCKED_MARBLE_IDS.duplicate()
 	unlocked_field_ids = DEFAULT_UNLOCKED_FIELD_IDS.duplicate()
 	unlocked_banner_ids = DEFAULT_UNLOCKED_BANNER_IDS.duplicate()
+	unlocked_trail_ids = DEFAULT_UNLOCKED_TRAIL_IDS.duplicate()
 	if saved_version >= SAVE_VERSION:
 		for marble_id_variant in saved_unlocked_marbles:
 			var unlocked_id: String = str(marble_id_variant)
@@ -1772,8 +1938,14 @@ func load_state() -> void:
 		var unlocked_banner_id: String = str(banner_id_variant)
 		if banner_presets.has(unlocked_banner_id) and not unlocked_banner_ids.has(unlocked_banner_id):
 			unlocked_banner_ids.append(unlocked_banner_id)
+	for trail_id_variant in saved_unlocked_trails:
+		var unlocked_trail_id: String = str(trail_id_variant)
+		if trail_presets.has(unlocked_trail_id) and not unlocked_trail_ids.has(unlocked_trail_id):
+			unlocked_trail_ids.append(unlocked_trail_id)
 	if not is_marble_unlocked(selected_marble_id):
 		selected_marble_id = DEFAULT_MARBLE_ID
+	if not is_trail_unlocked(selected_trail_id):
+		selected_trail_id = DEFAULT_TRAIL_ID
 	if not is_field_unlocked(selected_field_id):
 		selected_field_id = DEFAULT_FIELD_ID
 	if not is_banner_unlocked(selected_banner_id):
@@ -1822,7 +1994,8 @@ func save_state() -> void:
 		"leaderboard_names": leaderboard_names,
 		"unlocked_marble_ids": unlocked_marble_ids,
 		"unlocked_field_ids": unlocked_field_ids,
-		"unlocked_banner_ids": unlocked_banner_ids
+		"unlocked_banner_ids": unlocked_banner_ids,
+		"unlocked_trail_ids": unlocked_trail_ids
 	}
 	file.store_string(JSON.stringify(data))
 

@@ -150,8 +150,10 @@ const ACTION_MODE_ATTACK: int = 3
 @export var respawn_marble_clearance: float = 1.75
 @export var hole_occupant_respawn_clearance: float = 1.25
 @export var lineup_side_spacing: float = 1.85
-@export var elimination_coin_reward: int = 10
-@export var win_coin_reward: int = 100
+@export var elimination_coin_reward: int = 2
+@export var win_coin_reward: int = 20
+@export var online_elimination_coin_reward: int = 20
+@export var online_win_coin_reward: int = 40
 
 var active_marbles: Array[Node3D] = []
 var turn_order: Array[Node3D] = []
@@ -246,6 +248,7 @@ var online_ready_client_ids: Dictionary = {}
 var online_display_name_by_client_id: Dictionary = {}
 var online_remote_trail_presets_by_marble_name: Dictionary = {}
 var online_remote_banner_presets_by_marble_name: Dictionary = {}
+var online_removed_marble_names: Dictionary = {}
 var online_waiting_for_match_start: bool = false
 var online_client_sync_elapsed: float = 0.0
 var online_client_sync_request_timer: float = 0.0
@@ -812,6 +815,7 @@ func _lan_client_ready() -> void:
 	online_client_sync_elapsed = 0.0
 	online_client_sync_request_timer = 0.0
 	online_client_received_turn_state = false
+	online_removed_marble_names.clear()
 	lan_client_targets.clear()
 	lan_client_state_buffers.clear()
 	lan_client_remote_time_offset_ready = false
@@ -894,6 +898,7 @@ func _on_online_match_started(_players: Array, _ai_count: int) -> void:
 	online_client_sync_elapsed = 0.0
 	online_client_sync_request_timer = 0.0
 	online_client_received_turn_state = false
+	online_removed_marble_names.clear()
 	online_local_client_id = str(online.call("get_local_client_id")) if online != null and online.has_method("get_local_client_id") else online_local_client_id
 	lan_is_host = bool(online.call("is_host")) if online != null and online.has_method("is_host") else false
 	_build_online_player_assignments()
@@ -1047,6 +1052,10 @@ func _receive_online_match_finished(payload: Dictionary) -> void:
 	if winner_marble != null:
 		_activate_camera_for_client(winner_marble)
 		_spawn_victory_reward(winner_marble)
+		if winner_marble == online_local_player_marble:
+			var awarded_coins: int = _get_win_coin_reward()
+			_add_coin_reward(awarded_coins)
+			player_won.emit(awarded_coins)
 
 	game_finished.emit(winner_name)
 
@@ -1056,11 +1065,17 @@ func _receive_online_marble_eliminated(payload: Dictionary) -> void:
 		return
 
 	var target_name: String = str(payload.get("target_name", payload.get("player_name", ""))).strip_edges()
-	var target_marble_name: String = str(payload.get("target_marble_name", "")).strip_edges()
-	var target: Node3D = _find_marble_by_name(target_marble_name)
+	var target: Node3D = _find_online_payload_target_marble(payload)
 	if target != null:
 		_remove_online_marble_from_local_match(target)
 		_disable_marble(target)
+	else:
+		var target_marble_name: String = str(payload.get("target_marble_name", "")).strip_edges()
+		if target_marble_name != "":
+			online_removed_marble_names[target_marble_name] = true
+	var attacker_marble_name: String = str(payload.get("attacker_marble_name", "")).strip_edges()
+	if online_local_player_marble != null and attacker_marble_name == String(online_local_player_marble.name):
+		_add_coin_reward(_get_elimination_coin_reward())
 	if target_name != "":
 		marble_eliminated.emit(target_name)
 
@@ -1069,8 +1084,7 @@ func _receive_online_player_disqualified(payload: Dictionary) -> void:
 	if lan_is_host:
 		return
 
-	var target_marble_name: String = str(payload.get("target_marble_name", "")).strip_edges()
-	var target: Node3D = _find_marble_by_name(target_marble_name)
+	var target: Node3D = _find_online_payload_target_marble(payload)
 	if target == null:
 		target = _get_network_input_marble()
 	if target != null:
@@ -1092,9 +1106,28 @@ func _receive_online_player_disqualified(payload: Dictionary) -> void:
 	player_disqualified.emit(attacker_name)
 
 
+func _find_online_payload_target_marble(payload: Dictionary) -> Node3D:
+	var target_marble_name: String = str(payload.get("target_marble_name", "")).strip_edges()
+	if target_marble_name != "":
+		var named_target: Node3D = _find_marble_by_name(target_marble_name)
+		if named_target != null:
+			return named_target
+
+	var target_client_id: String = str(payload.get("target_client_id", "")).strip_edges()
+	if target_client_id != "":
+		var assigned_name: String = str(online_marble_name_by_client_id.get(target_client_id, "")).strip_edges()
+		if assigned_name == "":
+			_build_online_player_assignments()
+			assigned_name = str(online_marble_name_by_client_id.get(target_client_id, "")).strip_edges()
+		if assigned_name != "":
+			return _find_marble_by_name(assigned_name)
+	return null
+
+
 func _remove_online_marble_from_local_match(marble: Node3D) -> void:
 	if marble == null:
 		return
+	online_removed_marble_names[String(marble.name)] = true
 
 	var removed_index: int = turn_order.find(marble)
 	if removed_index != -1:
@@ -1762,7 +1795,7 @@ func _perform_lan_remote_player_shot(marble: Node3D, action_mode: int) -> void:
 			warning_elapsed = idle_player_warning_time
 			warned = false
 
-		if not online_enabled and elapsed >= max_turn_time:
+		if elapsed >= max_turn_time:
 			timed_out = true
 			break
 
@@ -1777,11 +1810,11 @@ func _perform_lan_remote_player_shot(marble: Node3D, action_mode: int) -> void:
 			_send_online_authoritative_snapshot_now()
 	else:
 		if timed_out:
-			push_warning("LAN player %s did not shoot before the turn timer ended. Using AI fallback." % _display_name_for_marble(marble))
+			var mode_label: String = "Online" if online_enabled else "LAN"
+			push_warning("%s player %s did not shoot before the turn timer ended. Using AI fallback." % [mode_label, _display_name_for_marble(marble)])
 		elif online_enabled:
 			_apply_lan_remote_aim_preview(marble, Vector3.ZERO, 0.0, false)
 			push_warning("Online turn for %s ended before a shot arrived." % _display_name_for_marble(marble))
-			return
 		await _perform_ai_shot(marble, action_mode)
 		return
 
@@ -2521,6 +2554,13 @@ func _smooth_lan_client_marbles(delta: float) -> void:
 			continue
 		var state: Dictionary = _get_lan_client_render_state(str(marble_name), body.global_transform)
 		if state.is_empty():
+			continue
+		if online_removed_marble_names.has(str(marble_name)):
+			if not body.freeze:
+				body.freeze = true
+			body.linear_velocity = Vector3.ZERO
+			body.angular_velocity = Vector3.ZERO
+			body.visible = false
 			continue
 		var state_active: bool = bool(state.get("active", state.get("a", true)))
 		var state_visible: bool = state_active and bool(state.get("visible", state.get("v", true)))
@@ -4575,9 +4615,7 @@ func _eliminate_marble(target: Node3D, attacker: Node3D) -> void:
 		elimination_counts_by_marble_name[attacker_key] = int(elimination_counts_by_marble_name.get(attacker_key, 0)) + 1
 	if _is_local_reward_marble(attacker):
 		player_eliminations_this_match += 1
-		var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
-		if currency_manager != null and currency_manager.has_method("add_coins"):
-			currency_manager.call("add_coins", maxi(elimination_coin_reward, 0))
+		_add_coin_reward(_get_elimination_coin_reward())
 
 	var removed_index: int = turn_order.find(target)
 	if removed_index != -1:
@@ -4594,6 +4632,7 @@ func _eliminate_marble(target: Node3D, attacker: Node3D) -> void:
 		current_hole_owner = null
 	if pending_hole_turn_marble == target:
 		pending_hole_turn_marble = null
+	_disable_marble(target)
 	marble_eliminated.emit(target_name)
 	if online_enabled and lan_is_host:
 		var elimination_payload: Dictionary = {
@@ -4606,9 +4645,9 @@ func _eliminate_marble(target: Node3D, attacker: Node3D) -> void:
 		_send_online_game_message("marble_eliminated", elimination_payload)
 		if target_client_id != "" and target_client_id != online_local_client_id:
 			_send_online_game_message("player_disqualified", elimination_payload, target_client_id)
+		_send_online_authoritative_snapshot_now()
 	if target_is_player and not _is_local_reward_marble(attacker):
 		player_disqualified.emit(attacker_name)
-	_disable_marble(target)
 	_emit_scoreboard()
 
 
@@ -5406,10 +5445,8 @@ func _finish_game() -> void:
 		await _activate_camera_for(winner)
 		_emit_turn_state(winner)
 		if _is_local_reward_marble(winner):
-			var awarded_coins: int = maxi(win_coin_reward, 0)
-			var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
-			if awarded_coins > 0 and currency_manager != null and currency_manager.has_method("add_coins"):
-				currency_manager.call("add_coins", awarded_coins)
+			var awarded_coins: int = _get_win_coin_reward()
+			_add_coin_reward(awarded_coins)
 			player_won.emit(awarded_coins)
 		var winner_name: String = _display_name_for_marble(winner)
 		_spawn_victory_reward(winner)
@@ -5423,8 +5460,27 @@ func _finish_game() -> void:
 		game_finished.emit("")
 
 
+func _get_elimination_coin_reward() -> int:
+	return maxi(online_elimination_coin_reward if online_enabled else elimination_coin_reward, 0)
+
+
+func _get_win_coin_reward() -> int:
+	return maxi(online_win_coin_reward if online_enabled else win_coin_reward, 0)
+
+
+func _add_coin_reward(amount: int) -> void:
+	var clean_amount: int = maxi(amount, 0)
+	if clean_amount <= 0:
+		return
+	var currency_manager: Node = get_node_or_null("/root/CurrencyManager")
+	if currency_manager != null and currency_manager.has_method("add_coins"):
+		currency_manager.call("add_coins", clean_amount)
+
+
 func _build_online_match_finished_payload(winner: Node3D, winner_name: String) -> Dictionary:
 	var winner_client_id: String = _get_online_client_id_for_result_marble(winner)
+	var winner_login_id: String = ""
+	var winner_country: String = ""
 	var player_entries: Array = []
 	var players: Array = _get_online_human_players_snapshot()
 	_build_online_player_assignments()
@@ -5438,6 +5494,10 @@ func _build_online_match_finished_payload(winner: Node3D, winner_name: String) -
 			continue
 		var marble_name: String = str(online_marble_name_by_client_id.get(client_id, "")).strip_edges()
 		var eliminations: int = int(elimination_counts_by_marble_name.get(marble_name, 0))
+		var player_won: bool = client_id != "" and client_id == winner_client_id
+		if player_won:
+			winner_login_id = str(player_data.get("login_id", ""))
+			winner_country = str(player_data.get("country", "Unknown"))
 		player_entries.append({
 			"client_id": client_id,
 			"name": str(player_data.get("name", "Player")),
@@ -5445,13 +5505,15 @@ func _build_online_match_finished_payload(winner: Node3D, winner_name: String) -
 			"country": str(player_data.get("country", "Unknown")),
 			"marble_name": marble_name,
 			"eliminations": eliminations,
-			"won": client_id != "" and client_id == winner_client_id
+			"won": player_won
 		})
 
 	return {
 		"winner_name": winner_name,
 		"winner_marble_name": String(winner.name) if winner != null else "",
 		"winner_client_id": winner_client_id,
+		"winner_login_id": winner_login_id,
+		"winner_country": winner_country,
 		"players": player_entries
 	}
 

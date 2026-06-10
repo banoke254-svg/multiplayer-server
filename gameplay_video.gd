@@ -2,12 +2,16 @@ extends Node3D
 
 const MENU_SCENE_PATH: String = "res://Start_Menu.tscn"
 const INTRO_VIDEO_PATH: String = "res://ui/intro_video.ogv"
+const BUTTON_CLICK_AUDIO_SCRIPT_PATH: String = "res://button_click_audio.gd"
 const MARBLE_SCENE: PackedScene = preload("res://marble.tscn")
 const HOLE_SCRIPT: Script = preload("res://hole_bowl.gd")
 const TUTORIAL_HAND_TEXTURE: Texture2D = preload("res://ui/tutorial_hand.png")
 
 const SEGMENT_SECONDS: float = 5.2
 const FIELD_SIZE: float = 28.0
+const HAND_MIN_SIZE: float = 118.0
+const HAND_MAX_SIZE: float = 190.0
+const HAND_SCREEN_MARGIN: float = 22.0
 
 var camera: Camera3D
 var player_marble: Node3D
@@ -23,18 +27,35 @@ var back_label: Label3D
 var video_layer: CanvasLayer
 var video_player: VideoStreamPlayer
 var hand_pointer: Node3D
+var hand_canvas_layer: CanvasLayer
+var hand_texture_rect: TextureRect
 var elapsed: float = 0.0
 var segment_index: int = -1
 var segment_time: float = 0.0
 
 
 func _ready() -> void:
+	_ensure_button_click_audio_runtime()
 	if _try_build_intro_video_player():
 		set_process(false)
 		return
 	_build_world()
 	_apply_segment(0)
 	set_process(true)
+
+
+func _ensure_button_click_audio_runtime() -> void:
+	if get_node_or_null("/root/ButtonClickAudio") != null:
+		return
+	if get_tree() == null or get_tree().root == null:
+		return
+	var script_resource: Script = load(BUTTON_CLICK_AUDIO_SCRIPT_PATH) as Script
+	if script_resource == null:
+		return
+	var click_audio: Node = Node.new()
+	click_audio.name = "ButtonClickAudio"
+	click_audio.set_script(script_resource)
+	get_tree().root.add_child.call_deferred(click_audio)
 
 
 func _process(delta: float) -> void:
@@ -235,7 +256,27 @@ func _make_marble(node_name: String, position_value: Vector3, accent: Color) -> 
 			"shell_swirl_orange": accent.lightened(0.28),
 			"core_color": accent
 		})
+	_hide_tutorial_tags_and_banners(marble)
 	return marble
+
+
+func _hide_tutorial_tags_and_banners(node: Node) -> void:
+	if node == null:
+		return
+	for child in node.get_children():
+		_hide_tutorial_tags_and_banners(child)
+
+	var node_name: String = node.name.to_lower()
+	var should_hide: bool = node is Label3D or node is Label
+	should_hide = should_hide or node_name.contains("banner")
+	should_hide = should_hide or node_name.contains("nametag")
+	should_hide = should_hide or node_name.contains("name_tag")
+	should_hide = should_hide or node_name.contains("playername")
+	should_hide = should_hide or node_name.contains("watermark")
+	if should_hide and node is CanvasItem:
+		(node as CanvasItem).visible = false
+	elif should_hide and node is Node3D:
+		(node as Node3D).visible = false
 
 
 func _build_guides() -> void:
@@ -272,6 +313,9 @@ func _build_guides() -> void:
 	lesson_label = _make_label("AIM", Vector3(0.0, 3.2, 4.0), 44)
 	detail_label = _make_label("Hold, pull, release.", Vector3(0.0, 2.45, 4.0), 22)
 	back_label = _make_label("TAP TOP LEFT / ESC: MENU", Vector3(-6.6, 2.3, 7.0), 16)
+	lesson_label.visible = false
+	detail_label.visible = false
+	back_label.visible = false
 	add_child(lesson_label)
 	add_child(detail_label)
 	add_child(back_label)
@@ -290,15 +334,18 @@ func _build_hand_pointer() -> void:
 	hand_pointer.name = "HandPointer"
 	add_child(hand_pointer)
 
-	var hand_sprite := Sprite3D.new()
-	hand_sprite.name = "TutorialHandSprite"
-	hand_sprite.texture = TUTORIAL_HAND_TEXTURE
-	hand_sprite.pixel_size = 0.006
-	hand_sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	hand_sprite.no_depth_test = true
-	hand_sprite.shaded = false
-	hand_sprite.modulate = Color(1.0, 1.0, 1.0, 0.92)
-	hand_pointer.add_child(hand_sprite)
+	hand_canvas_layer = CanvasLayer.new()
+	hand_canvas_layer.name = "TutorialHandLayer"
+	hand_canvas_layer.layer = 12
+	add_child(hand_canvas_layer)
+
+	hand_texture_rect = TextureRect.new()
+	hand_texture_rect.name = "TutorialHand"
+	hand_texture_rect.texture = TUTORIAL_HAND_TEXTURE
+	hand_texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hand_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hand_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hand_canvas_layer.add_child(hand_texture_rect)
 
 
 func _apply_segment(index: int) -> void:
@@ -376,6 +423,8 @@ func _update_segment(delta: float) -> void:
 			_update_power_bars(0.0)
 			if hand_pointer != null:
 				hand_pointer.visible = false
+			if hand_texture_rect != null:
+				hand_texture_rect.visible = false
 	_update_rings()
 	_update_camera(t)
 
@@ -426,6 +475,33 @@ func _update_hand_pointer(position_value: Vector3, direction: Vector3, scale_val
 		clean_direction = Vector3.DOWN
 	hand_pointer.global_transform.basis = _basis_from_y(clean_direction.normalized())
 	hand_pointer.scale = Vector3.ONE * scale_value
+	_update_hand_screen_position(position_value, clean_direction, scale_value)
+
+
+func _update_hand_screen_position(position_value: Vector3, direction: Vector3, scale_value: float) -> void:
+	if camera == null or hand_texture_rect == null:
+		return
+
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	if viewport_size.x <= 1.0 or viewport_size.y <= 1.0:
+		return
+
+	var hand_size: float = clampf(minf(viewport_size.x, viewport_size.y) * 0.23 * scale_value, HAND_MIN_SIZE, HAND_MAX_SIZE)
+	var target_screen_position: Vector2 = camera.unproject_position(position_value)
+	if camera.is_position_behind(position_value):
+		target_screen_position = viewport_size * Vector2(0.72, 0.58)
+
+	var safe_min: Vector2 = Vector2(HAND_SCREEN_MARGIN, HAND_SCREEN_MARGIN)
+	var safe_max: Vector2 = viewport_size - Vector2(hand_size + HAND_SCREEN_MARGIN, hand_size + HAND_SCREEN_MARGIN)
+	hand_texture_rect.size = Vector2(hand_size, hand_size)
+	hand_texture_rect.position = Vector2(
+		clampf(target_screen_position.x, safe_min.x, maxf(safe_min.x, safe_max.x)),
+		clampf(target_screen_position.y, safe_min.y, maxf(safe_min.y, safe_max.y))
+	)
+	hand_texture_rect.pivot_offset = hand_texture_rect.size * 0.5
+	hand_texture_rect.rotation = clampf(-direction.x * 0.42, -0.45, 0.45)
+	hand_texture_rect.modulate = Color(1.0, 1.0, 1.0, 0.96)
+	hand_texture_rect.visible = true
 
 
 func _update_rings() -> void:
@@ -446,8 +522,14 @@ func _update_camera(t: float) -> void:
 
 
 func _set_title(title: String, detail: String) -> void:
-	lesson_label.text = title
-	detail_label.text = detail
+	if lesson_label != null:
+		lesson_label.text = title
+		lesson_label.visible = false
+	if detail_label != null:
+		detail_label.text = detail
+		detail_label.visible = false
+	if back_label != null:
+		back_label.visible = false
 
 
 func _make_label(text_value: String, position_value: Vector3, size_value: int) -> Label3D:

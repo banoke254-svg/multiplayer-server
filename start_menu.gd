@@ -8,24 +8,33 @@ const BACKGROUND_PATH: String = "res://ui/bano_start_background.png"
 const MENU_LOGO_PATH: String = "res://ui/bano_header_wordmark.png"
 const RULES_PAGE_PATH: String = "res://ui/bano_rules_page.png"
 const MENU_MUSIC_PATH: String = "res://audio_menu_theme.mp3"
+const BUTTON_CLICK_AUDIO_SCRIPT_PATH: String = "res://button_click_audio.gd"
 const MENU_MUSIC_BUS_NAME: String = "Music"
 const SFX_BUS_NAME: String = "SFX"
 const SHOOTING_MECHANIC_DRAG_IMAGE_PATH: String = "res://ui/shoot_mechanic_drag.png"
 const SHOOTING_MECHANIC_SPLIT_IMAGE_PATH: String = "res://ui/shoot_mechanic_split.png"
 const SHOOTING_MECHANIC_HOLD_IMAGE_PATH: String = "res://ui/shoot_mechanic_hold.png"
 const ONLINE_ROOMS_BACKGROUND_PATH: String = "res://ui/bano_online_rooms.png"
-const ONLINE_ROOMS_BACKGROUND_FALLBACK_PATH: String = "C:/Users/LENOVO/Downloads/ChatGPT Image May 5, 2026, 07_42_00 AM.png"
+const ONLINE_ROOMS_BACKGROUND_FALLBACK_PATH: String = ONLINE_ROOMS_BACKGROUND_PATH
 const ONLINE_LOADING_SCREEN_PATH: String = "res://ui/bano_match_loading.png"
 const ONLINE_LOADING_VIDEO_PATH: String = "res://ui/online_loading.ogv"
 const LOCAL_MENU_FONT_PATHS: Array[String] = [
+	"res://fonts/LuckiestGuy-Regular.ttf",
+	"res://fonts/Ethnocentric-BoldItalic.ttf",
+	"res://fonts/Ethnocentric-BoldItalic.otf",
+	"res://fonts/EthnocentricBoldItalic.ttf",
+	"res://fonts/EthnocentricBoldItalic.otf",
+	"res://fonts/LilitaOne-Regular.ttf",
+	"res://fonts/COOPBL.TTF",
+	"res://fonts/CooperBlack.ttf",
+	"res://fonts/Bangers-Regular.ttf",
+	"res://fonts/Bangers-Regular.otf",
 	"res://fonts/bangokz.ttf",
 	"res://fonts/bangokz.otf",
 	"res://fonts/BANGOKZ.ttf",
 	"res://fonts/BANGOKZ.otf",
 	"res://fonts/bangers.ttf",
 	"res://fonts/bangers.otf",
-	"res://fonts/Bangers-Regular.ttf",
-	"res://fonts/Bangers-Regular.otf",
 	"res://fonts/RAVIE.TTF",
 	"res://fonts/Ravie.ttf",
 	"res://fonts/bank_gothic.ttf",
@@ -524,6 +533,7 @@ var icon_font: Font
 
 
 func _ready() -> void:
+	_ensure_button_click_audio_runtime()
 	_ensure_fonts()
 	_ensure_audio_buses()
 	_ensure_menu_music()
@@ -561,6 +571,20 @@ func _ready() -> void:
 	_bind_lan_signals()
 	_bind_online_signals()
 	GLASS_BUTTON_EFFECTS.apply_to_tree(self )
+
+
+func _ensure_button_click_audio_runtime() -> void:
+	if get_node_or_null("/root/ButtonClickAudio") != null:
+		return
+	if get_tree() == null or get_tree().root == null:
+		return
+	var script_resource: Script = load(BUTTON_CLICK_AUDIO_SCRIPT_PATH) as Script
+	if script_resource == null:
+		return
+	var click_audio: Node = Node.new()
+	click_audio.name = "ButtonClickAudio"
+	click_audio.set_script(script_resource)
+	get_tree().root.add_child.call_deferred(click_audio)
 
 
 func _ensure_audio_buses() -> void:
@@ -725,14 +749,19 @@ func _make_menu_font(weight: int) -> Font:
 			return managed_font
 
 	for font_path in LOCAL_MENU_FONT_PATHS:
-		if not ResourceLoader.exists(font_path):
-			continue
-		var loaded_font: Font = load(font_path) as Font
+		var loaded_font: Font = _load_local_menu_font(font_path)
 		if loaded_font != null:
 			return loaded_font
 
 	var system_font := SystemFont.new()
 	system_font.font_names = PackedStringArray([
+		"Luckiest Guy",
+		"Ethnocentric Bold Italic",
+		"Ethnocentric Bold",
+		"Ethnocentric",
+		"Lilita One",
+		"Cooper Black",
+		"Cooper Std Black",
 		"BANGOKZ",
 		"Bangokz",
 		"Bangers",
@@ -756,6 +785,18 @@ func _make_menu_font(weight: int) -> Font:
 	system_font.font_weight = weight
 	system_font.subpixel_positioning = 0
 	return system_font
+
+
+func _load_local_menu_font(font_path: String) -> Font:
+	if ResourceLoader.exists(font_path):
+		var loaded_font: Font = load(font_path) as Font
+		if loaded_font != null:
+			return loaded_font
+	if FileAccess.file_exists(font_path):
+		var font_file := FontFile.new()
+		if font_file.load_dynamic_font(font_path) == OK:
+			return font_file
+	return null
 
 
 func _setup_background() -> void:
@@ -2207,7 +2248,7 @@ func _rebuild_ranking_popup_contents() -> void:
 		child.queue_free()
 
 	var content: VBoxContainer = _build_themed_popup_shell(ranking_popup, "PLAYER RANKING", Color(1.0, 0.82, 0.2, 0.95), _hide_ranking_popup)
-	var note: Label = _create_settings_label("Points come from games won and players eliminated.")
+	var note: Label = _create_settings_label("Online ranking is based on games won.")
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	note.add_theme_font_size_override("font_size", 14)
 	note.add_theme_color_override("font_color", Color(0.82, 0.9, 1.0, 0.88))
@@ -2226,7 +2267,7 @@ func _rebuild_ranking_popup_contents() -> void:
 
 	var rankings: Array = _get_online_rankings_snapshot()
 	if rankings.is_empty():
-		var empty_label: Label = _create_settings_label("No ranking points yet.")
+		var empty_label: Label = _create_settings_label("No online wins yet.")
 		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		empty_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		empty_label.add_theme_font_size_override("font_size", 28)
@@ -7150,18 +7191,17 @@ func _format_local_leaderboard_text() -> String:
 func _format_online_ranking_summary() -> String:
 	var rankings: Array = _get_online_rankings_snapshot()
 	if rankings.is_empty():
-		return "RANKING\nNo points yet. Win games or eliminate players to score."
+		return "RANKING\nNo online wins yet."
 	var lines: PackedStringArray = PackedStringArray(["RANKING"])
 	var limit: int = mini(rankings.size(), 3)
 	for index in range(limit):
 		if typeof(rankings[index]) != TYPE_DICTIONARY:
 			continue
 		var entry: Dictionary = rankings[index] as Dictionary
-		lines.append("%d. %s  |  %s  |  %d pts" % [
+		lines.append("%d. %s  -  %d games won" % [
 			int(entry.get("rank", index + 1)),
 			str(entry.get("name", "Player")),
-			str(entry.get("country", "Unknown")),
-			int(entry.get("points", 0))
+			int(entry.get("wins", 0))
 		])
 	return "\n".join(lines)
 
@@ -7631,7 +7671,7 @@ func _refresh_online_rankings_list() -> void:
 	var rankings: Array = _get_online_rankings_snapshot()
 	if rankings.is_empty():
 		var empty_label: Label = Label.new()
-		empty_label.text = "No ranking points yet. Win games or eliminate players to climb the board."
+		empty_label.text = "No online wins yet. Win online games to climb the board."
 		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		empty_label.add_theme_font_override("font", ui_font)
 		empty_label.add_theme_font_size_override("font_size", 14)
@@ -7786,18 +7826,16 @@ func _create_online_ranking_row(ranking_data: Dictionary) -> Panel:
 	var player_name: String = str(ranking_data.get("name", "Player")).strip_edges()
 	if player_name == "":
 		player_name = "Player"
-	var country: String = str(ranking_data.get("country", "Unknown")).strip_edges()
-	if country == "":
-		country = "Unknown"
-	var name_label: Label = _create_online_text_label("%s  |  %s" % [player_name, country], 16, Color(0.98, 0.99, 1.0, 1.0), ui_font)
+	var name_label: Label = _create_online_text_label(player_name, 16, Color(0.98, 0.99, 1.0, 1.0), ui_font)
 	name_label.clip_text = true
 	text_stack.add_child(name_label)
 
-	var detail_label: Label = _create_online_text_label("%d wins  |  %d eliminations" % [int(ranking_data.get("wins", 0)), int(ranking_data.get("eliminations", 0))], 12, Color(0.82, 0.9, 1.0, 0.86), ui_font)
+	var wins: int = int(ranking_data.get("wins", 0))
+	var detail_label: Label = _create_online_text_label("%d %s won" % [wins, "game" if wins == 1 else "games"], 12, Color(0.82, 0.9, 1.0, 0.86), ui_font)
 	detail_label.clip_text = true
 	text_stack.add_child(detail_label)
 
-	var points_label: Label = _create_online_text_label("%d PTS" % int(ranking_data.get("points", 0)), 16, Color(1.0, 0.86, 0.28, 1.0), ui_font)
+	var points_label: Label = _create_online_text_label("%d WINS" % wins, 16, Color(1.0, 0.86, 0.28, 1.0), ui_font)
 	points_label.custom_minimum_size = Vector2(82, 0)
 	points_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	points_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -9815,9 +9853,8 @@ func _on_customize_apply_pressed() -> void:
 			else:
 				if customize_status_label:
 					var unlock_cost: int = int(customization.call("get_marble_unlock_cost", selected_customize_marble_id)) if customization.has_method("get_marble_unlock_cost") else 0
-					var unlock_currency: String = str(customization.call("get_marble_unlock_currency", selected_customize_marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
-					var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
-					customize_status_label.text = "This marble is locked. Unlock it for %d %s first." % [unlock_cost, currency_name.to_lower()]
+					var gold_cost: int = int(customization.call("get_marble_unlock_gold_cost", selected_customize_marble_id)) if customization.has_method("get_marble_unlock_gold_cost") else 0
+					customize_status_label.text = "This marble is locked. Unlock it for %s first." % _format_customize_unlock_price(unlock_cost, gold_cost, false)
 				return
 		customization.call("set_selected_marble", selected_customize_marble_id)
 
@@ -9902,18 +9939,15 @@ func _refresh_customize_preview() -> void:
 
 	var marble_locked: bool = customization.has_method("is_marble_unlocked") and not bool(customization.call("is_marble_unlocked", marble_id))
 	var unlock_cost: int = int(customization.call("get_marble_unlock_cost", marble_id)) if customization.has_method("get_marble_unlock_cost") else 0
-	var unlock_currency: String = str(customization.call("get_marble_unlock_currency", marble_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
-	var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
-	var currency_balance: int = int(customization.call("get_currency_balance", unlock_currency)) if customization.has_method("get_currency_balance") else 0
+	var gold_cost: int = int(customization.call("get_marble_unlock_gold_cost", marble_id)) if customization.has_method("get_marble_unlock_gold_cost") else 0
 	var coin_balance: int = int(customization.call("get_coin_balance")) if customization.has_method("get_coin_balance") else 0
 	var gold_balance: int = int(customization.call("get_gold_balance")) if customization.has_method("get_gold_balance") else 0
 	if customize_status_label:
 		if marble_locked:
-			var currency_needed: int = max(unlock_cost - currency_balance, 0)
-			customize_status_label.text = "Locked marble. Cost: %d %s. %s" % [
-				unlock_cost,
-				currency_name.to_lower(),
-				"Ready to unlock." if currency_needed <= 0 else "%d more needed." % currency_needed
+			var ready_to_unlock: bool = customization.has_method("can_unlock_marble") and bool(customization.call("can_unlock_marble", marble_id))
+			customize_status_label.text = "Locked marble. Cost: %s. %s" % [
+				_format_customize_unlock_price(unlock_cost, gold_cost, false),
+				"Ready to unlock." if ready_to_unlock else "Need more currency."
 			]
 		else:
 			customize_status_label.text = "Unlocked. Balance: %d S coins, %d Gold." % [coin_balance, gold_balance]
@@ -10011,13 +10045,20 @@ func _update_customize_card_lock_state(button: Button, preset_id: String, is_mar
 
 	var marble_locked: bool = not bool(customization.call("is_marble_unlocked", preset_id))
 	var unlock_cost: int = int(customization.call("get_marble_unlock_cost", preset_id)) if customization.has_method("get_marble_unlock_cost") else 0
-	var unlock_currency: String = str(customization.call("get_marble_unlock_currency", preset_id)) if customization.has_method("get_marble_unlock_currency") else "coins"
-	var currency_name: String = str(customization.call("get_currency_display_name", unlock_currency)) if customization.has_method("get_currency_display_name") else unlock_currency.capitalize()
+	var gold_cost: int = int(customization.call("get_marble_unlock_gold_cost", preset_id)) if customization.has_method("get_marble_unlock_gold_cost") else 0
 	lock_label.visible = marble_locked
-	lock_label.text = "%d %s" % [unlock_cost, currency_name.to_upper()]
+	lock_label.text = _format_customize_unlock_price(unlock_cost, gold_cost, true)
 	button.tooltip_text = str(preset.get("description", ""))
 	if marble_locked:
-		button.tooltip_text += "\nUnlock cost: %d %s" % [unlock_cost, currency_name.to_lower()]
+		button.tooltip_text += "\nUnlock cost: %s" % _format_customize_unlock_price(unlock_cost, gold_cost, false)
+
+
+func _format_customize_unlock_price(coin_cost: int, gold_cost: int, compact: bool) -> String:
+	if gold_cost > 0:
+		if coin_cost <= 0:
+			return "%d G" % gold_cost if compact else "%d Gold" % gold_cost
+		return "%d S / %d G" % [coin_cost, gold_cost] if compact else "%d S coins or %d Gold" % [coin_cost, gold_cost]
+	return "%d S" % coin_cost if compact else "%d S coins" % coin_cost
 
 
 func _schedule_customize_belt_centering() -> void:

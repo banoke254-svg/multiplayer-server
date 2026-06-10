@@ -24,6 +24,7 @@ config/payment_server_url="https://multiplayer-server-rr9p.onrender.com"
 [autoload]
 
 CustomizationState="*res://customization_state.gd"
+ButtonClickAudio="*res://button_click_audio.gd"
 CurrencyManager="*res://CurrencyManager.gd"
 GameManager="*res://GameManager.gd"
 NetworkManager="*res://NetworkManager.gd"

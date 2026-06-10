@@ -1,14 +1,22 @@
 extends Node
 
 const LOCAL_GAME_FONT_PATHS: Array[String] = [
+	"res://fonts/LuckiestGuy-Regular.ttf",
+	"res://fonts/Ethnocentric-BoldItalic.ttf",
+	"res://fonts/Ethnocentric-BoldItalic.otf",
+	"res://fonts/EthnocentricBoldItalic.ttf",
+	"res://fonts/EthnocentricBoldItalic.otf",
+	"res://fonts/LilitaOne-Regular.ttf",
+	"res://fonts/COOPBL.TTF",
+	"res://fonts/CooperBlack.ttf",
+	"res://fonts/Bangers-Regular.ttf",
+	"res://fonts/Bangers-Regular.otf",
 	"res://fonts/bangokz.ttf",
 	"res://fonts/bangokz.otf",
 	"res://fonts/BANGOKZ.ttf",
 	"res://fonts/BANGOKZ.otf",
 	"res://fonts/bangers.ttf",
 	"res://fonts/bangers.otf",
-	"res://fonts/Bangers-Regular.ttf",
-	"res://fonts/Bangers-Regular.otf",
 	"res://fonts/RAVIE.TTF",
 	"res://fonts/Ravie.ttf",
 	"res://fonts/bank_gothic.ttf",
@@ -18,6 +26,13 @@ const LOCAL_GAME_FONT_PATHS: Array[String] = [
 ]
 
 const GAME_FONT_SYSTEM_NAMES: Array[String] = [
+	"Luckiest Guy",
+	"Ethnocentric Bold Italic",
+	"Ethnocentric Bold",
+	"Ethnocentric",
+	"Lilita One",
+	"Cooper Black",
+	"Cooper Std Black",
 	"BANGOKZ",
 	"Bangokz",
 	"Bangers",
@@ -91,9 +106,7 @@ func get_bank_gothic_font(weight: int = 700) -> Font:
 
 func _make_game_font(weight: int) -> Font:
 	for font_path in LOCAL_GAME_FONT_PATHS:
-		if not ResourceLoader.exists(font_path):
-			continue
-		var loaded_font: Font = load(font_path) as Font
+		var loaded_font: Font = _load_local_font(font_path)
 		if loaded_font != null:
 			return loaded_font
 
@@ -102,6 +115,18 @@ func _make_game_font(weight: int) -> Font:
 	system_font.font_weight = weight
 	system_font.subpixel_positioning = 0
 	return system_font
+
+
+func _load_local_font(font_path: String) -> Font:
+	if ResourceLoader.exists(font_path):
+		var loaded_font: Font = load(font_path) as Font
+		if loaded_font != null:
+			return loaded_font
+	if FileAccess.file_exists(font_path):
+		var font_file := FontFile.new()
+		if font_file.load_dynamic_font(font_path) == OK:
+			return font_file
+	return null
 
 
 func _apply_font_to_project_theme() -> void:
